@@ -1,0 +1,34 @@
+#!/bin/zsh -f
+# 假的 /usr/bin/osascript：只记录收到的参数，绝不执行脚本（不会真的打开终端、不会触发自动化授权弹窗）。
+# Swift 检查程序把它的路径（经 TempHome 的包装脚本）注入 CoreEnvironment.osascript。
+# 文件名带 fake- 前缀，放进 PATH 也不会顶替真的 osascript（ccp 用 /usr/bin/osascript 做 JSON 和 NFC）。
+#
+# 配置：环境变量 FAKE_OSASCRIPT_DIR 指向一个目录（未设置时以 99 退出）。
+#
+#   $FAKE_OSASCRIPT_DIR/calls/1、2、3……
+#       每次调用写一个新文件：argc=<参数个数>，然后每个参数一行 arg=<参数>（同假 claude）。
+#   $FAKE_OSASCRIPT_DIR/exit      存在时：以文件里的数字作为退出码（模拟失败、授权被拒）
+#   $FAKE_OSASCRIPT_DIR/stderr    存在时：原样输出到 stderr（例如真 osascript 的
+#                                 "execution error: Not authorized to send Apple events to Terminal. (-1743)"）
+
+emulate -R zsh
+
+if [[ -z ${FAKE_OSASCRIPT_DIR-} ]]; then
+  print -u2 -r -- "fake osascript: FAKE_OSASCRIPT_DIR 未设置"
+  exit 99
+fi
+mkdir -p -- $FAKE_OSASCRIPT_DIR/calls || exit 99
+
+integer n=1
+while [[ -e $FAKE_OSASCRIPT_DIR/calls/$n ]]; do (( n++ )); done
+{
+  print -r -- "argc=$#"
+  for a in "$@"; do print -r -- "arg=$a"; done
+} > $FAKE_OSASCRIPT_DIR/calls/$n
+
+[[ -f $FAKE_OSASCRIPT_DIR/stderr ]] && /bin/cat -- $FAKE_OSASCRIPT_DIR/stderr >&2
+integer rc=0
+if [[ -f $FAKE_OSASCRIPT_DIR/exit ]]; then
+  read -r rc < $FAKE_OSASCRIPT_DIR/exit
+fi
+exit $rc

@@ -6,6 +6,10 @@
 // 用 `keychainItem(...)` 准备钥匙串项，用 `securityCalls()` 读取调用记录（格式见 tests/fakes/security）。
 //
 // 网络：`environment` 里的网络层一律是 `transport`（假的，见 FakeUsageTransport.swift），绝不访问真的网络。
+//
+// 终端：`environment` 里的 osascript 一律是假的 tests/fakes/fake-osascript（经 root/bin/osascript 包一层，
+// 带上 FAKE_OSASCRIPT_DIR = root/osascript），绝不会真的打开终端或触发自动化授权弹窗。
+// 用 `osascriptCalls()` 读取调用记录，`osascriptFails(exit:stderr:)` 模拟失败。
 
 import Foundation
 
@@ -19,6 +23,10 @@ final class TempHome {
     let fakeSecurityDir: URL
     /// 注入给 App 核心的 security 路径（调用假 security 的包装脚本）
     let securityTool: URL
+    /// 假 osascript 的数据目录（FAKE_OSASCRIPT_DIR）
+    let fakeOsascriptDir: URL
+    /// 注入给 App 核心的 osascript 路径（调用假 osascript 的包装脚本）
+    let osascriptTool: URL
     /// 注入给 App 核心的"当前用户名"
     static let userName = "tester"
     /// 注入给 App 核心的版本号（额度请求的 User-Agent 用它）
@@ -45,6 +53,19 @@ final class TempHome {
             """
         try Data(wrapper.utf8).write(to: securityTool)
         try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: securityTool.path)
+
+        fakeOsascriptDir = root.appendingPathComponent("osascript")
+        osascriptTool = root.appendingPathComponent("bin/osascript")
+        try fm.createDirectory(at: fakeOsascriptDir, withIntermediateDirectories: true)
+        let fakeOsascript = repoRoot.appendingPathComponent("tests/fakes/fake-osascript").path
+        let osascriptWrapper = """
+            #!/bin/zsh -f
+            export FAKE_OSASCRIPT_DIR=\(Self.shellQuote(fakeOsascriptDir.path))
+            exec \(Self.shellQuote(fakeOsascript)) "$@"
+
+            """
+        try Data(osascriptWrapper.utf8).write(to: osascriptTool)
+        try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: osascriptTool.path)
     }
 
     private static func shellQuote(_ s: String) -> String {
@@ -57,7 +78,8 @@ final class TempHome {
 
     var environment: CoreEnvironment {
         CoreEnvironment(home: url, security: securityTool, userName: Self.userName, securityTimeout: 10,
-                        searchPath: searchPath, transport: transport, appVersion: Self.appVersion)
+                        searchPath: searchPath, transport: transport, appVersion: Self.appVersion,
+                        osascript: osascriptTool)
     }
 
     /// 交给 App 核心运行 shell 脚本时的 PATH：最前面是假的 security（本目录的包装）和 tests/fakes/ 里的假 claude
@@ -112,7 +134,24 @@ final class TempHome {
 
     /// 假 security 每次被调用时收到的参数，按调用顺序
     func securityCalls() throws -> [[String]] {
-        let dir = fakeSecurityDir.appendingPathComponent("calls")
+        Self.calls(in: fakeSecurityDir.appendingPathComponent("calls"))
+    }
+
+    // MARK: 假 osascript
+
+    /// 假 osascript 每次被调用时收到的参数，按调用顺序
+    func osascriptCalls() -> [[String]] {
+        Self.calls(in: fakeOsascriptDir.appendingPathComponent("calls"))
+    }
+
+    /// 让之后的假 osascript 以 exit 退出，并往 stderr 输出 stderr
+    func osascriptFails(exit: Int32, stderr: String) throws {
+        try Data("\(exit)\n".utf8).write(to: fakeOsascriptDir.appendingPathComponent("exit"))
+        try Data(stderr.utf8).write(to: fakeOsascriptDir.appendingPathComponent("stderr"))
+    }
+
+    /// 读取假程序的调用记录目录（calls/1、2、3……，每个参数一行 arg=<参数>）
+    private static func calls(in dir: URL) -> [[String]] {
         guard FileManager.default.fileExists(atPath: dir.path) else { return [] }
         var calls: [[String]] = []
         var n = 1

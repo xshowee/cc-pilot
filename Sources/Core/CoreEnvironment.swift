@@ -25,6 +25,8 @@ struct CoreEnvironment {
     var transport: UsageTransport
     /// App 版本号，额度请求的 User-Agent 写成 cc-pilot/<版本>
     var appVersion: String
+    /// 系统的 osascript 程序（打开终端执行 ccp add / ccp rm 用）。测试换成假程序，绝不能真的打开终端。
+    var osascript: URL
 
     init(home: URL = CoreEnvironment.userHome(),
          security: URL = URL(fileURLWithPath: "/usr/bin/security"),
@@ -32,7 +34,8 @@ struct CoreEnvironment {
          securityTimeout: TimeInterval = 5,
          searchPath: String = "/usr/bin:/bin:/usr/sbin:/sbin",
          transport: UsageTransport = URLSessionUsageTransport.shared,
-         appVersion: String = CoreEnvironment.bundleVersion()) {
+         appVersion: String = CoreEnvironment.bundleVersion(),
+         osascript: URL = URL(fileURLWithPath: "/usr/bin/osascript")) {
         self.home = home
         self.security = security
         self.userName = userName
@@ -40,6 +43,7 @@ struct CoreEnvironment {
         self.searchPath = searchPath
         self.transport = transport
         self.appVersion = appVersion
+        self.osascript = osascript
     }
 
     /// 真实环境
