@@ -158,6 +158,13 @@ test_init_unknown_argument_prints_usage() {
   [[ ! -e $(ZSHRC) ]] || fail "不应创建 ~/.zshrc"
 }
 
+test_readme_documents_the_exact_line() {
+  # App 安装器（ticket 08）按 README 展示这一行，必须与 init 写入的完全一致
+  local l found=0
+  while IFS= read -r l; do [[ $l == "$LINE" ]] && found=1; done < $SHELL_SRC/README.md
+  (( found )) || fail "shell/README.md 里应有单独一行的接入行"
+}
+
 # ---------- ccp uninstall ----------
 
 test_uninstall_after_init_restores_zshrc_byte_for_byte() {

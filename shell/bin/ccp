@@ -26,7 +26,7 @@ _ccp_usage() {
   use <名字>      切换当前档案（default 表示默认档案）
   add <名字>      新建档案，并在其中完成首次引导和登录
   rm <名字>       在档案里登出后删除它
-  init            接入 zsh（征得同意后在 ~/.zshrc 里加一行 source）
+  init [--yes]    接入 zsh（征得同意后在 ~/.zshrc 里加一行 source；--yes 不询问）
   uninstall       从 ~/.zshrc 里删除 init 加的那一行
 
 单个终端临时使用其他档案：CLAUDE_PROFILE=<名字> claude"
