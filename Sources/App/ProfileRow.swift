@@ -1,9 +1,12 @@
-// 档案列表的一行：邮箱为主，档案名为副标题；再显示组织与订阅等级、登录状态、额度、是否与其他档案同一账号。
+// 档案列表的一行：邮箱为主，档案名为副标题（当前档案在档案名后面带"当前"标记）；
+// 再显示组织与订阅等级、登录状态、额度、是否与其他档案同一账号。
 
 import SwiftUI
 
 struct ProfileRow: View {
     let profile: Profile
+    /// 是否当前档案：是时档案名后面显示"当前"标记
+    var isCurrent = false
     /// 这个档案所在账号的额度状态；还没刷新过时为 nil
     var usage: AccountUsage? = nil
     /// 界面时钟（UsageModel.now），用来判断变灰、已重置、还要等多久
@@ -12,9 +15,14 @@ struct ProfileRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             title
-            Text(verbatim: profile.name)
-                .font(.caption)
-                .foregroundColor(.secondary)
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(verbatim: profile.name)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                if isCurrent {
+                    currentBadge
+                }
+            }
             if let details = AccountText.details(for: profile) {
                 Text(verbatim: details)
                     .font(.caption)
@@ -38,6 +46,16 @@ struct ProfileRow: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
+    }
+
+    /// "当前"标记：跟在档案名后面（这一行很短），不占其他行的宽度，也不挤邮箱（ticket 18）
+    private var currentBadge: some View {
+        Label("Current", systemImage: "checkmark.circle.fill")
+            .labelStyle(.titleAndIcon)
+            .font(.caption.weight(.semibold))
+            .foregroundColor(.accentColor)
+            .fixedSize()
+            .layoutPriority(1)
     }
 
     @ViewBuilder private var title: some View {

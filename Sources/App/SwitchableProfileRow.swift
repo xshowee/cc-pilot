@@ -1,5 +1,6 @@
 // 面板里可点击的档案行：在 ProfileRow 外面包一层，点击即切换为当前档案；
-// 当前档案用强调色背景、左侧色条和"当前"标记醒目地标出。
+// 当前档案用强调色背景、左侧色条和"当前"标记醒目地标出（标记在 ProfileRow 的档案名后面，
+// 不单独占一列，当前行与其他行的内容宽度相同，ticket 18）。
 // 已登录的档案右侧有刷新按钮，刷新这个档案所在账号的额度（放在切换按钮外面，点它不会切换）；
 // 频率限制的等待期内按钮不可用（ticket 12）。
 // 有额度详情（按模型细分的周窗口、超额付费）时，刷新按钮下方还有展开按钮，展开后详情显示在行下方（ticket 13）。
@@ -47,14 +48,7 @@ struct SwitchableProfileRow: View {
                     Rectangle()
                         .fill(isCurrent ? Color.accentColor : Color.clear)
                         .frame(width: 3)
-                    ProfileRow(profile: profile, usage: usage, now: now)
-                    if isCurrent {
-                        Label("Current", systemImage: "checkmark.circle.fill")
-                            .labelStyle(.titleAndIcon)
-                            .font(.caption.weight(.semibold))
-                            .foregroundColor(.accentColor)
-                            .padding(.trailing, onRefresh == nil && !hasDetails && onDelete == nil ? 14 : 4)
-                    }
+                    ProfileRow(profile: profile, isCurrent: isCurrent, usage: usage, now: now)
                 }
                 .contentShape(Rectangle())
             }
