@@ -35,7 +35,7 @@
 	<key>SUFeedURL</key>
 	<string>https://raw.githubusercontent.com/xshowee/cc-pilot/main/appcast.xml</string>
 	<key>SUPublicEDKey</key>
-	<string>AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=</string>
+	<string>C1jTICc74ojwE8JFp+JRM88pOXjaZKC7zUcnZLpdzqI=</string>
 	<key>SURequireSignedFeed</key>
 	<true/>
 	<key>SUScheduledCheckInterval</key>

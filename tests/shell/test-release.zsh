@@ -41,13 +41,14 @@ test_refuses_while_public_key_is_placeholder() {
   assert_nothing_built
 }
 
-test_repository_info_plist_ships_with_placeholder_and_is_refused() {
-  # 仓库里的 Info.plist 交付时就是占位值（密钥由用户亲自生成），直接运行也必须被拦下
-  setup_repo
-  run_release
-  assert_rc_nonzero
-  assert_contains "$T_ERR" SUPublicEDKey "错误信息应指出是 SUPublicEDKey"
-  assert_nothing_built
+test_repository_info_plist_ships_real_public_key() {
+  # 用户已用 generate_keys --account cc-pilot 生成密钥并填入公钥：仓库里的值不能是占位值，
+  # 且必须是 32 字节 Ed25519 公钥的 base64
+  local key bytes
+  key=$(/usr/libexec/PlistBuddy -c "Print :SUPublicEDKey" $ROOT/Resources/Info.plist) || fail "读不到 SUPublicEDKey"
+  [[ $key != $PLACEHOLDER_KEY ]] || fail "SUPublicEDKey 仍是占位值"
+  bytes=$(print -rn -- $key | /usr/bin/base64 -D 2>/dev/null | /usr/bin/wc -c)
+  (( bytes == 32 )) || fail "SUPublicEDKey 解码后应为 32 字节，实际 ${bytes// /} 字节"
 }
 
 test_refuses_when_keychain_has_no_cc_pilot_key() {
@@ -82,6 +83,7 @@ test_local_dry_run_skips_keychain_key_check() {
   # CCP_SKIP_NOTARIZE=1 只用于在本机验证打包流程：不查钥匙串里的 Sparkle 私钥，占位公钥只警告。
   # 这里只看它越过了密钥检查；随后用一个不存在的签名身份让它在编译前失败。
   setup_repo
+  set_public_key $PLACEHOLDER_KEY
   # 假 security：钥匙串里一个签名身份也没有（不碰真实钥匙串）
   mkdir -p -- $T/bin || exit 1
   print -r -- $'#!/bin/zsh -f\n[[ $1 == find-identity ]] && { print "     0 valid identities found"; exit 0 }\nexit 1' \
