@@ -1,4 +1,5 @@
-// 菜单栏上显示的内容：默认两行（当前档案名、额度），打开"只显示图标"后只显示图标。
+// 菜单栏上显示的内容：默认两行（当前档案的订阅等级如"Max 5x"，不知道时是档案名；额度），
+// 打开"只显示图标"后只显示图标。悬停提示和读屏仍说出当前档案名。
 // 额度一行的文字来自 MenuBarSummary.quotaLine（没刷新过时是"—"，已过重置时间是"已重置"），
 // 颜色与列表同一规则（MenuBarSummary.quotaTint：severity、超过 30 分钟变灰；没有时不着色）。
 
@@ -15,7 +16,7 @@ struct MenuBarLabel: View {
                     .renderingMode(.template)
             } else {
                 let color = summary.quotaTint.nsColor
-                Image(nsImage: MenuBarImage.image(top: summary.profileName,
+                Image(nsImage: MenuBarImage.image(top: summary.tier.map(AccountText.tierName) ?? summary.profileName,
                                                   bottom: summary.quotaLine(resetText: String(localized: "Reset")),
                                                   bottomColor: color))
                     // 不着色时用模板图，由系统按菜单栏明暗着色；着色时保留颜色

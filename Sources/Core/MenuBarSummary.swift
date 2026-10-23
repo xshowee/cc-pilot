@@ -1,5 +1,6 @@
 // 菜单栏显示的两行内容（spec "刷新与界面"）：
-//   上一行  当前档案名
+//   上一行  当前档案的订阅等级（Max 5x、Pro 等，用户更关心套餐而不是档案名）；
+//           不知道订阅等级（未登录、不在列表里等）时退回当前档案名
 //   下一行  当前档案所在账号的 5 小时窗口剩余百分比；从未刷新过（没有数据）时显示"—"，
 //           不能显示成 0，以免误以为额度用完了。已过重置时间时不显示旧数字（见 UsageReading）。
 //           颜色与列表相同：取自 severity，数据超过 30 分钟变灰（UsageReading.tint）。
@@ -13,10 +14,13 @@ struct MenuBarSummary: Equatable {
     var profileName: String
     /// 5 小时窗口此刻怎么显示；还没有数据时为 .unavailable
     var fiveHour: UsageReading
+    /// 当前档案的订阅等级（凭据优先，见 Profile.displayTier）；不知道时为 nil，第一行显示档案名
+    var tier: SubscriptionTier?
 
-    init(profileName: String, fiveHour: UsageReading = .unavailable) {
+    init(profileName: String, fiveHour: UsageReading = .unavailable, tier: SubscriptionTier? = nil) {
         self.profileName = profileName
         self.fiveHour = fiveHour
+        self.tier = tier
     }
 
     /// 从当前档案记录读出档案名；额度暂时没有
