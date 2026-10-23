@@ -1,0 +1,35 @@
+#!/bin/zsh -f
+# 假的 Claude Code：只记录收到的 CLAUDE_CONFIG_DIR 和参数。
+#
+# 每次调用在 $FAKE_CLAUDE_LOG_DIR 下写一个新文件（1、2、3……），内容：
+#   config_dir_set=yes|no     区分"未设置"和"设置为空"
+#   config_dir=<值>
+#   argc=<参数个数>
+#   arg=<参数>                每个参数一行，按顺序
+#
+# 可选环境变量：
+#   FAKE_CLAUDE_HOOK   记录完成后用 zsh eval 执行的一段代码（例如模拟用户在里面 /logout）
+#   FAKE_CLAUDE_EXIT   退出码，默认 0
+
+emulate -R zsh
+
+if [[ -z ${FAKE_CLAUDE_LOG_DIR-} ]]; then
+  print -u2 -r -- "fake claude: FAKE_CLAUDE_LOG_DIR 未设置"
+  exit 99
+fi
+mkdir -p -- $FAKE_CLAUDE_LOG_DIR || exit 99
+
+integer n=1
+while [[ -e $FAKE_CLAUDE_LOG_DIR/$n ]]; do (( n++ )); done
+
+{
+  print -r -- "config_dir_set=${${CLAUDE_CONFIG_DIR+yes}:-no}"
+  print -r -- "config_dir=${CLAUDE_CONFIG_DIR-}"
+  print -r -- "argc=$#"
+  for a in "$@"; do print -r -- "arg=$a"; done
+} > $FAKE_CLAUDE_LOG_DIR/$n
+
+if [[ -n ${FAKE_CLAUDE_HOOK-} ]]; then
+  eval "$FAKE_CLAUDE_HOOK"
+fi
+exit ${FAKE_CLAUDE_EXIT:-0}
