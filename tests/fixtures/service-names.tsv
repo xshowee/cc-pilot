@@ -1,0 +1,9 @@
+# 钥匙串 service 名的测试向量（shell 与 Swift 两端共用；Claude Code 2.1.309 的规则）
+# 每行三列，用 Tab 分隔：传给 CLAUDE_CONFIG_DIR 的原始字符串的 UTF-8 字节（十六进制，- 表示未设置）、期望的 service 名、说明
+# 期望值由 JXA NFC + shasum、python3 unicodedata + hashlib、Swift CryptoKit 三种方式交叉验证得出，不要用被测函数重新生成
+-	Claude Code-credentials	默认档案（不设置 CLAUDE_CONFIG_DIR）
+2f55736572732f746573742f2e636c617564652d70726f66696c65732f776f726b	Claude Code-credentials-1e0b856d	普通档案 /Users/test/.claude-profiles/work
+2f55736572732f746573742f2e636c617564652d70726f66696c65732f776f726b2f	Claude Code-credentials-348ad4d1	结尾带 / 的同一路径，结果与不带时不同
+2f55736572732f4a6f7365cc812f2e636c617564652d70726f66696c65732f776f726b	Claude Code-credentials-7959c412	NFD 形式的非 ASCII 主目录 /Users/Jose+U+0301，NFC 后与下一行相同（不做 NFC 时是 576c438b）
+2f55736572732f4a6f73c3a92f2e636c617564652d70726f66696c65732f776f726b	Claude Code-credentials-7959c412	NFC 形式的非 ASCII 主目录 /Users/Jos+U+00E9
+2f55736572732fe5bca0e4b8892f2e636c617564652d70726f66696c65732fe5b7a5e4bd9c	Claude Code-credentials-371a8e4a	中文主目录和档案名 /Users/张三/.claude-profiles/工作（NFC 不改变）
