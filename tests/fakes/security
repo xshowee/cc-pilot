@@ -1,0 +1,110 @@
+#!/bin/zsh -f
+# 假的 macOS `security`：按测试准备好的钥匙串内容作答，并记录收到的参数。
+# shell 测试（经 PATH）和 Swift 检查程序（注入这个文件的路径）共用。
+#
+# 只支持 `security find-generic-password [-s 服务] [-a 账户] [-w]`，模仿实测行为
+# （见调研笔记 claude-code-facts.md 第 3 节）。其他子命令或选项一律报错并以 2 退出，
+# 好让测试发现意料之外的用法；需要时再扩展。
+#
+# 配置：环境变量 FAKE_SECURITY_DIR 指向一个目录（未设置时以 99 退出，绝不回退到真的 security）。
+#
+#   $FAKE_SECURITY_DIR/items/<service>/<account>
+#       一个文件就是一条钥匙串项。文件内容就是 `-w` 要输出的文本（原样输出，再补一个 \n），
+#       所以测试想模拟哪种输出就写哪种：
+#         JSON 原文      写入 JSON
+#         十六进制       写入十六进制字符串（真的 security 在密码含非 ASCII 字节时就这样输出）
+#         返回空         空文件（-w 只输出 \n）
+#         匹配多条       同一个 <service> 目录下放多个 <account> 文件
+#       目录不存在或没有匹配的文件，就是"钥匙串项不存在"。
+#
+#   $FAKE_SECURITY_DIR/calls/1、2、3……
+#       每次调用写一个新文件：argc=<参数个数>，然后每个参数一行 arg=<参数>（同假 claude）。
+#       可用来断言查询里有没有 -w。
+#
+# 匹配规则：
+#   带 -a：只取 items/<service>/<account>。
+#   不带 -a：取 items/<service>/ 下按文件名排序的第一个（真的 security 不保证顺序）。
+#   不带 -s：在所有 service 里按上面的规则找，service 也按目录名排序。
+# 结果：
+#   没有匹配   stderr 输出真的 security 的那句提示，退出码 44
+#   有匹配     不带 -w：输出几行属性（不含密码内容），退出码 0
+#              带 -w：输出文件内容加 \n，退出码 0
+#
+# 可选环境变量：
+#   FAKE_SECURITY_EXIT  非空时，记录参数后直接以这个退出码结束（模拟授权被拒等读取失败），
+#                       stderr 输出一句固定提示，stdout 不输出任何内容。
+
+emulate -R zsh
+setopt extended_glob null_glob
+
+if [[ -z ${FAKE_SECURITY_DIR-} ]]; then
+  print -u2 -r -- "fake security: FAKE_SECURITY_DIR 未设置"
+  exit 99
+fi
+
+calls=$FAKE_SECURITY_DIR/calls
+mkdir -p -- $calls || exit 99
+integer n=1
+while [[ -e $calls/$n ]]; do (( n++ )); done
+{
+  print -r -- "argc=$#"
+  for a in "$@"; do print -r -- "arg=$a"; done
+} > $calls/$n
+
+if [[ -n ${FAKE_SECURITY_EXIT-} ]]; then
+  print -u2 -r -- "security: fake failure (FAKE_SECURITY_EXIT=$FAKE_SECURITY_EXIT)"
+  exit $FAKE_SECURITY_EXIT
+fi
+
+unsupported() {
+  print -u2 -r -- "fake security: 不支持的用法：$*"
+  exit 2
+}
+
+[[ ${1-} == find-generic-password ]] || unsupported "子命令 ${1-（无）}"
+shift
+
+service= account= want_password=0
+integer has_service=0 has_account=0
+while (( $# )); do
+  case $1 in
+    (-s) (( $# >= 2 )) || unsupported "-s 缺少参数"; service=$2; has_service=1; shift 2 ;;
+    (-a) (( $# >= 2 )) || unsupported "-a 缺少参数"; account=$2; has_account=1; shift 2 ;;
+    (-w) want_password=1; shift ;;
+    (*)  unsupported "选项 $1" ;;
+  esac
+done
+
+items=$FAKE_SECURITY_DIR/items
+match=
+if (( has_service )); then
+  services=("$items/$service")
+else
+  services=($items/*(/on))
+fi
+for dir in $services; do
+  [[ -d $dir ]] || continue
+  if (( has_account )); then
+    [[ -f $dir/$account ]] && { match=$dir/$account; break }
+  else
+    candidates=($dir/*(.on))
+    (( ${#candidates} )) && { match=${candidates[1]}; break }
+  fi
+done
+
+if [[ -z $match ]]; then
+  print -u2 -r -- "security: SecKeychainSearchCopyNext: The specified item could not be found in the keychain."
+  exit 44
+fi
+
+if (( want_password )); then
+  cat -- $match || exit 99
+  print
+else
+  print -r -- "keychain: \"$FAKE_SECURITY_DIR/fake.keychain-db\""
+  print -r -- "class: \"genp\""
+  print -r -- "attributes:"
+  print -r -- "    \"acct\"<blob>=\"${match:t}\""
+  print -r -- "    \"svce\"<blob>=\"${match:h:t}\""
+fi
+exit 0

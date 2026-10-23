@@ -10,9 +10,11 @@
 #   $T_HOME     临时用户主目录（路径里故意带空格），所有被测程序都以它为 HOME
 #               其中 $T_HOME/.cc-pilot/ 是仓库 shell/ 目录的原样复制（即安装后的布局）
 #   $T_CLAUDE_LOG  假 claude 的记录目录
+#   $T_SECURITY    假 security 的钥匙串内容和调用记录（即 FAKE_SECURITY_DIR，格式见 tests/fakes/security）
 # 被测程序一律通过 t_run / t_claude / t_zsh / t_ccp 启动：`env -i` 清空环境，
-# PATH 最前面是 tests/fakes/（假 claude；ticket 04 会在这里加假 security），
-# 然后才是 /usr/bin:/bin:/usr/sbin:/sbin。运行结果在 $T_OUT、$T_ERR、$T_RC 里。
+# PATH 最前面是 tests/fakes/（假 claude、假 security），然后才是 /usr/bin:/bin:/usr/sbin:/sbin。
+# 标准输入默认是 /dev/null；用 t_stdin 准备输入（例如回答确认提示）。
+# 运行结果在 $T_OUT、$T_ERR、$T_RC 里。
 
 emulate -R zsh
 setopt extended_glob
@@ -36,6 +38,19 @@ t_active() {
   print -r -- "$1" > "$T_HOME/.claude-profiles/active" || exit 1
 }
 
+# 准备之后每次运行被测程序时的标准输入（自动补一个换行）：t_stdin y
+t_stdin() {
+  print -r -- "$1" > $T/stdin || exit 1
+  T_STDIN=$T/stdin
+}
+
+# 在假钥匙串里加一条钥匙串项：t_keychain_item 服务 [账户，默认 tester] [-w 输出的内容，默认为空]
+t_keychain_item() {
+  local dir=$T_SECURITY/items/$1
+  mkdir -p -- $dir || exit 1
+  print -rn -- "${3-}" > $dir/${2:-tester} || exit 1
+}
+
 # ---------- 启动被测程序 ----------
 
 # t_run [VAR=值 ...] [--] 命令 参数...
@@ -50,8 +65,9 @@ t_run() {
     PATH=$FAKES:/usr/bin:/bin:/usr/sbin:/sbin \
     LANG=en_US.UTF-8 \
     FAKE_CLAUDE_LOG_DIR=$T_CLAUDE_LOG \
+    FAKE_SECURITY_DIR=$T_SECURITY \
     "${extra[@]}" \
-    "$@" > $T/out 2> $T/err < /dev/null
+    "$@" > $T/out 2> $T/err < ${T_STDIN:-/dev/null}
   T_RC=$?
   T_OUT=$(< $T/out)
   T_ERR=$(< $T/err)
@@ -114,6 +130,25 @@ claude_args() {
   while IFS= read -r line; do
     [[ $line == arg=* ]] && reply+=("${line#arg=}")
   done < $T_CLAUDE_LOG/$n
+}
+
+# ---------- 读取假 security 的记录 ----------
+
+# 假 security 被调用的次数
+security_calls() {
+  local -a files
+  files=($T_SECURITY/calls/<->(N.))
+  print -r -- ${#files}
+}
+
+# security_args [第几次调用，默认最后一次]：把参数放进数组 reply
+security_args() {
+  local n=${1:-$(security_calls)} line
+  reply=()
+  [[ -f $T_SECURITY/calls/$n ]] || fail "假 security 没有第 $n 次调用的记录"
+  while IFS= read -r line; do
+    [[ $line == arg=* ]] && reply+=("${line#arg=}")
+  done < $T_SECURITY/calls/$n
 }
 
 # ---------- 断言（失败即结束当前用例） ----------
@@ -189,8 +224,9 @@ t_main() {
     T=$(mktemp -d "${${TMPDIR:-/tmp}%/}/ccp-test.XXXXXX") || exit 1
     T_HOME="$T/home dir"
     T_CLAUDE_LOG=$T/claude-log
+    T_SECURITY=$T/security
     mkdir -p -- $T_HOME && cp -R -- $SHELL_SRC $T_HOME/.cc-pilot || exit 1
-    ( unset T_RC T_OUT T_ERR; $name )
+    ( unset T_RC T_OUT T_ERR T_STDIN; $name )
     rc=$?
     rm -rf -- $T
     if (( rc == 0 )); then
