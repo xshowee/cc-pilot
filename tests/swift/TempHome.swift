@@ -57,7 +57,13 @@ final class TempHome {
 
     var environment: CoreEnvironment {
         CoreEnvironment(home: url, security: securityTool, userName: Self.userName, securityTimeout: 10,
-                        transport: transport, appVersion: Self.appVersion)
+                        searchPath: searchPath, transport: transport, appVersion: Self.appVersion)
+    }
+
+    /// 交给 App 核心运行 shell 脚本时的 PATH：最前面是假的 security（本目录的包装）和 tests/fakes/ 里的假 claude
+    var searchPath: String {
+        let fakes = repoRoot.appendingPathComponent("tests/fakes").path
+        return "\(securityTool.deletingLastPathComponent().path):\(fakes):/usr/bin:/bin:/usr/sbin:/sbin"
     }
 
     var profilesRoot: URL { url.appendingPathComponent(".claude-profiles") }

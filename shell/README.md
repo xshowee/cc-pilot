@@ -17,6 +17,7 @@
 
 - 安装根目录固定为 `~/.cc-pilot/`，不能放在 `~/.claude-profiles/` 下（那里的每个目录都会被当成档案）。
 - 接入 zsh 就是在 `~/.zshrc` 里加一行 source（由 `ccp init` 写入，见下面"接入 zsh"）。
+- App（`Sources/Core/ShellIntegration.swift`）内置本目录（`Contents/Resources/shell/`）：用户在首次运行引导里同意后，把它整体复制为 `~/.cc-pilot/` 再执行 `ccp init --yes`；之后每次启动，只要已安装过（或 `~/.zshrc` 里有接入行），内容与内置版本不同就整体替换，不再询问，也不改 `~/.zshrc`。`~/.cc-pilot` 是软链接时 App 不动它（便于开发时指向仓库）。设置里的"移除 zsh 接入"执行 `ccp uninstall`，保留 `~/.cc-pilot/`。
 - `cc-pilot.zsh` 和 `bin/ccp` 都按自身所在位置找 `lib/`，所以直接 source 仓库里的 `shell/cc-pilot.zsh` 也能用；测试就是把本目录复制到临时 HOME 的 `.cc-pilot/` 再运行。
 
 ## 代码约定
