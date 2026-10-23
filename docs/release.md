@@ -71,10 +71,14 @@ export CCP_NOTARY_PROFILE=<凭据名>
 
 cc-pilot 的 EdDSA 密钥单独新建，存放在钥匙串的 `cc-pilot` 账户下，不用默认账户。
 
+> **已完成**（2026-10-23，提交 fbbe88c）：密钥已生成，公钥 `C1jTICc74ojwE8JFp+JRM88pOXjaZKC7zUcnZLpdzqI=`
+> 已填进 `Resources/Info.plist`。下面的步骤留作记录；换电脑时不要重新生成，只需按本节末尾导入私钥。
+> 重新生成会得到另一把密钥，已安装的用户将无法再收到更新。
+
 ```zsh
 SPARKLE=$(./scripts/fetch-sparkle.sh)
 
-# 生成密钥：私钥存进登录钥匙串（会弹窗请求保存），终端打印公钥
+# 生成密钥：私钥存进登录钥匙串（通常不弹窗），终端打印公钥
 "$SPARKLE/bin/generate_keys" --account cc-pilot
 
 # 把打印出的公钥（base64，以 = 结尾）填进 Info.plist，替换占位值 AAAA…A=
@@ -98,8 +102,10 @@ rm ~/Desktop/cc-pilot-sparkle-private-key
 
 换电脑时导入：`"$SPARKLE/bin/generate_keys" --account cc-pilot -f <私钥文件>`。私钥文件绝不放进仓库。
 
-占位值没有替换时，`./scripts/release.sh` 会拒绝发布；钥匙串里 `cc-pilot` 账户的公钥与 Info.plist 不一致时也会拒绝。
-占位值期间构建出的 App（例如本地开发构建）不会启动 Sparkle，"检查更新…"是灰的，也不会访问 appcast。
+`SUPublicEDKey` 是占位值 `AAAA…A=` 时，`./scripts/release.sh` 会拒绝发布，构建出的 App 也不启动 Sparkle
+（"检查更新…"是灰的，不访问 appcast）；钥匙串里 `cc-pilot` 账户的公钥与 Info.plist 不一致时 release.sh 同样拒绝。
+现在 Info.plist 里已是真实公钥，所以**包括本地开发构建在内**，App 都会启动 Sparkle 并按计划访问 appcast 地址
+（仓库公开之前该地址返回 404，后台检查失败不弹窗；手动点"检查更新…"会提示失败）。
 
 ### 4.（建议）先在本机试一遍签名
 
@@ -193,9 +199,10 @@ git push
 
 | 时机 | 应出现的连接 |
 | --- | --- |
-| 启动、打开面板、切换档案、空闲 | 无 |
+| 打开面板、切换档案 | 无 |
 | 点"刷新全部"或单个账号的刷新 | 只有 `api.anthropic.com` |
-| 每天一次的后台检查、点"检查更新…" | 只有 `raw.githubusercontent.com`（appcast），请求不带查询参数（不上报系统信息） |
+| 开启"自动检查更新"（默认）时的后台检查：每天一次，距上次检查已满一天时在启动后不久检查；以及点"检查更新…" | 只有 `raw.githubusercontent.com`（appcast），请求不带查询参数（不上报系统信息） |
+| 其余时候：启动、空闲但距上次检查未满一天，或已关掉"自动检查更新" | 无 |
 | 确认安装更新、下载过程中 | `github.com` 及其下载跳转到的 `*.githubusercontent.com`（DMG 附件） |
 
 更新说明嵌入在 appcast 里，Sparkle 不会再去请求别的页面；"查看完整更新说明"只会在你点击时用浏览器打开。
@@ -215,7 +222,7 @@ git push
 | `CFBundleShortVersionString` | `0.1.0` | 显示给用户的版本号；也决定 DMG 名和 Release tag |
 | `CFBundleVersion` | `1` | 整数构建号，Sparkle 按它比较新旧，每次发布必须递增 |
 | `SUFeedURL` | `https://raw.githubusercontent.com/xshowee/cc-pilot/main/appcast.xml` | appcast 地址，App 访问的两个网络地址之一 |
-| `SUPublicEDKey` | 占位值 `AAAA…A=`（32 个零字节） | cc-pilot 的 Sparkle EdDSA 公钥；占位值时 release.sh 拒绝发布，App 不启动 Sparkle |
+| `SUPublicEDKey` | `C1jTICc74ojwE8JFp+JRM88pOXjaZKC7zUcnZLpdzqI=` | cc-pilot 的 Sparkle EdDSA 公钥（钥匙串 `cc-pilot` 账户里私钥对应的公钥）；若换回占位值 `AAAA…A=`，release.sh 拒绝发布，App 不启动 Sparkle |
 | `SUEnableAutomaticChecks` | `true` | 自动检查更新默认开启，并且不弹窗询问 |
 | `SUScheduledCheckInterval` | `86400` | 每天检查一次 |
 | `SUEnableSystemProfiling` | `false` | 请求 appcast 时不附带系统信息 |

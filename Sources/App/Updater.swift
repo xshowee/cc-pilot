@@ -2,8 +2,10 @@
 // 配置（更新地址、每天一次、默认开启、不上报系统信息）全部在
 // Resources/Info.plist 里，见 docs/release.md。
 //
-// Info.plist 的 SUPublicEDKey 还是占位值时（用户尚未生成 cc-pilot 的密钥，例如本地开发构建），
-// 不启动 Sparkle：既不联网，也不会因为公钥无效弹出"更新程序无法启动"的提示；"检查更新…"保持禁用。
+// Info.plist 的 SUPublicEDKey 已填入 cc-pilot 的真实公钥，所以包括本地开发构建在内都会启动 Sparkle，
+// 并按计划访问 appcast 地址（见 docs/release.md "网络访问"）。下面对占位值的判断只是防护：公钥被换回
+// 占位值（例如 fork 后还没生成自己的密钥）时不启动 Sparkle，既不联网，也不会因为公钥无效弹出
+// "更新程序无法启动"的提示；"检查更新…"保持禁用。
 
 import Combine
 import Foundation
