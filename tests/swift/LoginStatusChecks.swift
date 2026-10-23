@@ -13,6 +13,7 @@ final class LoginStatusChecks: CheckSuite {
             Check("其余情况：可以请求额度（过期时间缺失按未过期处理）", canRequestUsage),
             Check("只有可以请求额度时才拿得到令牌；待续期、需重新登录等一律拿不到", authorization),
             Check("订阅等级以凭据的 subscriptionType 为准，认不出时退回 .claude.json 的推断", subscriptionTier),
+            Check("文件变化引起的重读：账号资料没变的档案沿用上次的登录状态，不再查询钥匙串", reusesUnchangedLoginStates),
         ]
     }
 
@@ -159,5 +160,41 @@ final class LoginStatusChecks: CheckSuite {
         }
         // 读不到凭据时照样显示 .claude.json 推断的等级
         try expectEqual(profiles["nokeychain"]?.displayTier, .pro, "nokeychain")
+    }
+
+    static func reusesUnchangedLoginStates() throws {
+        let home = try TempHome()
+        defer { home.remove() }
+        try home.keychainItem(service: try home.makeLoggedInProfile("default", uuid: "u-d"), credentialJSON())
+        let workService = try home.makeLoggedInProfile("work", uuid: "u-w")
+        try home.keychainItem(service: workService, credentialJSON(expiresAt: ms(-60)))
+        try home.makeProfileDir("fresh")   // 未登录：本来就不查询钥匙串
+        let store = ProfileStore(environment: home.environment)
+        let checker = LoginChecker(environment: home.environment)
+
+        // 第一次（打开面板时也一样）：每个已登录的档案都查询一次
+        let first = checker.withLoginStates(store.listProfiles(), now: fixedNow)
+        let afterFirst = try home.securityCalls().count
+        try expectEqual(afterFirst, 2, "第一次读取时查询钥匙串的次数")
+
+        // 文件变化引起的重读：账号资料都没变，沿用上次的登录状态
+        let second = checker.withLoginStates(store.listProfiles(), reusing: first, now: fixedNow)
+        try expectEqual(try home.securityCalls().count, afterFirst, "账号资料没变时不应再查询钥匙串")
+        try expectEqual(second, first)
+
+        // work 换了账号登录：只重新查询 work
+        try home.writeJSON(".claude-profiles/work/.claude.json", claudeConfig(uuid: "u-w2", email: "w2@example.com"))
+        try home.keychainItem(service: workService, credentialJSON())
+        let third = checker.withLoginStates(store.listProfiles(), reusing: second, now: fixedNow)
+        try expectEqual(try home.securityCalls().count, afterFirst + 1, "只有账号资料变了的档案重新查询")
+        try expectEqual(third.first { $0.name == "work" }?.login?.status, .canRequestUsage)
+        try expectEqual(third.first { $0.name == "default" }?.login, first.first { $0.name == "default" }?.login)
+
+        // 新登录的档案（之前没有登录信息）要查询
+        let freshService = try home.makeLoggedInProfile("fresh", uuid: "u-f")
+        try home.keychainItem(service: freshService, credentialJSON())
+        let fourth = checker.withLoginStates(store.listProfiles(), reusing: third, now: fixedNow)
+        try expectEqual(try home.securityCalls().count, afterFirst + 2, "新登录的档案应查询钥匙串")
+        try expectEqual(fourth.first { $0.name == "fresh" }?.login?.status, .canRequestUsage)
     }
 }
