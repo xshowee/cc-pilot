@@ -11,8 +11,10 @@ enum ShellRun {
         let err: String
     }
 
-    /// 运行一个程序（第一个元素是绝对路径），工作目录是临时主目录
-    static func run(_ home: TempHome, _ argv: [String]) throws -> Result {
+    /// 运行一个程序（第一个元素是绝对路径），工作目录是临时主目录。
+    /// extraEnvironment 追加进环境（例如假 claude 的 FAKE_CLAUDE_LOG_DIR）；stdin 是标准输入的内容（nil 为空）。
+    static func run(_ home: TempHome, _ argv: [String], extraEnvironment: [String: String] = [:],
+                    stdin: String? = nil) throws -> Result {
         let fakeBin = home.root.appendingPathComponent("fake-bin")
         let security = fakeBin.appendingPathComponent("security")
         if !FileManager.default.fileExists(atPath: security.path) {
@@ -30,13 +32,18 @@ enum ShellRun {
             "HOME": home.url.path,
             "PATH": "\(fakes):\(fakeBin.path):/usr/bin:/bin:/usr/sbin:/sbin",
             "LANG": "en_US.UTF-8",
-        ]
+        ].merging(extraEnvironment) { _, extra in extra }
         process.currentDirectoryURL = home.url
         let out = Pipe(), err = Pipe()
         process.standardOutput = out
         process.standardError = err
-        process.standardInput = FileHandle.nullDevice
+        let input = Pipe()
+        process.standardInput = stdin == nil ? FileHandle.nullDevice : input
         try process.run()
+        if let stdin {
+            input.fileHandleForWriting.write(Data(stdin.utf8))
+            try input.fileHandleForWriting.close()
+        }
         // 输出很短（一两行），先读 stdout 再读 stderr 不会因管道写满而互相卡住
         let outData = out.fileHandleForReading.readDataToEndOfFile()
         let errData = err.fileHandleForReading.readDataToEndOfFile()
