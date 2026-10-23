@@ -1,4 +1,5 @@
-// 面板底部的设置菜单（齿轮图标）："登录时启动"、zsh 接入（ticket 08）、"自动检查更新"、"检查更新…"。
+// 面板底部的设置菜单（齿轮图标）：顶部是"关于 CC Pilot"（ticket 27），然后是"登录时启动"、
+// zsh 接入（ticket 08）、"自动检查更新"、"检查更新…"。
 // 定时检查发现新版本时，图标换成下载箭头，菜单项变成"有可用更新…"。
 // Updater 和 LaunchAtLoginModel 在 App 启动时创建（CCPilotApp），通过 environmentObject 传进来。
 
@@ -11,6 +12,8 @@ struct SettingsMenu: View {
 
     var body: some View {
         Menu {
+            Button("About CC Pilot") { AboutPanel.show() }
+            Divider()
             Toggle("Launch at Login", isOn: Binding(
                 get: { launchAtLogin.isEnabled },
                 set: { launchAtLogin.setEnabled($0) }

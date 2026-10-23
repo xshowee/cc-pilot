@@ -48,6 +48,8 @@
 
 /* 设置菜单：登录时启动与自动更新 */
 "Settings" = "设置";
+"About CC Pilot" = "关于 CC Pilot";
+"CC Pilot is open-source software released under the MIT License." = "CC Pilot 是以 MIT 许可证发布的开源软件。";
 "Launch at Login" = "登录时启动";
 "Couldn’t change Launch at Login" = "无法更改“登录时启动”";
 "Automatically Check for Updates" = "自动检查更新";

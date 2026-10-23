@@ -30,6 +30,8 @@
 	<string>CC Pilot opens a Terminal window to run ccp when you add or delete a profile.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>Copyright (c) 2026 xshowee</string>
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
 	<key>SUEnableSystemProfiling</key>
