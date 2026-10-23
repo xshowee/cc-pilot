@@ -54,6 +54,22 @@
 "Check for Updates…" = "检查更新…";
 "Update Available…" = "有可用更新…";
 
+/* 安装 ccp 与 zsh 接入（ticket 08） */
+"Set Up zsh Integration…" = "接入 zsh…";
+"Remove zsh Integration…" = "移除 zsh 接入…";
+"Set up the ccp command in zsh?" = "要在 zsh 里接入 ccp 命令吗？";
+"CC Pilot will install the ccp command and the claude wrapper function into ~/.cc-pilot, then add the line below to the end of ~/.zshrc. Nothing else in ~/.zshrc is changed.\n\nYou can remove this line later from CC Pilot’s settings, or by running ccp uninstall." = "CC Pilot 会把 ccp 命令和 claude 包装函数安装到 ~/.cc-pilot，然后在 ~/.zshrc 末尾添加下面这一行。~/.zshrc 的其他内容不会改动。\n\n以后可以在 CC Pilot 的设置里移除这一行，或者执行 ccp uninstall。";
+"Add to ~/.zshrc" = "添加到 ~/.zshrc";
+"Not Now" = "暂不";
+"zsh is set up" = "已接入 zsh";
+"Open a new terminal window to use ccp, or run source ~/.zshrc in an open one." = "新开一个终端窗口即可使用 ccp；已打开的终端可以执行 source ~/.zshrc。";
+"Couldn’t set up zsh" = "无法接入 zsh";
+"Remove the cc-pilot line from ~/.zshrc?" = "要从 ~/.zshrc 删除 cc-pilot 的接入行吗？";
+"This removes the line below, the same as running ccp uninstall. New terminal windows will no longer load cc-pilot; claude will run without profiles." = "这会删除下面这一行，效果与执行 ccp uninstall 相同。之后新开的终端不再加载 cc-pilot，claude 将不再区分档案。";
+"Remove" = "删除";
+"Cancel" = "取消";
+"Couldn’t remove the line from ~/.zshrc" = "无法从 ~/.zshrc 删除接入行";
+
 /* 额度（ticket 11） */
 "Refresh All" = "刷新全部";
 "Refresh usage for all accounts" = "刷新所有账号的额度";

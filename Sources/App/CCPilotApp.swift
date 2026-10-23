@@ -14,7 +14,7 @@ struct CCPilotApp: App {
     @StateObject private var current = CurrentProfileModel()
     @StateObject private var usage = UsageModel()
     @AppStorage(MenuBarPreferences.iconOnlyKey) private var menuBarIconOnly = false
-    // Sparkle 与"登录时启动"（见 AppDelegate.swift）
+    // Sparkle、"登录时启动"与 ccp 的安装（见 AppDelegate.swift）
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
@@ -22,6 +22,7 @@ struct CCPilotApp: App {
             PanelView(profiles: profiles, current: current, usage: usage)
                 .environmentObject(appDelegate.updater)
                 .environmentObject(appDelegate.launchAtLogin)
+                .environmentObject(appDelegate.shellIntegration)
         } label: {
             MenuBarLabel(summary: usage.board.menuBarSummary(currentProfile: current.name, profiles: profiles.profiles),
                          iconOnly: menuBarIconOnly)
