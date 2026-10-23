@@ -2,6 +2,7 @@
 // 当前档案用强调色背景、左侧色条和"当前"标记醒目地标出。
 // 已登录的档案右侧有刷新按钮，刷新这个档案所在账号的额度（放在切换按钮外面，点它不会切换）；
 // 频率限制的等待期内按钮不可用（ticket 12）。
+// 有额度详情（按模型细分的周窗口、超额付费）时，右侧还有展开按钮，展开后详情显示在行下方（ticket 13）。
 
 import SwiftUI
 
@@ -17,8 +18,26 @@ struct SwitchableProfileRow: View {
     let onSelect: () -> Void
 
     @State private var hovering = false
+    @State private var expanded = false
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            row
+            if expanded, hasDetails, let usage {
+                UsageDetailsView(usage: usage, now: now)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.leading, 17)
+                    .padding(.trailing, 14)
+                    .padding(.bottom, 8)
+            }
+        }
+        .background(background)
+        .onHover { hovering = $0 }
+    }
+
+    private var hasDetails: Bool { UsageDetailsView.hasDetails(usage, now: now) }
+
+    private var row: some View {
         HStack(alignment: .top, spacing: 0) {
             Button(action: onSelect) {
                 HStack(spacing: 0) {
@@ -31,7 +50,7 @@ struct SwitchableProfileRow: View {
                             .labelStyle(.titleAndIcon)
                             .font(.caption.weight(.semibold))
                             .foregroundColor(.accentColor)
-                            .padding(.trailing, onRefresh == nil ? 14 : 4)
+                            .padding(.trailing, onRefresh == nil && !hasDetails ? 14 : 4)
                     }
                 }
                 .contentShape(Rectangle())
@@ -40,14 +59,31 @@ struct SwitchableProfileRow: View {
             .accessibilityAddTraits(isCurrent ? .isSelected : [])
             .help(isCurrent ? Text("This is the current profile") : Text("Switch to \(profile.name)"))
 
-            if let onRefresh {
-                refreshButton(onRefresh)
-                    .padding(.top, 8)
-                    .padding(.trailing, 10)
+            if onRefresh != nil || hasDetails {
+                VStack(spacing: 4) {
+                    if let onRefresh {
+                        refreshButton(onRefresh)
+                    }
+                    if hasDetails {
+                        expandButton
+                    }
+                }
+                .padding(.top, 8)
+                .padding(.trailing, 10)
             }
         }
-        .background(background)
-        .onHover { hovering = $0 }
+    }
+
+    private var expandButton: some View {
+        Button {
+            expanded.toggle()
+        } label: {
+            Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                .frame(width: 18, height: 18)
+        }
+        .buttonStyle(.borderless)
+        .help(expanded ? Text("Hide usage details") : Text("Show usage details"))
+        .accessibilityLabel(expanded ? Text("Hide usage details") : Text("Show usage details"))
     }
 
     @ViewBuilder private func refreshButton(_ action: @escaping () -> Void) -> some View {

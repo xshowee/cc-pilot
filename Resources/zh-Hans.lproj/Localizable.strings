@@ -89,3 +89,13 @@
 "Couldn’t reach the server." = "无法连接服务器。";
 "Couldn’t reach the server. Showing the last data fetched." = "无法连接服务器，显示的是上次获取的数据。";
 "The usage API may have changed. Please update cc-pilot." = "接口可能已变化，请更新 cc-pilot";
+
+/* 额度详情：按模型细分的周窗口与超额付费（ticket 13） */
+"Show usage details" = "显示额度详情";
+"Hide usage details" = "收起额度详情";
+"Weekly (%@)" = "周窗口（%@）";
+"Weekly (other model)" = "周窗口（其他模型）";
+"Extra usage" = "超额付费";
+"Not enabled" = "未开启";
+"%@ used · no limit" = "已使用 %1$@ · 上限不限";
+"%@ used · limit %@" = "已使用 %1$@ · 上限 %2$@";

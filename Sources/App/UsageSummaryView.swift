@@ -13,10 +13,12 @@ struct UsageSummaryView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
             if let reading = usage.fiveHour(now: now) {
-                line(String(localized: "5-hour"), reading, resetsAt: usage.snapshot?.fiveHour?.resetsAt)
+                UsageWindowLine(title: String(localized: "5-hour"), reading: reading,
+                                resetsAt: usage.snapshot?.fiveHour?.resetsAt, now: now)
             }
             if let reading = usage.sevenDay(now: now) {
-                line(String(localized: "Weekly (all models)"), reading, resetsAt: usage.snapshot?.sevenDay?.resetsAt)
+                UsageWindowLine(title: String(localized: "Weekly (all models)"), reading: reading,
+                                resetsAt: usage.snapshot?.sevenDay?.resetsAt, now: now)
             }
             if let snapshot = usage.snapshot {
                 Text(verbatim: fetchedText(snapshot.fetchedAt))
@@ -33,18 +35,6 @@ struct UsageSummaryView: View {
             }
         }
         .font(.caption)
-    }
-
-    private func line(_ title: String, _ reading: UsageReading, resetsAt: Date?) -> some View {
-        HStack(spacing: 4) {
-            Text(verbatim: title)
-                .foregroundColor(.secondary)
-            UsageReadingText(reading: reading)
-            if case .remaining = reading, let resetsAt {
-                Text("· resets \(UsageDisplay.resetTime(resetsAt, now: now))")
-                    .foregroundColor(.secondary)
-            }
-        }
     }
 
     private func fetchedText(_ fetchedAt: Date) -> String {
@@ -72,6 +62,27 @@ struct UsageSummaryView: View {
                 : String(localized: "Couldn’t reach the server. Showing the last data fetched.")
         case .unrecognizedFormat:
             return String(localized: "The usage API may have changed. Please update cc-pilot.")
+        }
+    }
+}
+
+/// 一个额度窗口的一行：标题、剩余（或"已重置，待刷新""—"），有数字时附上重置时间（本地时区）。
+/// 档案行和展开后的详情（ticket 13）共用。
+struct UsageWindowLine: View {
+    let title: String
+    let reading: UsageReading
+    let resetsAt: Date?
+    let now: Date
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Text(verbatim: title)
+                .foregroundColor(.secondary)
+            UsageReadingText(reading: reading)
+            if case .remaining = reading, let resetsAt {
+                Text("· resets \(UsageDisplay.resetTime(resetsAt, now: now))")
+                    .foregroundColor(.secondary)
+            }
         }
     }
 }
