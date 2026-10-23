@@ -8,6 +8,7 @@ final class ProfileListChecks: CheckSuite {
             Check("空主目录只有默认档案，且未登录", emptyHomeHasOnlyDefault),
             Check("默认档案读 $HOME/.claude.json 的账号资料", defaultProfileReadsHomeClaudeJSON),
             Check("其他档案排在默认档案之后，按名字排序", listsOtherProfilesAfterDefault),
+            Check("档案顺序与 ccp ls 相同（按字节序）", ordersLikeCcpLs),
             Check("名字不合规的目录、保留名、当前档案记录、临时文件都不是档案", ignoresNonProfileEntries),
             Check("指向目录的软链接算档案，悬空软链接不算", followsSymlinkedProfileDirs),
             Check("按 accountUuid 标出登录同一账号的其他档案", marksProfilesSharingAnAccount),
@@ -61,6 +62,25 @@ final class ProfileListChecks: CheckSuite {
             accountUuid: "uuid-w", email: "w@corp.example", organizationName: "Corp", tier: .team)))
         try expectEqual(profiles[2].account.account?.tier, .pro)
         try expectEqual(profiles[1].account, .loggedOut)
+    }
+
+    static func ordersLikeCcpLs() throws {
+        let home = try TempHome()
+        defer { home.remove() }
+        // 不分大小写的文件系统上 b 和 B 不能同时存在，所以用首字母各不相同的名字
+        for name in ["zed", "Alpha", "beta", "Carol", "1x", "a-b", "a_b", "a.b", "A9"] {
+            try home.makeProfileDir(name)
+        }
+        let expected = ["default", "1x", "A9", "Alpha", "Carol", "a-b", "a.b", "a_b", "beta", "zed"]
+
+        let names = ProfileStore(environment: home.environment).listProfiles().map(\Profile.name)
+        try expectEqual(names, expected)
+
+        let ccp = repoRoot.appendingPathComponent("shell/bin/ccp").path
+        let result = try ShellRun.run(home, [ccp, "ls"])
+        try expectEqual(result.status, 0, "ccp ls 的退出码（stderr：\(result.err)）")
+        let listed = result.out.split(separator: "\n").map { String($0.dropFirst(2)) }
+        try expectEqual(listed, expected, "ccp ls 的顺序")
     }
 
     static func ignoresNonProfileEntries() throws {

@@ -10,7 +10,7 @@ struct ProfileStore {
         self.environment = environment
     }
 
-    /// 默认档案在最前，其余档案按名字排序。
+    /// 默认档案在最前，其余档案按名字的字节序排列（与 ccp ls 相同）。
     func listProfiles() -> [Profile] {
         let defaultProfile = Profile(
             name: ProfileName.defaultName, configDir: nil,
@@ -52,9 +52,7 @@ struct ProfileStore {
                     && fm.fileExists(atPath: paths.configDir(for: name), isDirectory: &isDir)
                     && isDir.boolValue
             }
-            .sorted { a, b in
-                let (la, lb) = (a.lowercased(), b.lowercased())
-                return la == lb ? a < b : la < lb
-            }
+            // 按字节序，与 ccp ls（LC_COLLATE=C）的顺序相同
+            .sorted { $0.utf8.lexicographicallyPrecedes($1.utf8) }
     }
 }
