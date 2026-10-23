@@ -27,6 +27,14 @@ enum UsageProblem: Equatable {
     case unrecognizedFormat
 }
 
+/// 按模型细分的一个周窗口此刻怎么显示（展开账号后的详情）
+struct ModelWeeklyReading: Equatable {
+    /// 模型名；nil 时界面用通用标题
+    let model: String?
+    let reading: UsageReading
+    let resetsAt: Date?
+}
+
 /// 一个账号的额度状态
 struct AccountUsage: Equatable {
     /// 最近一次成功获取的数据（含获取时间）；从没成功过、或之后格式无法识别时为 nil
@@ -41,6 +49,22 @@ struct AccountUsage: Equatable {
 
     /// "全部模型"周窗口此刻怎么显示；nil 表示不显示这一行
     func sevenDay(now: Date) -> UsageReading? { reading(snapshot?.sevenDay, now: now) }
+
+    /// 按模型细分的各个周窗口此刻怎么显示（过期、已重置、颜色同 UsageReading）；没有数据时为空
+    func modelWeekly(now: Date) -> [ModelWeeklyReading] {
+        guard let snapshot, problem != .unrecognizedFormat else { return [] }
+        return snapshot.modelWeekly.map {
+            ModelWeeklyReading(model: $0.model, reading: UsageReading($0.window, fetchedAt: snapshot.fetchedAt, now: now),
+                               resetsAt: $0.window.resetsAt)
+        }
+    }
+
+    /// 超额付费此刻怎么显示：数据超过 30 分钟变灰；没有数据、接口没给、或格式无法识别时为 nil
+    func extraUsage(now: Date) -> ExtraUsageReading? {
+        guard let snapshot, problem != .unrecognizedFormat, let extra = snapshot.extraUsage else { return nil }
+        return ExtraUsageReading(usage: extra,
+                                 tint: UsageReading.isStale(fetchedAt: snapshot.fetchedAt, now: now) ? .stale : .plain)
+    }
 
     /// 是否还在频率限制的等待期内（这期间不请求这个账号，刷新按钮不可用）
     func isWaiting(now: Date) -> Bool { waitRemaining(now: now) != nil }

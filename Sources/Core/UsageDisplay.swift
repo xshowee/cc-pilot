@@ -26,4 +26,14 @@ enum UsageDisplay {
     static func waitMinutes(_ seconds: TimeInterval) -> Int {
         max(1, Int((seconds / 60).rounded(.up)))
     }
+
+    /// 超额付费的金额，按 locale 带币种符号（例如 en_US "$12.34"）；币种没给或认不出时为 nil（界面显示"—"）
+    static func money(_ amount: CreditAmount, locale: Locale = .current) -> String? {
+        guard let code = amount.currencyCode, let value = amount.majorUnits else { return nil }
+        let formatter = NumberFormatter()
+        formatter.locale = locale
+        formatter.numberStyle = .currency
+        formatter.currencyCode = code
+        return formatter.string(from: value as NSDecimalNumber)
+    }
 }
