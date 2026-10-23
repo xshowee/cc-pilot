@@ -9,11 +9,11 @@ final class ProfileSwitchChecks: CheckSuite {
             Check("切换到某个档案后，当前档案记录是档案名加一个换行", switchWritesNameAndNewline),
             Check("切换到默认档案写入 default 加一个换行，不删除记录", switchToDefaultWritesDefault),
             Check("切换后 shell 库读出的当前档案就是新名字", shellReadsSwitchedName),
-            Check("切换后真实的 ccp current 输出新名字（ccp current 已实现时）", ccpCurrentReadsSwitchedName),
+            Check("切换后真实的 ccp current 输出新名字", ccpCurrentReadsSwitchedName),
             Check("名字不合规、是保留名或档案不存在时拒绝切换，记录保持不变", refusesBadTargets),
             Check("记录的位置是目录时拒绝切换", refusesWhenRecordIsDirectory),
             Check("档案根目录还不存在时切换到默认档案会创建它", switchCreatesProfilesRoot),
-            Check("写入的记录与 ccp use 按字节、权限都相同（ccp use 已实现时）", matchesCcpUseBytes),
+            Check("写入的记录与 ccp use 按字节、权限都相同", matchesCcpUseBytes),
             Check("读取当前档案与 shell 的规则相同", readsLikeShell),
         ]
     }
@@ -64,11 +64,6 @@ final class ProfileSwitchChecks: CheckSuite {
     }
 
     static func ccpCurrentReadsSwitchedName() throws {
-        // ccp current 由 ticket 02 实现；集成分支上还是占位实现时跳过（合入 02 后自动生效）
-        guard ShellRun.isImplemented("current") else {
-            print("     （跳过：shell/lib/cmd-current.zsh 尚未实现）")
-            return
-        }
         let home = try TempHome()
         defer { home.remove() }
         try home.makeProfileDir("work")
@@ -146,10 +141,6 @@ final class ProfileSwitchChecks: CheckSuite {
     }
 
     static func matchesCcpUseBytes() throws {
-        guard ShellRun.isImplemented("use") else {
-            print("     （跳过：shell/lib/cmd-use.zsh 尚未实现）")
-            return
-        }
         let ccp = repoRoot.appendingPathComponent("shell/bin/ccp").path
         for name in ["work", "default"] {
             let viaApp = try TempHome(), viaShell = try TempHome()

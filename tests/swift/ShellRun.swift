@@ -50,11 +50,4 @@ enum ShellRun {
     static func zsh(_ home: TempHome, _ code: String, _ args: String...) throws -> Result {
         try run(home, ["/bin/zsh", "-f", "-c", code, "_"] + args)
     }
-
-    /// shell/lib/cmd-<命令>.zsh 是否已经实现（不是"尚未实现"的占位）
-    static func isImplemented(_ command: String) -> Bool {
-        let file = repoRoot.appendingPathComponent("shell/lib/cmd-\(command).zsh")
-        guard let text = try? String(contentsOf: file, encoding: .utf8) else { return false }
-        return !text.contains("尚未实现")
-    }
 }
