@@ -105,6 +105,8 @@ final class AccountReadingChecks: CheckSuite {
             ("enterprise", "claude_enterprise", nil, .enterprise),
             ("future", "claude_galaxy", nil, .other("claude_galaxy")),
             ("none", nil, "default_claude_max_20x", nil),
+            ("blank", "", nil, nil),
+            ("spaces", "  ", nil, nil),
         ]
         for (name, type, tier, _) in cases {
             try home.makeProfile(name, config: claudeConfig(

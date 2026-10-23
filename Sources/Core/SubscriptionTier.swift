@@ -20,9 +20,9 @@ enum SubscriptionTier: Equatable {
     case other(String)
 
     /// 从 oauthAccount 的 organizationType（和 organizationRateLimitTier）推断。
-    /// organizationType 缺失时返回 nil（不显示）。
+    /// organizationType 缺失或为空白时返回 nil（不显示）。
     static func infer(organizationType: String?, rateLimitTier: String?) -> SubscriptionTier? {
-        guard let type = organizationType else { return nil }
+        guard let type = organizationType, !type.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
         switch type {
         case "claude_pro": return .pro
         case "claude_max": return .max(multiplier: maxMultiplier(rateLimitTier))
