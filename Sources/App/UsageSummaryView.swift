@@ -38,7 +38,7 @@ struct UsageSummaryView: View {
                 } icon: {
                     Image(systemName: "exclamationmark.circle")
                 }
-                .foregroundColor(.orange)
+                .foregroundColor(StatusColor.orange)
             }
         case .sameAccount:
             // 不是额度信息，由 ProfileRow 显示
@@ -75,8 +75,9 @@ struct UsageSummaryView: View {
     }
 }
 
-/// 一个额度窗口的一行：标题、剩余（或"已重置，待刷新""—"），有数字时附上重置时间（本地时区）。
-/// 档案行和展开后的详情（ticket 13）共用。宽度不足时放不下的那段整段折到下一行，不截断（ticket 23）。
+/// 一个额度窗口：左边标题，有数字时附上重置时间（本地时区）；右边剩余（或"已重置，待刷新""—"）；
+/// 有数字时下方是剩余比例的进度条。档案行和展开后的详情（ticket 13）共用。
+/// 一行放不下时改为逐段折行，放不下的那段整段折到下一行，不截断（ticket 23）。
 struct UsageWindowLine: View {
     let title: String
     let reading: UsageReading
@@ -84,14 +85,42 @@ struct UsageWindowLine: View {
     let now: Date
 
     var body: some View {
-        WrappingHStack(spacing: 4) {
-            Text(verbatim: title)
-                .foregroundColor(.secondary)
-            UsageReadingText(reading: reading)
-            if case .remaining = reading, let resetsAt {
-                Text("· resets \(UsageDisplay.resetTime(resetsAt, now: now))")
-                    .foregroundColor(.secondary)
+        VStack(alignment: .leading, spacing: 4) {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    titleText
+                    resetText
+                    Spacer(minLength: 8)
+                    readingText
+                }
+                WrappingHStack(spacing: 4) {
+                    titleText
+                    resetText
+                    readingText
+                }
+            }
+            if case .remaining(let percent, let tint) = reading {
+                // 过期灰本身很深（为了菜单栏上的文字可读，ticket 26），进度条用淡一些的，不比新数据还显眼
+                UsageMeter(fraction: Double(percent) / 100,
+                           color: tint == .stale ? tint.color?.opacity(0.45) : tint.color)
             }
         }
+    }
+
+    private var titleText: some View {
+        Text(verbatim: title)
+            .foregroundColor(.secondary)
+    }
+
+    @ViewBuilder private var resetText: some View {
+        if case .remaining = reading, let resetsAt {
+            Text("· resets \(UsageDisplay.resetTime(resetsAt, now: now))")
+                .foregroundColor(.secondary.opacity(0.8))
+        }
+    }
+
+    private var readingText: some View {
+        UsageReadingText(reading: reading)
+            .font(.callout)
     }
 }

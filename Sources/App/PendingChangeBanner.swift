@@ -22,9 +22,14 @@ struct PendingChangeBanner: View {
             .help(Text("Dismiss"))
             .accessibilityLabel(Text("Dismiss"))
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, 10)
         .padding(.vertical, 8)
-        .background(Color.accentColor.opacity(0.08))
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.accentColor.opacity(0.08))
+        )
+        .padding(.horizontal, 8)
+        .padding(.bottom, 6)
     }
 
     private var message: Text {

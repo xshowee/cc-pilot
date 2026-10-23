@@ -12,7 +12,8 @@ struct DeleteProfileButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: "trash")
-                .frame(width: 18, height: 18)
+                .font(.system(size: 12, weight: .medium))
+                .frame(width: 20, height: 20)
         }
         .buttonStyle(.borderless)
         .disabled(blocker != nil)

@@ -38,8 +38,8 @@ struct LoginStatusLabel: View {
     private func color(_ status: LoginStatus) -> Color {
         switch status {
         case .canRequestUsage: return .secondary
-        case .needsRenewal, .usageUnsupported: return .orange
-        case .needsReLogin, .incompatible: return .red
+        case .needsRenewal, .usageUnsupported: return StatusColor.orange
+        case .needsReLogin, .incompatible: return StatusColor.red
         case .notLoggedIn, .accountUnreadable: return .secondary
         }
     }

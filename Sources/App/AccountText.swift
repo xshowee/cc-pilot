@@ -3,11 +3,16 @@
 import Foundation
 
 enum AccountText {
-    /// "组织 · 订阅等级"，两者都没有时为 nil。订阅等级以凭据为准（见 Profile.displayTier）
-    static func details(for profile: Profile) -> String? {
-        guard let account = profile.account.account else { return nil }
-        let parts = [account.organizationName, profile.displayTier.map(tierName)].compactMap { $0 }
-        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    /// 组织名；没有、或只是个人账号自动生成的"<邮箱>'s Organization"（与邮箱重复，没有信息量）时为 nil
+    static func organization(for profile: Profile) -> String? {
+        guard let account = profile.account.account, let name = account.organizationName else { return nil }
+        if let email = account.email, name == "\(email)'s Organization" { return nil }
+        return name
+    }
+
+    /// 订阅等级的名字，以凭据为准（见 Profile.displayTier）；不知道时为 nil
+    static func tier(for profile: Profile) -> String? {
+        profile.displayTier.map(tierName)
     }
 
     static func tierName(_ tier: SubscriptionTier) -> String {
