@@ -1,9 +1,11 @@
-// 档案列表的一行：邮箱为主，档案名为副标题；再显示组织与订阅等级、登录状态、是否与其他档案同一账号。
+// 档案列表的一行：邮箱为主，档案名为副标题；再显示组织与订阅等级、登录状态、额度、是否与其他档案同一账号。
 
 import SwiftUI
 
 struct ProfileRow: View {
     let profile: Profile
+    /// 这个档案所在账号最近一次获取的额度；还没刷新过时为 nil
+    var usage: UsageSnapshot? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -17,6 +19,9 @@ struct ProfileRow: View {
                     .foregroundColor(.secondary)
             }
             LoginStatusLabel(status: profile.login?.status)
+            if let usage {
+                UsageSummaryView(snapshot: usage)
+            }
             if !profile.sameAccountAs.isEmpty {
                 Label {
                     Text("Same account as \(AccountText.joinedNames(profile.sameAccountAs))")

@@ -3,8 +3,7 @@
 //   下一行  当前档案所在账号的 5 小时窗口剩余百分比；从未刷新过（没有数据）时显示"—"，
 //           不能显示成 0，以免误以为额度用完了。
 //
-// ticket 11 接入额度时：查出当前档案所在账号的 5 小时窗口剩余百分比，填进 fiveHourRemaining，
-// 界面（Sources/App/MenuBarLabel.swift）不用改。
+// 带额度的摘要由 UsageBoard.menuBarSummary(currentProfile:profiles:) 生成。
 
 import Foundation
 

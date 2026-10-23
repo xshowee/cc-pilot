@@ -1,37 +1,66 @@
 // 面板里可点击的档案行：在 ProfileRow 外面包一层，点击即切换为当前档案；
 // 当前档案用强调色背景、左侧色条和"当前"标记醒目地标出。
+// 已登录的档案右侧有刷新按钮，刷新这个档案所在账号的额度（放在切换按钮外面，点它不会切换）。
 
 import SwiftUI
 
 struct SwitchableProfileRow: View {
     let profile: Profile
     let isCurrent: Bool
+    var usage: UsageSnapshot? = nil
+    var isRefreshing = false
+    /// 刷新这个档案所在账号的额度；档案未登录时为 nil（不显示按钮）
+    var onRefresh: (() -> Void)? = nil
     let onSelect: () -> Void
 
     @State private var hovering = false
 
     var body: some View {
-        Button(action: onSelect) {
-            HStack(spacing: 0) {
-                Rectangle()
-                    .fill(isCurrent ? Color.accentColor : Color.clear)
-                    .frame(width: 3)
-                ProfileRow(profile: profile)
-                if isCurrent {
-                    Label("Current", systemImage: "checkmark.circle.fill")
-                        .labelStyle(.titleAndIcon)
-                        .font(.caption.weight(.semibold))
-                        .foregroundColor(.accentColor)
-                        .padding(.trailing, 14)
+        HStack(alignment: .top, spacing: 0) {
+            Button(action: onSelect) {
+                HStack(spacing: 0) {
+                    Rectangle()
+                        .fill(isCurrent ? Color.accentColor : Color.clear)
+                        .frame(width: 3)
+                    ProfileRow(profile: profile, usage: usage)
+                    if isCurrent {
+                        Label("Current", systemImage: "checkmark.circle.fill")
+                            .labelStyle(.titleAndIcon)
+                            .font(.caption.weight(.semibold))
+                            .foregroundColor(.accentColor)
+                            .padding(.trailing, onRefresh == nil ? 14 : 4)
+                    }
                 }
+                .contentShape(Rectangle())
             }
-            .background(background)
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(isCurrent ? .isSelected : [])
+            .help(isCurrent ? Text("This is the current profile") : Text("Switch to \(profile.name)"))
+
+            if let onRefresh {
+                refreshButton(onRefresh)
+                    .padding(.top, 8)
+                    .padding(.trailing, 10)
+            }
         }
-        .buttonStyle(.plain)
+        .background(background)
         .onHover { hovering = $0 }
-        .accessibilityAddTraits(isCurrent ? .isSelected : [])
-        .help(isCurrent ? Text("This is the current profile") : Text("Switch to \(profile.name)"))
+    }
+
+    @ViewBuilder private func refreshButton(_ action: @escaping () -> Void) -> some View {
+        if isRefreshing {
+            ProgressView()
+                .controlSize(.small)
+                .frame(width: 18, height: 18)
+        } else {
+            Button(action: action) {
+                Image(systemName: "arrow.clockwise")
+                    .frame(width: 18, height: 18)
+            }
+            .buttonStyle(.borderless)
+            .help(Text("Refresh usage for this account"))
+            .accessibilityLabel(Text("Refresh usage for this account"))
+        }
     }
 
     private var background: Color {

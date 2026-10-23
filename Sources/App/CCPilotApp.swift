@@ -12,17 +12,19 @@ import SwiftUI
 struct CCPilotApp: App {
     @StateObject private var profiles = ProfileListModel()
     @StateObject private var current = CurrentProfileModel()
+    @StateObject private var usage = UsageModel()
     @AppStorage(MenuBarPreferences.iconOnlyKey) private var menuBarIconOnly = false
     // Sparkle 与"登录时启动"（见 AppDelegate.swift）
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
         MenuBarExtra {
-            PanelView(profiles: profiles, current: current)
+            PanelView(profiles: profiles, current: current, usage: usage)
                 .environmentObject(appDelegate.updater)
                 .environmentObject(appDelegate.launchAtLogin)
         } label: {
-            MenuBarLabel(summary: MenuBarSummary(profileName: current.name), iconOnly: menuBarIconOnly)
+            MenuBarLabel(summary: usage.board.menuBarSummary(currentProfile: current.name, profiles: profiles.profiles),
+                         iconOnly: menuBarIconOnly)
         }
         .menuBarExtraStyle(.window)
     }

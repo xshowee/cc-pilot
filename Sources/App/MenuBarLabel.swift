@@ -1,5 +1,5 @@
 // 菜单栏上显示的内容：默认两行（当前档案名、额度），打开"只显示图标"后只显示图标。
-// 额度一行的内容来自 MenuBarSummary.quotaLine（ticket 11 接入前一律"—"）。
+// 额度一行的内容来自 MenuBarSummary.quotaLine（没刷新过时是"—"）。
 
 import SwiftUI
 
