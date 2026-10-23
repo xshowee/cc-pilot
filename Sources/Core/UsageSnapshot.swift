@@ -125,8 +125,13 @@ struct UsageSnapshot: Equatable {
         guard let text = value as? String else { return nil }
         // ISO8601DateFormatter 不认识超过 3 位的小数秒；重置时间不需要亚秒精度，直接去掉
         let trimmed = text.replacingOccurrences(of: #"\.\d+"#, with: "", options: .regularExpression)
+        return isoFormatter.date(from: trimmed)
+    }
+
+    /// 配置好之后只用来解析、不再修改（格式化器在这种用法下线程安全）
+    private static let isoFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
-        return formatter.date(from: trimmed)
-    }
+        return formatter
+    }()
 }

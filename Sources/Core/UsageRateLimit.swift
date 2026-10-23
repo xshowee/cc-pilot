@@ -19,10 +19,15 @@ enum UsageRateLimit {
     private static func seconds(_ value: String, now: Date) -> TimeInterval? {
         let text = value.trimmingCharacters(in: .whitespaces)
         if let seconds = TimeInterval(text), seconds.isFinite { return seconds }
+        return httpDateFormatter.date(from: text).map { $0.timeIntervalSince(now) }
+    }
+
+    /// HTTP 日期（RFC 9110 的 IMF-fixdate）。配置好之后只用来解析、不再修改
+    private static let httpDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = TimeZone(identifier: "GMT")
         formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
-        return formatter.date(from: text).map { $0.timeIntervalSince(now) }
-    }
+        return formatter
+    }()
 }

@@ -21,15 +21,26 @@ struct CreditAmount: Equatable {
     /// 换算成常用单位的金额（例如 1234 美分 → 12.34 美元）；币种没给或认不出时为 nil
     var majorUnits: Decimal? {
         guard let code = currencyCode else { return nil }
+        var value = Decimal(minorUnits)
+        for _ in 0..<Self.fractionDigits(code) { value /= 10 }
+        return value
+    }
+
+    /// 币种的最小单位位数（USD 2、JPY 0、KWD 3），取自系统的币种数据；按币种缓存（界面每次重绘都会用到）
+    private static func fractionDigits(_ code: String) -> Int {
+        fractionDigitsLock.lock()
+        defer { fractionDigitsLock.unlock() }
+        if let digits = fractionDigitsCache[code] { return digits }
         let formatter = NumberFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.numberStyle = .currency
         formatter.currencyCode = code
-        // 币种的最小单位位数（USD 2、JPY 0、KWD 3）取自系统的币种数据
-        var value = Decimal(minorUnits)
-        for _ in 0..<formatter.maximumFractionDigits { value /= 10 }
-        return value
+        fractionDigitsCache[code] = formatter.maximumFractionDigits
+        return formatter.maximumFractionDigits
     }
+
+    private static let fractionDigitsLock = NSLock()
+    nonisolated(unsafe) private static var fractionDigitsCache: [String: Int] = [:]  // 由 fractionDigitsLock 保护
 }
 
 /// 超额付费的状态
