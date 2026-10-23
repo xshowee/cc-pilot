@@ -9,6 +9,7 @@
 #      不带 -w：只判断是否存在，不读取凭据内容。
 #   4. 退出码 0（还在）：拒绝删除，提示先 /logout。退出码 44（不存在）：删除档案目录。
 #      其他退出码（查询失败）：无法确认已登出，同样拒绝删除。
+# 输出位置与其他子命令相同：询问、进度和结果写 stdout，错误和用法写 stderr。
 
 _ccp_cmd_rm() {
   emulate -L zsh
@@ -48,13 +49,13 @@ _ccp_cmd_rm() {
     return 1
   }
 
-  print -u2 -rn -- "确定要删除档案 \"$name\"（$dir）吗？[y/N] "
+  print -rn -- "确定要删除档案 \"$name\"（$dir）吗？[y/N] "
   if ! IFS= read -r answer || [[ $answer != ([yY]|[yY][eE][sS]) ]]; then
-    print -u2 -r -- "已取消，没有删除任何东西。"
+    print -r -- "已取消，没有删除任何东西。"
     return 1
   fi
 
-  print -u2 -r -- "接下来会打开档案 \"$name\" 的 Claude Code：请在里面执行 /logout，然后退出。"
+  print -r -- "接下来会打开档案 \"$name\" 的 Claude Code：请在里面执行 /logout，然后退出。"
   CLAUDE_CONFIG_DIR=$dir command claude
 
   security find-generic-password -s "$svc" >/dev/null 2>&1

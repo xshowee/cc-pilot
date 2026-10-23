@@ -48,11 +48,25 @@ test_full_word_yes_also_confirms() {
 }
 
 test_asks_for_confirmation_naming_the_profile() {
+  # 与 ccp init 相同：询问、进度和结果写 stdout，只有错误写 stderr
   t_profile_with_data work
   t_stdin n
   t_ccp -- rm work
-  assert_contains "$T_ERR" '"work"' "确认提示里应有档案名"
-  assert_contains "$T_ERR" "[y/N]" "应询问用户"
+  assert_contains "$T_OUT" '"work"' "确认提示里应有档案名"
+  assert_contains "$T_OUT" "[y/N]" "应询问用户"
+  assert_contains "$T_OUT" "已取消" "拒绝后应说明没有删除"
+  assert_stderr_empty
+}
+
+test_successful_removal_writes_only_to_stdout() {
+  t_profile_with_data work
+  t_stdin y
+  t_ccp -- rm work
+  assert_rc 0
+  assert_contains "$T_OUT" "[y/N]" "确认提示"
+  assert_contains "$T_OUT" /logout "应提示在打开的 Claude Code 里执行 /logout"
+  assert_contains "$T_OUT" "已删除" "结果"
+  assert_stderr_empty
 }
 
 test_declining_does_nothing() {

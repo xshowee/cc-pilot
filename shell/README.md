@@ -24,6 +24,7 @@
 
 - `cc-pilot.zsh` 只 source `lib/profiles.zsh`；`bin/ccp` source `lib/` 下所有不以 `cmd-` 开头的 `.zsh` 文件，再只 source 被调用的那个 `cmd-<命令>.zsh`。新增共享库直接放进 `lib/` 即可。
 - `lib/` 里的代码会进入用户的交互 shell：只定义 `_ccp_` 开头的函数，不定义全局变量；函数开头写 `emulate -L zsh`；出错只 `return`，不 `exit`。
+- 输出位置：询问（如 `[y/N]`）、进度和结果写 stdout；错误（以 `ccp <命令>:` 开头）、用法说明和警告写 stderr。
 - 系统工具用绝对路径（`/usr/bin/osascript`、`/usr/bin/shasum`）；`claude` 和 `security` 按 PATH 查找，测试会在 PATH 最前面放假程序。
 
 ## 接入 zsh（`ccp init` / `ccp uninstall`）
