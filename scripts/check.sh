@@ -14,6 +14,8 @@
 #    新增检查只需在 tests/swift/ 新增 CheckSuite 子类（见 tests/swift/CheckRunner.swift）。
 # 4. App 类型检查（ticket 06 起）：Sources/App 存在时，按 Info.plist 的最低系统版本对
 #    Sources/Core + Sources/App 做 swiftc -typecheck，并用 plutil 检查 Resources/ 下的资源文件。
+#    App 链接 Sparkle（ticket 14），类型检查前用 scripts/fetch-sparkle.sh 准备框架
+#    （首次运行会下载到 build/deps/，之后不联网；也可用 CCP_SPARKLE_DIR 指向已解压的同版本）。
 
 emulate -R zsh
 setopt extended_glob null_glob
@@ -76,7 +78,8 @@ if (( ${#app_sources} )); then
   step "App 类型检查（macOS $(/usr/libexec/PlistBuddy -c 'Print LSMinimumSystemVersion' Resources/Info.plist)+）"
   CHECK_BUILD=$ROOT/.build/checks
   mkdir -p -- $CHECK_BUILD
-  swiftc -typecheck -parse-as-library -swift-version 5 \
+  sparkle=$(./scripts/fetch-sparkle.sh) || failed+=("准备 Sparkle 框架")
+  swiftc -typecheck -F "$sparkle" -parse-as-library -swift-version 5 \
       -sdk "$(xcrun --show-sdk-path)" \
       -target "$(uname -m)-apple-macos$(/usr/libexec/PlistBuddy -c 'Print LSMinimumSystemVersion' Resources/Info.plist)" \
       -module-cache-path $CHECK_BUILD/ModuleCache \

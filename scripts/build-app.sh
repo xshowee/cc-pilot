@@ -1,9 +1,13 @@
 #!/bin/zsh -f
-# 本地构建 CC Pilot.app：./scripts/build-app.sh [--universal]
+# 构建 CC Pilot.app：./scripts/build-app.sh [--universal] [--sign <身份>] [--hardened-runtime] [--timestamp]
 #
-# 产物：build/CC Pilot.app（ad-hoc 签名，只供本机运行；正式签名、公证、Sparkle、DMG 由 ticket 14 加上）。
-#   默认只编译本机架构；--universal 编译 arm64 + x86_64 并用 lipo 合并。
-#   运行：open "build/CC Pilot.app"
+# 产物：build/CC Pilot.app。正式发布（Developer ID、公证、DMG、appcast）用 scripts/release.sh，它会调用本脚本。
+#   默认只编译本机架构、ad-hoc 签名，只供本机运行；运行：open "build/CC Pilot.app"
+#   --universal         编译 arm64 + x86_64 并用 lipo 合并
+#   --sign <身份>        签名身份（证书名称或 SHA-1），默认 "-"（ad-hoc）
+#   --hardened-runtime  启用 hardened runtime（公证要求）；不附加任何 entitlements，不启用 App Sandbox
+#   --timestamp         签名带安全时间戳（公证要求，会访问 Apple 的时间戳服务）
+#   Sparkle 框架由 scripts/fetch-sparkle.sh 准备（首次下载到 build/deps/），嵌入 Contents/Frameworks/。
 #
 # 不用 Xcode 工程和 SwiftPM，直接 swiftc 编译、手工组装 .app。
 #   Info.plist 是手写的 Resources/Info.plist，版本号和最低系统版本都以它为唯一来源；
@@ -23,12 +27,20 @@ APP="$BUILD/$APP_NAME.app"
 PLIST=Resources/Info.plist
 
 archs=($(uname -m))
-for arg in "$@"; do
-  case $arg in
+identity=-
+typeset -a sign_opts
+sign_opts=(--timestamp=none)
+while (( $# )); do
+  case $1 in
     --universal) archs=(arm64 x86_64) ;;
-    *) print -u2 -r -- "用法：$0 [--universal]"; exit 2 ;;
+    --sign) identity=${2-}; shift ;;
+    --hardened-runtime) sign_opts+=(--options runtime) ;;
+    --timestamp) sign_opts=(${sign_opts:#--timestamp=none} --timestamp) ;;
+    *) print -u2 -r -- "用法：$0 [--universal] [--sign <身份>] [--hardened-runtime] [--timestamp]"; exit 2 ;;
   esac
+  shift
 done
+[[ -n $identity ]] || { print -u2 -r -- "--sign 需要一个签名身份"; exit 2 }
 
 MIN_MACOS=$(/usr/libexec/PlistBuddy -c 'Print LSMinimumSystemVersion' $PLIST)
 VERSION=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' $PLIST)
@@ -39,6 +51,8 @@ VERSION=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' $PLIST)
 print -r -- "==> 检查资源文件"
 /usr/bin/plutil -lint -s $PLIST Resources/*.lproj/*.strings
 
+SPARKLE=$(./scripts/fetch-sparkle.sh)
+
 print -r -- "==> 编译 $EXECUTABLE $VERSION（${(j:, :)archs}，macOS $MIN_MACOS+）"
 SDK=$(xcrun --show-sdk-path)
 mkdir -p -- $BUILD/obj
@@ -48,20 +62,28 @@ for arch in $archs; do
   swiftc -O -swift-version 5 -parse-as-library \
     -sdk $SDK -target $arch-apple-macos$MIN_MACOS \
     -module-name $EXECUTABLE -module-cache-path $BUILD/obj/ModuleCache \
+    -F $SPARKLE -framework Sparkle -Xlinker -rpath -Xlinker @executable_path/../Frameworks \
     Sources/Core/*.swift Sources/App/*.swift -o $slice
   slices+=($slice)
 done
 
 print -r -- "==> 组装 $APP"
 rm -rf -- "$APP"
-mkdir -p -- "$APP/Contents/MacOS" "$APP/Contents/Resources"
+mkdir -p -- "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Frameworks"
 lipo -create $slices -output "$APP/Contents/MacOS/$EXECUTABLE"
 cp -- $PLIST "$APP/Contents/Info.plist"
 cp -R -- Resources/*.lproj "$APP/Contents/Resources/"
 cp -R -- shell "$APP/Contents/Resources/shell"
+# App 不启用沙盒，用不到 Sparkle 的 XPC 服务，删掉以减小体积
+sparkle_fw="$APP/Contents/Frameworks/Sparkle.framework"
+ditto $SPARKLE/Sparkle.framework "$sparkle_fw"
+rm -rf -- "$sparkle_fw/XPCServices" "$sparkle_fw/Versions/B/XPCServices"
 
-print -r -- "==> ad-hoc 签名"
-codesign --force --sign - --timestamp=none "$APP"
-codesign --verify --strict "$APP"
+print -r -- "==> 签名（${${identity:#-}:-ad-hoc}）"
+# hardened runtime 的库校验要求框架与 App 同一团队签名，所以由内向外重签 Sparkle
+for code in "$sparkle_fw/Versions/B/Autoupdate" "$sparkle_fw/Versions/B/Updater.app" "$sparkle_fw" "$APP"; do
+  codesign --force $sign_opts --sign $identity "$code"
+done
+codesign --verify --deep --strict "$APP"
 
 print -r -- "完成：$APP"
