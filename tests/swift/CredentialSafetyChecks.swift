@@ -10,6 +10,7 @@ final class CredentialSafetyChecks: CheckSuite {
         [
             Check("凭据不出现在返回值、错误、日志、子进程参数和磁盘文件里", noLeaks),
             Check("App 核心从不写入、删除或续期凭据，也不写任何文件", readOnly),
+            Check("检查程序注入的 security 是临时目录里的假程序，不是真的", checksNeverUseRealSecurity),
         ]
     }
 
@@ -106,6 +107,16 @@ final class CredentialSafetyChecks: CheckSuite {
         let callsDir = home.fakeSecurityDir.appendingPathComponent("calls").path
         after = after.filter { !$0.key.hasPrefix(callsDir) }
         try expectEqual(after, before.filter { !$0.key.hasPrefix(callsDir) })
+    }
+
+    static func checksNeverUseRealSecurity() throws {
+        let home = try TempHome()
+        defer { home.remove() }
+        let path = home.environment.security.path
+        try expect(path != "/usr/bin/security" && path.hasPrefix(home.root.path + "/"), "security 路径：\(path)")
+        let wrapper = try String(contentsOf: home.environment.security, encoding: .utf8)
+        try expect(wrapper.contains(repoRoot.appendingPathComponent("tests/fakes/security").path),
+                   "包装脚本应调用 tests/fakes/security")
     }
 
     // MARK: - 辅助
