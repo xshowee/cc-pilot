@@ -11,6 +11,9 @@
 #    都存在时，用 swiftc 把它们编进同一个模块，生成 .build/checks/core-check 并运行，
 #    第一个参数是仓库根目录（便于找到 shell/lib 和 tests/fixtures/ 里的测试向量）。
 #    Sources/Core 只放不含界面的核心代码；@main 放在 tests/swift/ 里。
+#    新增检查只需在 tests/swift/ 新增 CheckSuite 子类（见 tests/swift/CheckRunner.swift）。
+# 4. App 类型检查（ticket 06 起）：Sources/App 存在时，按 Info.plist 的最低系统版本对
+#    Sources/Core + Sources/App 做 swiftc -typecheck，并用 plutil 检查 Resources/ 下的资源文件。
 
 emulate -R zsh
 setopt extended_glob null_glob
@@ -62,6 +65,24 @@ if (( ${#core_sources} && ${#check_sources} )); then
   else
     failed+=("Swift 检查程序编译失败")
   fi
+fi
+
+# 4. App 界面类型检查与资源文件检查（存在 Sources/App 时）：界面不做自动化测试，
+#    但要保证它能按最低系统版本编译，资源文件格式正确。完整构建用 scripts/build-app.sh。
+typeset -a app_sources resource_files
+app_sources=(Sources/App/*.swift)
+resource_files=(Resources/Info.plist Resources/*.lproj/*.strings)
+if (( ${#app_sources} )); then
+  step "App 类型检查（macOS $(/usr/libexec/PlistBuddy -c 'Print LSMinimumSystemVersion' Resources/Info.plist)+）"
+  CHECK_BUILD=$ROOT/.build/checks
+  mkdir -p -- $CHECK_BUILD
+  swiftc -typecheck -parse-as-library -swift-version 5 \
+      -sdk "$(xcrun --show-sdk-path)" \
+      -target "$(uname -m)-apple-macos$(/usr/libexec/PlistBuddy -c 'Print LSMinimumSystemVersion' Resources/Info.plist)" \
+      -module-cache-path $CHECK_BUILD/ModuleCache \
+      $core_sources $app_sources || failed+=("App 类型检查")
+  step "资源文件检查"
+  /usr/bin/plutil -lint -s $resource_files || failed+=("资源文件格式")
 fi
 
 print
