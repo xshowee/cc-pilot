@@ -31,7 +31,8 @@ struct ProfileRow: View {
                     Image(systemName: "link")
                 }
                 .font(.caption)
-                .foregroundColor(.orange)
+                // 只是说明，不是警告：用次要文字颜色（橙色只留给额度"偏紧"，ticket 24）
+                .foregroundColor(.secondary)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
