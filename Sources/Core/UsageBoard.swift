@@ -127,7 +127,7 @@ struct UsageBoard: Equatable {
         list.filter { accounts[$0]?.isWaiting(now: now) != true }
     }
 
-    /// 菜单栏两行：当前档案的订阅等级（不知道时是档案名），以及它所在账号的 5 小时窗口此刻怎么显示。
+    /// 菜单栏两行：当前档案名与订阅等级，以及它所在账号的 5 小时窗口此刻怎么显示。
     /// 当前档案不在列表里、未登录、还没刷新过、或 5 小时窗口没有数字时，第二行是"—"。
     func menuBarSummary(currentProfile name: String, profiles: [Profile], now: Date) -> MenuBarSummary {
         let profile = profiles.first { $0.name == name }

@@ -9,7 +9,7 @@ import AppKit
 
 @MainActor
 enum MenuBarImage {
-    /// 第一行（订阅等级或档案名）的最大宽度（pt），超出时中间截断
+    /// 第一行（MenuBarSummary.titleLine）的最大宽度（pt），超出时中间截断
     static let maxWidth: CGFloat = 96
 
     /// "只显示图标"模式的图标（ticket 17）：Resources/MenuBarIcon.png 与 @2x，18pt 的单色模板图，

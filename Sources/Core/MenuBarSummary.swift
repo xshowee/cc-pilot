@@ -13,19 +13,13 @@ struct MenuBarSummary: Equatable {
     /// 当前档案名（"default" 表示默认档案）
     var profileName: String
     /// 5 小时窗口此刻怎么显示；还没有数据时为 .unavailable
-    var fiveHour: UsageReading
-    /// 当前档案的订阅等级（凭据优先，见 Profile.displayTier）；不知道时为 nil，第一行显示档案名
-    var tier: SubscriptionTier?
+    var fiveHour: UsageReading = .unavailable
+    /// 当前档案的订阅等级（凭据优先，见 Profile.displayTier）；不知道时为 nil
+    var tier: SubscriptionTier? = nil
 
-    init(profileName: String, fiveHour: UsageReading = .unavailable, tier: SubscriptionTier? = nil) {
-        self.profileName = profileName
-        self.fiveHour = fiveHour
-        self.tier = tier
-    }
-
-    /// 从当前档案记录读出档案名；额度暂时没有
-    init(record: CurrentProfileRecord) {
-        self.init(profileName: record.currentName())
+    /// 第一行的文字。tierName 是订阅等级的本地化写法（由界面传入，核心不含界面文字）。
+    func titleLine(tierName: (SubscriptionTier) -> String) -> String {
+        tier.map(tierName) ?? profileName
     }
 
     /// 第二行的文字。resetText 是"已重置"的本地化写法（由界面传入，核心不含界面文字）。
@@ -41,5 +35,12 @@ struct MenuBarSummary: Equatable {
     var quotaTint: UsageTint {
         if case .remaining(_, let tint) = fiveHour { return tint }
         return .plain
+    }
+}
+
+extension MenuBarSummary {
+    /// 从当前档案记录读出档案名；额度暂时没有
+    init(record: CurrentProfileRecord) {
+        self.init(profileName: record.currentName())
     }
 }

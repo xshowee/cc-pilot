@@ -1,5 +1,4 @@
-// ticket 07：菜单栏两行的内容。上一行当前档案名（后改为订阅等级，不知道时退回档案名），
-// 下一行额度（ticket 11 接入前一律"—"）。
+// ticket 07：菜单栏两行的内容。上一行当前档案的订阅等级，不知道时是档案名；下一行额度。
 
 import Foundation
 
@@ -9,8 +8,9 @@ final class MenuBarSummaryChecks: CheckSuite {
             Check("还没有额度数据时第二行显示—，有数据时显示剩余百分比", quotaLine),
             Check("已过重置时间时第二行显示已重置，不显示旧数字（ticket 12）", resetLine),
             Check("第二行的颜色与列表相同：severity、变灰；没有数字时不着色（ticket 12）", quotaTint),
-            Check("第一行是当前档案记录里的名字", nameLineFollowsRecord),
-            Check("第一行显示当前档案的订阅等级（凭据优先）；不知道时退回档案名", tierLine),
+            Check("档案名来自当前档案记录", nameLineFollowsRecord),
+            Check("第一行显示订阅等级，不知道时是档案名", titleLine),
+            Check("订阅等级取自当前档案的 displayTier", tierFollowsProfile),
         ]
     }
 
@@ -50,28 +50,29 @@ final class MenuBarSummaryChecks: CheckSuite {
         try expectEqual(MenuBarSummary(record: record), MenuBarSummary(profileName: "default"))
     }
 
-    static func tierLine() throws {
-        func profile(_ name: String, tier: SubscriptionTier?, credentialTier: SubscriptionTier? = nil,
-                     loggedIn: Bool = true) -> Profile {
-            let account = Account(accountUuid: "u-\(name)", email: "\(name)@example.com", organizationName: nil, tier: tier)
-            return Profile(name: name, configDir: nil, claudeJSON: URL(fileURLWithPath: "/nonexistent/\(name).json"),
-                           account: loggedIn ? .loggedIn(account) : .loggedOut,
-                           login: LoginInfo(status: loggedIn ? .canRequestUsage : .notLoggedIn,
-                                            subscriptionTier: credentialTier))
-        }
-        let profiles = [profile("max", tier: .max(multiplier: 5)),
-                        profile("pro", tier: .max(multiplier: nil), credentialTier: .pro),
-                        profile("unknown", tier: nil),
-                        profile("fresh", tier: nil, loggedIn: false)]
-        let board = UsageBoard()
+    static func titleLine() throws {
+        let name: (SubscriptionTier) -> String = { $0 == .max(multiplier: 5) ? "Max 5x" : "?" }
+        try expectEqual(MenuBarSummary(profileName: "work", tier: .max(multiplier: 5)).titleLine(tierName: name), "Max 5x")
+        try expectEqual(MenuBarSummary(profileName: "work").titleLine(tierName: name), "work")
+    }
+
+    static func tierFollowsProfile() throws {
+        let home = try TempHome()
+        defer { home.remove() }
+        try home.makeLoggedInProfile("max", orgType: "claude_max", rateLimitTier: "default_claude_max_20x")
+        // .claude.json 推断为 Max，凭据说是 Pro：取凭据（displayTier），不取账号等级
+        try home.keychainItem(service: home.makeLoggedInProfile("pro", uuid: "u-pro", orgType: "claude_max"),
+                              credentialJSON(subscriptionType: "pro"))
+        try home.makeLoggedInProfile("unknown", uuid: "u-unknown")
+        try home.makeProfileDir("fresh")
+        let profiles = Array(home.profilesWithLogin().values)
         func tier(_ name: String) -> SubscriptionTier? {
-            board.menuBarSummary(currentProfile: name, profiles: profiles, now: Date()).tier
+            UsageBoard().menuBarSummary(currentProfile: name, profiles: profiles, now: fixedNow).tier
         }
-        try expectEqual(tier("max"), .max(multiplier: 5))
+        try expectEqual(tier("max"), .max(multiplier: 20))
         try expectEqual(tier("pro"), .pro, "凭据里的订阅等级优先")
-        try expectEqual(tier("unknown"), nil)
+        try expectEqual(tier("unknown"), nil, "已登录但不知道订阅等级")
         try expectEqual(tier("fresh"), nil, "未登录")
         try expectEqual(tier("gone"), nil, "当前档案记录指向已不存在的档案")
-        try expectEqual(MenuBarSummary(profileName: "w").tier, nil)
     }
 }
