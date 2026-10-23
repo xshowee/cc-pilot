@@ -1,7 +1,8 @@
 // 当前档案的界面状态：菜单栏第一行和面板里的高亮都读它；点击档案时调用 switchTo。
 //
-// 有自己的 ProfileWatcher：在终端里用 `ccp use` 切换时，当前档案记录变化，这里重读并发布，
-// 菜单栏跟着更新。切换只写当前档案记录（App 核心 CurrentProfileRecord），不读凭据、不联网。
+// 订阅 ProfileChangeFeed（与档案列表共用一个 ProfileWatcher）：在终端里用 `ccp use` 切换时，
+// 当前档案记录变化，这里重读并发布，菜单栏跟着更新。
+// 切换只写当前档案记录（App 核心 CurrentProfileRecord），不读凭据、不联网。
 
 import AppKit
 import Foundation
@@ -12,16 +13,13 @@ final class CurrentProfileModel: ObservableObject {
     @Published private(set) var name: String
 
     private let record: CurrentProfileRecord
-    private var watcher: ProfileWatcher?
+    private let changes: ProfileChangeFeed
 
-    init(environment: CoreEnvironment = .live) {
+    init(environment: CoreEnvironment = .live, changes: ProfileChangeFeed) {
         record = CurrentProfileRecord(environment: environment)
         name = record.currentName()
-        let watcher = ProfileWatcher(environment: environment) { [weak self] in
-            Task { @MainActor in self?.reload() }
-        }
-        watcher.start()
-        self.watcher = watcher
+        self.changes = changes
+        changes.subscribe { [weak self] in self?.reload() }
     }
 
     /// 重读当前档案记录（只有一行，直接在主线程读）
