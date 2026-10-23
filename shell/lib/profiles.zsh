@@ -39,6 +39,16 @@ _ccp_reserved_name() {
   [[ $1 == (default|active) ]]
 }
 
+# 名字不合规或是保留名时，输出一句原因（不含前缀和句号），供错误信息使用
+_ccp_invalid_name_reason() {
+  emulate -L zsh
+  if _ccp_reserved_name "$1"; then
+    print -r -- "\"$1\" 是保留名"
+  else
+    print -r -- "\"$1\" 不合规（只能包含字母、数字、. _ -，且以字母或数字开头）"
+  fi
+}
+
 # 输出默认档案的配置目录：$HOME/.claude（去掉 HOME 结尾的 /）。
 # 只用于定位默认档案里的文件；启动默认档案时不能把它设为 CLAUDE_CONFIG_DIR。
 _ccp_default_config_dir() {
@@ -89,8 +99,8 @@ _ccp_resolve_config_dir() {
 
   [[ $name == default ]] && return 0
 
-  if ! _ccp_valid_name "$name"; then
-    print -u2 -r -- "cc-pilot: ${origin}档案名 \"$name\" 不合规（只能包含字母、数字、. _ -，且以字母或数字开头）。"
+  if ! _ccp_valid_name "$name" || _ccp_reserved_name "$name"; then
+    print -u2 -r -- "cc-pilot: ${origin}档案名 $(_ccp_invalid_name_reason "$name")。"
     _ccp_print_fix_hint $source_kind
     return 1
   fi

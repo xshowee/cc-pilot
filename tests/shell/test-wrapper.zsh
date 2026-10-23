@@ -72,10 +72,11 @@ test_missing_active_profile_fails_with_hint_and_does_not_run_claude() {
 }
 
 test_active_record_naming_a_non_directory_counts_as_missing() {
-  # 内容为 active：拼出来的路径就是记录文件本身，不是档案目录
+  # 内容为 active：拼出来的路径就是记录文件本身，不是档案目录；active 是保留名
   t_active active
   t_claude
   assert_rc_nonzero
+  assert_contains "$T_ERR" "保留名" "错误信息"
   assert_claude_calls 0
 }
 
