@@ -19,7 +19,7 @@ enum UsageAuthorization {
     case denied(LoginStatus)
 }
 
-struct LoginChecker {
+struct LoginChecker: Sendable {
     let environment: CoreEnvironment
 
     init(environment: CoreEnvironment = .live) {

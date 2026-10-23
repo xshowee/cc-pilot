@@ -2,7 +2,7 @@
 
 import Foundation
 
-struct ProfileStore {
+struct ProfileStore: Sendable {
     let environment: CoreEnvironment
     private var paths: ProfilePaths { ProfilePaths(environment: environment) }
 

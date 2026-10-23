@@ -9,7 +9,8 @@
 
 import Foundation
 
-struct CoreEnvironment {
+/// 值类型，各字段都可以在线程之间传递：界面把核心对象交给后台队列时不必担心数据竞争。
+struct CoreEnvironment: Sendable {
     /// 用户主目录。默认档案的 .claude.json、~/.claude-profiles/ 都相对于它。
     var home: URL
     /// 系统的 security 程序（读取凭据用）。测试换成假程序，绝不能让检查程序调用真的。

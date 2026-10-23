@@ -3,7 +3,8 @@
 
 import Foundation
 
-final class FakeUsageTransport: UsageTransport {
+// 可变状态都由 lock 保护
+final class FakeUsageTransport: UsageTransport, @unchecked Sendable {
     struct Response {
         var status: Int = 200
         var headers: [String: String] = [:]

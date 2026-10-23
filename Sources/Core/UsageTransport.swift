@@ -20,23 +20,27 @@ struct UsageHTTPResponse {
     }
 }
 
-protocol UsageTransport {
+/// 在后台队列上使用（UsageModel 把 UsageRefresher 交给后台队列），所以必须 Sendable
+protocol UsageTransport: Sendable {
     /// 发出请求并等待响应（阻塞当前线程）。网络失败、超时时抛错。
     func send(_ request: URLRequest) throws -> UsageHTTPResponse
 }
 
-final class URLSessionUsageTransport: NSObject, UsageTransport, URLSessionTaskDelegate {
+final class URLSessionUsageTransport: UsageTransport {
     static let shared = URLSessionUsageTransport()
 
-    private lazy var session: URLSession = {
+    /// 初始化后不再改变（URLSession 本身线程安全），所以这个类可以在线程之间共享
+    private let session: URLSession
+
+    init() {
         let config = URLSessionConfiguration.ephemeral
         config.urlCache = nil
         config.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
         config.httpCookieStorage = nil
         config.httpShouldSetCookies = false
         config.urlCredentialStorage = nil
-        return URLSession(configuration: config, delegate: self, delegateQueue: nil)
-    }()
+        session = URLSession(configuration: config, delegate: NoRedirects(), delegateQueue: nil)
+    }
 
     func send(_ request: URLRequest) throws -> UsageHTTPResponse {
         let done = DispatchSemaphore(value: 0)
@@ -61,8 +65,11 @@ final class URLSessionUsageTransport: NSObject, UsageTransport, URLSessionTaskDe
     }
 
     /// 不跟随重定向：把 3xx 原样交给调用方
-    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
-                    newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
-        completionHandler(nil)
+    private final class NoRedirects: NSObject, URLSessionTaskDelegate {
+        func urlSession(_ session: URLSession, task: URLSessionTask,
+                        willPerformHTTPRedirection response: HTTPURLResponse,
+                        newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
+            completionHandler(nil)
+        }
     }
 }

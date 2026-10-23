@@ -56,7 +56,7 @@ struct UsageRefreshOutcome: Equatable {
     let result: UsageFetchResult
 }
 
-struct UsageRefresher {
+struct UsageRefresher: Sendable {
     static let endpoint = URL(string: "https://api.anthropic.com/api/oauth/usage")!
     /// 单次请求的超时（Claude Code 自己用 5 秒）
     static let timeout: TimeInterval = 5
