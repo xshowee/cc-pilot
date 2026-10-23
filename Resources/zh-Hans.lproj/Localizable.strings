@@ -45,3 +45,11 @@
 "Switch to %@" = "切换到 %@";
 "Current profile: %@" = "当前档案：%@";
 "Show only an icon in the menu bar" = "菜单栏只显示图标";
+
+/* 设置菜单：登录时启动与自动更新 */
+"Settings" = "设置";
+"Launch at Login" = "登录时启动";
+"Couldn’t change Launch at Login" = "无法更改“登录时启动”";
+"Automatically Check for Updates" = "自动检查更新";
+"Check for Updates…" = "检查更新…";
+"Update Available…" = "有可用更新…";

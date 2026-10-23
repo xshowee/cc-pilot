@@ -6,6 +6,7 @@ import SwiftUI
 struct PanelFooter: View {
     var body: some View {
         HStack {
+            SettingsMenu()
             Spacer()
             Button("Quit CC Pilot") { NSApplication.shared.terminate(nil) }
                 .keyboardShortcut("q")
