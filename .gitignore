@@ -1,1 +1,39 @@
+# 本地 issue 与 spec（见 docs/agents/issue-tracker.md）
 .scratch/
+
+# 构建产物：构建脚本输出、检查程序、打包结果
+/build/
+/.build/
+/.swiftpm/
+/dist/
+*.dmg
+*.xcarchive
+*.dSYM/
+*.dSYM.zip
+
+# Xcode 个人状态（用 Xcode 打开时产生）
+xcuserdata/
+*.xcuserstate
+DerivedData/
+
+# 本机文件
+.DS_Store
+.env
+.env.*
+.claude/settings.local.json
+
+# 签名、公证、Sparkle 更新的密钥，绝不提交
+*.p8
+*.p12
+*.pfx
+*.pem
+*.key
+*.cer
+*.mobileprovision
+*.provisionprofile
+*eddsa*private*
+*ed25519*
+
+# 真实凭据与档案，绝不提交（测试只用临时目录里的假数据）
+/.claude-profiles/
+.credentials.json
