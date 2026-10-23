@@ -1,0 +1,55 @@
+#!/bin/zsh -f
+# ccp：cc-pilot 的命令行工具（安装后位于 ~/.cc-pilot/bin/ccp）。
+#
+# 只负责分派：先 source ../lib/ 下除 cmd-*.zsh 以外的共享库，
+# 再 source 子命令自己的文件 ../lib/cmd-<命令>.zsh，调用其中的 _ccp_cmd_<命令>，
+# 退出码就是该函数的返回值。新增或修改某个子命令只需改它自己的文件。
+#
+# 注意：ccp 在独立的脚本进程里运行，没有加载 claude 包装函数。需要启动某个档案的
+# Claude Code 时，必须直接设置 CLAUDE_CONFIG_DIR 再 `command claude`，不能依赖 CLAUDE_PROFILE。
+
+emulate -R zsh
+setopt extended_glob
+
+_ccp_lib=${0:A:h:h}/lib
+for _ccp_f in $_ccp_lib/^cmd-*.zsh(N); do
+  source $_ccp_f || exit 1
+done
+unset _ccp_f
+
+_ccp_usage() {
+  print -r -- "用法：ccp <命令> [参数]
+
+命令：
+  ls              列出所有档案，并标出当前档案
+  current         输出当前档案的名字
+  use <名字>      切换当前档案（default 表示默认档案）
+  add <名字>      新建档案，并在其中完成首次引导和登录
+  rm <名字>       在档案里登出后删除它
+  init            接入 zsh（征得同意后在 ~/.zshrc 里加一行 source）
+  uninstall       从 ~/.zshrc 里删除 init 加的那一行
+
+单个终端临时使用其他档案：CLAUDE_PROFILE=<名字> claude"
+}
+
+case ${1-} in
+  (ls|current|use|add|rm|init|uninstall)
+    source $_ccp_lib/cmd-$1.zsh || exit 1
+    _ccp_cmd_$1 "${@:2}"
+    exit
+    ;;
+  (help|-h|--help)
+    _ccp_usage
+    exit 0
+    ;;
+  ('')
+    _ccp_usage >&2
+    exit 2
+    ;;
+  (*)
+    print -u2 -r -- "ccp: 未知命令 \"$1\""
+    print -u2
+    _ccp_usage >&2
+    exit 2
+    ;;
+esac
