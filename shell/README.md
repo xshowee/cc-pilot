@@ -34,6 +34,15 @@
 
 解析出默认档案时不设置 `CLAUDE_CONFIG_DIR`；其他档案只对这一次调用设置 `CLAUDE_CONFIG_DIR=$HOME/.claude-profiles/<名字>`（绝对路径，不含 `~`，结尾不带 `/`）。名字不符合 `^[A-Za-z0-9][A-Za-z0-9._-]*$`，或者档案目录不存在时，报错并给出修复建议，返回非零，不回退到默认档案。
 
+## ccp add 建立的档案
+
+`ccp add <名字>` 在 `~/.claude-profiles/<名字>/` 里只放两类东西：
+
+- 共享资源的软链接：`settings.json`、`CLAUDE.md`、`skills`、`agents`、`commands`、`plugins`、`projects`，各自指向 `~/.claude/` 中的同名项（绝对路径；默认档案里还没有的项也照建）。清单和建立方式集中在 `cmd-add.zsh` 的 `_ccp_shared_resources` / `_ccp_share_resources`，单个文件改用复制时只改这两个函数。
+- `.claude.json`：只含默认档案 `~/.claude.json`（不在 `~/.claude/` 里）的 `mcpServers` 和 `projects` 两个字段，用 JXA 原样复制。默认档案的 `.claude.json` 不存在或无法解析时不写这个文件，只给出提示。
+
+然后以 `CLAUDE_CONFIG_DIR=<档案目录>` 直接启动 `claude`（不经过包装函数，也不看 `CLAUDE_PROFILE`），不改变当前档案。
+
 ## service 名的跨端一致性
 
 `_ccp_service_name [配置目录]`：不带参数时返回 `Claude Code-credentials`（默认档案）；带参数时对原始字符串做 NFC 规范化后取 sha256 前 8 位。App 核心应对 `tests/fixtures/service-names.tsv` 的每一行得到相同结果，也可以直接调用 shell 函数比较：
