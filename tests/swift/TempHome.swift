@@ -1,5 +1,9 @@
 // 检查用的临时主目录。每个检查新建一个，结束时 `remove()`（一般写在 defer 里）。
 // 路径里故意带空格，和 tests/shell/lib.zsh 的 $T_HOME 一样。
+//
+// 钥匙串：`environment` 里的 security 一律是假的 tests/fakes/security（经 root/bin/security 包一层，
+// 带上本 TempHome 自己的 FAKE_SECURITY_DIR = root/security），检查程序绝不会调用真的 /usr/bin/security。
+// 用 `keychainItem(...)` 准备钥匙串项，用 `securityCalls()` 读取调用记录（格式见 tests/fakes/security）。
 
 import Foundation
 
@@ -9,18 +13,45 @@ final class TempHome {
     /// 作为 HOME 交给 App 核心的目录
     let url: URL
 
-    init() throws {
-        root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("cc-pilot-check-\(UUID().uuidString)")
-        url = root.appendingPathComponent("home dir")
-        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+    /// 假 security 的数据目录（FAKE_SECURITY_DIR）
+    let fakeSecurityDir: URL
+    /// 注入给 App 核心的 security 路径（调用假 security 的包装脚本）
+    let securityTool: URL
+    /// 注入给 App 核心的"当前用户名"
+    static let userName = "tester"
+
+    init(homeName: String = "home dir") throws {
+        let fm = FileManager.default
+        root = fm.temporaryDirectory.appendingPathComponent("cc-pilot-check-\(UUID().uuidString)")
+        url = root.appendingPathComponent(homeName)
+        try fm.createDirectory(at: url, withIntermediateDirectories: true)
+
+        fakeSecurityDir = root.appendingPathComponent("security")
+        securityTool = root.appendingPathComponent("bin/security")
+        try fm.createDirectory(at: fakeSecurityDir.appendingPathComponent("items"), withIntermediateDirectories: true)
+        try fm.createDirectory(at: securityTool.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let fake = repoRoot.appendingPathComponent("tests/fakes/security").path
+        let wrapper = """
+            #!/bin/zsh -f
+            export FAKE_SECURITY_DIR=\(Self.shellQuote(fakeSecurityDir.path))
+            exec \(Self.shellQuote(fake)) "$@"
+
+            """
+        try Data(wrapper.utf8).write(to: securityTool)
+        try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: securityTool.path)
+    }
+
+    private static func shellQuote(_ s: String) -> String {
+        "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
     func remove() {
         try? FileManager.default.removeItem(at: root)
     }
 
-    var environment: CoreEnvironment { CoreEnvironment(home: url) }
+    var environment: CoreEnvironment {
+        CoreEnvironment(home: url, security: securityTool, userName: Self.userName, securityTimeout: 10)
+    }
 
     var profilesRoot: URL { url.appendingPathComponent(".claude-profiles") }
 
@@ -55,6 +86,30 @@ final class TempHome {
     func makeProfile(_ name: String, config: Any) throws {
         try makeProfileDir(name)
         try writeJSON(".claude-profiles/\(name)/.claude.json", config)
+    }
+
+    // MARK: 假钥匙串
+
+    /// 加一条钥匙串项；content 就是 `security -w` 要输出的文本（不含结尾换行，假 security 会补上）
+    func keychainItem(service: String, account: String = TempHome.userName, _ content: String) throws {
+        let dir = fakeSecurityDir.appendingPathComponent("items").appendingPathComponent(service)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try Data(content.utf8).write(to: dir.appendingPathComponent(account))
+    }
+
+    /// 假 security 每次被调用时收到的参数，按调用顺序
+    func securityCalls() throws -> [[String]] {
+        let dir = fakeSecurityDir.appendingPathComponent("calls")
+        guard FileManager.default.fileExists(atPath: dir.path) else { return [] }
+        var calls: [[String]] = []
+        var n = 1
+        while true {
+            let file = dir.appendingPathComponent(String(n))
+            guard let text = try? String(contentsOf: file, encoding: .utf8) else { break }
+            calls.append(text.split(separator: "\n").filter { $0.hasPrefix("arg=") }.map { String($0.dropFirst(4)) })
+            n += 1
+        }
+        return calls
     }
 }
 

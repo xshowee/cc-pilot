@@ -3,7 +3,7 @@
 //
 // 扩展方式：新增一个带默认值的存储属性，并在 init 里加一个带默认值的参数，
 // 已有调用点（`CoreEnvironment()`、`CoreEnvironment(home:)`）不用改。
-// 预计的扩展：外部程序路径（ticket 10，如 security）、当前用户名（ticket 10）、网络层（ticket 11）、当前时间。
+// 预计的扩展：网络层（ticket 11）。当前时间不放在这里，由各方法的 `now` 参数传入。
 //
 // 本目录（Sources/Core）只依赖 Foundation / CoreServices 等系统框架，不 import SwiftUI / AppKit。
 
@@ -12,9 +12,21 @@ import Foundation
 struct CoreEnvironment {
     /// 用户主目录。默认档案的 .claude.json、~/.claude-profiles/ 都相对于它。
     var home: URL
+    /// 系统的 security 程序（读取凭据用）。测试换成假程序，绝不能让检查程序调用真的。
+    var security: URL
+    /// 当前用户名：钥匙串项匹配到多条时，优先取 account 等于它的那条（Claude Code 写入时用 $USER）
+    var userName: String
+    /// 单次调用 security 的最长等待时间（秒）。超时视为出现了授权弹窗，按"版本不兼容"处理。
+    var securityTimeout: TimeInterval
 
-    init(home: URL = CoreEnvironment.userHome()) {
+    init(home: URL = CoreEnvironment.userHome(),
+         security: URL = URL(fileURLWithPath: "/usr/bin/security"),
+         userName: String = NSUserName(),
+         securityTimeout: TimeInterval = 5) {
         self.home = home
+        self.security = security
+        self.userName = userName
+        self.securityTimeout = securityTimeout
     }
 
     /// 真实环境
