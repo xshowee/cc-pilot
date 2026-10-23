@@ -8,6 +8,7 @@ final class ProfileWatcherChecks: CheckSuite {
         [
             Check("档案目录、当前档案记录、.claude.json 变化时都会通知", notifiesOnRelevantChanges),
             Check("档案里的运行时文件变化不通知；stop 之后不再通知", ignoresRuntimeChurnAndStops),
+            Check("指向别处的软链接档案：登录、登出也会通知（含启动后才建立的软链接）", followsSymlinkedProfiles),
         ]
     }
 
@@ -102,5 +103,46 @@ final class ProfileWatcherChecks: CheckSuite {
         try home.makeProfileDir("later")
         Thread.sleep(forTimeInterval: 1)
         try expectEqual(counter.count, before, "stop 之后不应再通知")
+    }
+
+    static func followsSymlinkedProfiles() throws {
+        let home = try TempHome()
+        defer { home.remove() }
+        let fm = FileManager.default
+        // 档案目录在 ~/.claude-profiles 之外，档案根目录里只有指向它的软链接（ProfileStore、ccp ls 都把它当档案）
+        let lab = home.root.appendingPathComponent("elsewhere/lab")
+        try fm.createDirectory(at: lab, withIntermediateDirectories: true)
+        try fm.createDirectory(at: home.profilesRoot, withIntermediateDirectories: true)
+        try fm.createSymbolicLink(at: home.profilesRoot.appendingPathComponent("lab"), withDestinationURL: lab)
+        let counter = Counter()
+        let watcher = ProfileWatcher(environment: home.environment, latency: 0.05) { counter.increment() }
+        watcher.start()
+        defer { watcher.stop() }
+
+        try expectNotified(counter, "软链接档案登录（写入目标目录里的 .claude.json）") {
+            try JSONSerialization.data(withJSONObject: claudeConfig(uuid: "u", email: "a@b.c"))
+                .write(to: lab.appendingPathComponent(".claude.json"), options: .atomic)
+        }
+        try expectNotified(counter, "软链接档案登出") {
+            try Data("{}".utf8).write(to: lab.appendingPathComponent(".claude.json"), options: .atomic)
+        }
+
+        // 启动之后才建立的软链接档案
+        let late = home.root.appendingPathComponent("elsewhere/late")
+        try fm.createDirectory(at: late, withIntermediateDirectories: true)
+        try expectNotified(counter, "新建软链接档案") {
+            try fm.createSymbolicLink(at: home.profilesRoot.appendingPathComponent("late"), withDestinationURL: late)
+        }
+        try expectNotified(counter, "后建的软链接档案登录") {
+            try JSONSerialization.data(withJSONObject: claudeConfig(uuid: "v", email: "c@d.e"))
+                .write(to: late.appendingPathComponent(".claude.json"), options: .atomic)
+        }
+
+        // 目标目录里的运行时文件同样不通知
+        counter.settle()
+        let before = counter.count
+        try Data("{}\n".utf8).write(to: lab.appendingPathComponent("history.jsonl"))
+        Thread.sleep(forTimeInterval: 1)
+        try expectEqual(counter.count, before, "软链接档案里的运行时文件变化不应通知")
     }
 }
