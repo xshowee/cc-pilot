@@ -1,4 +1,4 @@
 /* Info.plist 里面向用户的文字的简体中文翻译（键是 Info.plist 的键名） */
 
 /* 系统请求"自动化"授权（控制终端）时显示的说明（ticket 09） */
-"NSAppleEventsUsageDescription" = "添加或删除档案时，CC Pilot 会打开一个终端窗口执行 ccp。";
+"NSAppleEventsUsageDescription" = "添加或删除账号时，CC Pilot 会打开一个终端窗口执行 ccp。";
