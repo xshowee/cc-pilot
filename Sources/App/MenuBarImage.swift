@@ -2,7 +2,7 @@
 // MenuBarExtra 的 label 里放 VStack 两个 Text 会被压成一行，所以沿用 codex-pilot 的做法：
 // 画成 22pt 高的模板图（isTemplate），由系统按菜单栏的明暗着色。
 // 额度一行需要着色时（ticket 12）不能用模板图：档案名用 labelColor（绘制时按菜单栏明暗取色），
-// 额度用传入的颜色。
+// 额度用传入的颜色（过期灰也是动态色，同样在绘制时按菜单栏明暗取浅色/深色那个，ticket 26）。
 // "只显示图标"模式用的图标（icon）也放在这里。
 
 import AppKit
