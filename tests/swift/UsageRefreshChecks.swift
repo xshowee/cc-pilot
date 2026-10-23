@@ -12,7 +12,7 @@ final class UsageRefreshChecks: CheckSuite {
             Check("刷新单个账号只请求这个账号", refreshOneAccount),
             Check("菜单栏第二行是当前档案所在账号的 5 小时窗口剩余；没刷新过时是—", menuBarFollowsCurrentProfile),
             Check("启动、打开面板（重载档案列表）、切换档案都不发请求", noRequestsWithoutRefresh),
-            Check("获取失败时保留上一次成功获取的数据", failureKeepsLastSnapshot),
+            Check("网络失败、频率限制、401、其他状态码时保留上一次成功获取的数据", failureKeepsLastSnapshot),
             Check("刷新的结果、日志和磁盘文件里都没有凭据", refreshDoesNotLeakCredentials),
             Check("检查程序注入的网络层是假的，不访问真的网络", checksNeverUseRealNetwork),
         ]
@@ -129,24 +129,24 @@ final class UsageRefreshChecks: CheckSuite {
         let profiles = ProfileStore(environment: home.environment).listProfiles()
 
         var board = UsageBoard()
-        try expectEqual(board.menuBarSummary(currentProfile: "work", profiles: profiles).quotaLine, "—",
+        try expectEqual(board.menuBarSummary(currentProfile: "work", profiles: profiles, now: fixedNow).quotaLine(resetText: "Reset"), "—",
                         "没刷新过")
         for outcome in UsageRefresher(environment: home.environment).refreshAll(profiles, now: fixedNow) {
             board.record(outcome)
         }
-        try expectEqual(board.menuBarSummary(currentProfile: "work", profiles: profiles),
-                        MenuBarSummary(profileName: "work", fiveHourRemaining: 90))
-        try expectEqual(board.menuBarSummary(currentProfile: "solo", profiles: profiles).quotaLine, "30%")
-        try expectEqual(board.menuBarSummary(currentProfile: "fresh", profiles: profiles),
+        try expectEqual(board.menuBarSummary(currentProfile: "work", profiles: profiles, now: fixedNow),
+                        MenuBarSummary(profileName: "work", fiveHour: .remaining(90, tint: .plain)))
+        try expectEqual(board.menuBarSummary(currentProfile: "solo", profiles: profiles, now: fixedNow).quotaLine(resetText: "Reset"), "30%")
+        try expectEqual(board.menuBarSummary(currentProfile: "fresh", profiles: profiles, now: fixedNow),
                         MenuBarSummary(profileName: "fresh"), "未登录的档案")
-        try expectEqual(board.menuBarSummary(currentProfile: "gone", profiles: profiles),
+        try expectEqual(board.menuBarSummary(currentProfile: "gone", profiles: profiles, now: fixedNow),
                         MenuBarSummary(profileName: "gone"), "当前档案记录指向已不存在的档案")
 
         // 5 小时窗口的 utilization 为 null：没有数字可显示
         home.transport.respond(toToken: "token-solo", body: usageJSON(fiveHour: .used(nil, resetsAt: nil)))
         board.record(UsageRefresher(environment: home.environment)
             .refresh(profiles.first { $0.name == "solo" }!.usageAccount!, in: profiles, now: fixedNow))
-        try expectEqual(board.menuBarSummary(currentProfile: "solo", profiles: profiles).quotaLine, "—")
+        try expectEqual(board.menuBarSummary(currentProfile: "solo", profiles: profiles, now: fixedNow).quotaLine(resetText: "Reset"), "—")
     }
 
     static func noRequestsWithoutRefresh() throws {
@@ -159,13 +159,13 @@ final class UsageRefreshChecks: CheckSuite {
 
         // 启动：读档案列表、判定登录状态、读当前档案、算菜单栏
         var profiles = LoginChecker(environment: env).withLoginStates(ProfileStore(environment: env).listProfiles())
-        _ = board.menuBarSummary(currentProfile: record.currentName(), profiles: profiles)
+        _ = board.menuBarSummary(currentProfile: record.currentName(), profiles: profiles, now: fixedNow)
         // 打开面板：重载档案列表，按档案查额度
         profiles = LoginChecker(environment: env).withLoginStates(ProfileStore(environment: env).listProfiles())
         for p in profiles { _ = board.snapshot(for: p) }
         // 切换档案
         try record.switchTo("solo")
-        _ = board.menuBarSummary(currentProfile: record.currentName(), profiles: profiles)
+        _ = board.menuBarSummary(currentProfile: record.currentName(), profiles: profiles, now: fixedNow)
         try expectEqual(home.transport.requestCount, 0, "没有点刷新时的请求次数")
 
         // 对照：点了刷新才有请求，说明计数有效
@@ -189,10 +189,11 @@ final class UsageRefreshChecks: CheckSuite {
         let later = fixedNow.addingTimeInterval(600)
         let failures: [(FakeUsageTransport.Response?, UsageFetchResult)] = [
             (FakeUsageTransport.Response(status: 429, headers: ["Retry-After": "120"], body: "{}"),
-             .httpStatus(429, retryAfter: "120")),
-            (FakeUsageTransport.Response(status: 500, body: usageJSON()), .httpStatus(500, retryAfter: nil)),
-            (FakeUsageTransport.Response(body: #"{"something_else":1}"#), .unrecognizedFormat),
+             .rateLimited(until: later.addingTimeInterval(120))),
+            (FakeUsageTransport.Response(status: 500, body: usageJSON()), .httpStatus(500)),
+            (FakeUsageTransport.Response(status: 401, body: "{}"), .unauthorized(.needsRenewal)),
             (nil, .networkFailure),
+            // 格式无法识别时不保留旧数字（显示"—"），见 UsageFailureChecks
         ]
         for (response, expected) in failures {
             if let response {

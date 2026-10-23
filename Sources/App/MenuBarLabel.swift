@@ -12,7 +12,7 @@ struct MenuBarLabel: View {
             if iconOnly {
                 Image(systemName: "person.2.circle")
             } else {
-                Image(nsImage: MenuBarImage.image(top: summary.profileName, bottom: summary.quotaLine))
+                Image(nsImage: MenuBarImage.image(top: summary.profileName, bottom: summary.quotaLine(resetText: String(localized: "Reset"))))
                     .renderingMode(.template)
             }
         }

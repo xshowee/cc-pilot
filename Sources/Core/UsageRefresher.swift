@@ -34,8 +34,12 @@ enum UsageFetchResult: Equatable {
     case success(UsageSnapshot)
     /// 没有发请求：没有一个档案处于"可以请求额度"（附带第一个档案的状态）
     case denied(LoginStatus)
-    /// 接口返回了 200 以外的状态码（retryAfter 是 retry-after 响应头的原文）
-    case httpStatus(Int, retryAfter: String?)
+    /// 401：令牌被拒绝。按 ticket 10 的规则归为待续期（或需重新登录）；App 不尝试续期
+    case unauthorized(LoginStatus)
+    /// 429 / 403：频率限制，在 until 之前不再请求这个账号（见 UsageRateLimit）
+    case rateLimited(until: Date)
+    /// 接口返回了 200、401、403、429 以外的状态码
+    case httpStatus(Int)
     /// 网络失败或超时
     case networkFailure
     /// 响应不是 JSON 对象，或一个已知的顶层字段都没有
@@ -101,8 +105,18 @@ struct UsageRefresher {
         request.setValue("cc-pilot/" + environment.appVersion, forHTTPHeaderField: "User-Agent")
 
         guard let response = try? environment.transport.send(request) else { return .networkFailure }
-        guard response.status == 200 else {
-            return .httpStatus(response.status, retryAfter: response.headers["retry-after"])
+        switch response.status {
+        case 200:
+            break
+        case 401:
+            // 发请求前已确认 refreshToken 有效（只有"可以请求额度"才拿得到令牌），所以按 ticket 10 的规则，
+            // 短期凭据被拒绝就是"待续期"：打开一次该档案的 claude 即可恢复（长期凭据若其实也已失效，
+            // claude 会在那时要求重新登录）。App 不尝试续期。
+            return .unauthorized(.needsRenewal)
+        case 403, 429:
+            return .rateLimited(until: UsageRateLimit.retryAt(retryAfter: response.headers["retry-after"], now: now))
+        default:
+            return .httpStatus(response.status)
         }
         guard let snapshot = UsageSnapshot(json: response.body, fetchedAt: now) else { return .unrecognizedFormat }
         return .success(snapshot)

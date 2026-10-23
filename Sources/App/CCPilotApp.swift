@@ -24,7 +24,7 @@ struct CCPilotApp: App {
                 .environmentObject(appDelegate.launchAtLogin)
                 .environmentObject(appDelegate.shellIntegration)
         } label: {
-            MenuBarLabel(summary: usage.board.menuBarSummary(currentProfile: current.name, profiles: profiles.profiles),
+            MenuBarLabel(summary: usage.board.menuBarSummary(currentProfile: current.name, profiles: profiles.profiles, now: Date()),
                          iconOnly: menuBarIconOnly)
         }
         .menuBarExtraStyle(.window)
