@@ -13,7 +13,9 @@
 #
 # 不用 Xcode 工程和 SwiftPM，直接 swiftc 编译、手工组装 .app。
 #   Info.plist 是手写的 Resources/Info.plist，版本号和最低系统版本都以它为唯一来源；
-#   本地化资源 Resources/*.lproj 原样复制；shell/ 原样复制到 Contents/Resources/shell/
+#   本地化资源 Resources/*.lproj 原样复制；图标（AppIcon.icns、MenuBarIcon*.png）也只复制不生成：
+#   它们由 scripts/make-icons.sh 从 Resources/Icons/*.svg 生成并随仓库提交（ticket 17）；
+#   shell/ 原样复制到 Contents/Resources/shell/
 #   （安装 ccp 时把它复制到 ~/.cc-pilot/，见 shell/README.md 和 ticket 08）。
 
 emulate -R zsh
@@ -28,6 +30,7 @@ BUILD=$ROOT/build
 APP="$BUILD/$APP_NAME.app"
 PLIST=Resources/Info.plist
 ENTITLEMENTS=Resources/CCPilot.entitlements
+ICONS=(Resources/AppIcon.icns Resources/MenuBarIcon.png Resources/MenuBarIcon@2x.png)
 
 archs=($(uname -m))
 identity=-
@@ -76,6 +79,7 @@ mkdir -p -- "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Frame
 lipo -create $slices -output "$APP/Contents/MacOS/$EXECUTABLE"
 cp -- $PLIST "$APP/Contents/Info.plist"
 cp -R -- Resources/*.lproj "$APP/Contents/Resources/"
+cp -- $ICONS "$APP/Contents/Resources/"
 cp -R -- shell "$APP/Contents/Resources/shell"
 # App 不启用沙盒，用不到 Sparkle 的 XPC 服务，删掉以减小体积
 sparkle_fw="$APP/Contents/Frameworks/Sparkle.framework"

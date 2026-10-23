@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+  <!-- 菜单栏模板图：单色（黑色 + 透明），提示符为镂空；24×24 画布按 18pt 使用。
+       改完运行 ./scripts/make-icons.sh 重新生成 Resources/MenuBarIcon.pdf -->
+  <defs>
+    <mask id="cut" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24">
+      <rect width="24" height="24" fill="#fff"/>
+      <polyline points="6,12.6 8.4,14.5 6,16.4" fill="none" stroke="#000" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+      <line x1="10.2" y1="16.6" x2="13" y2="16.6" stroke="#000" stroke-width="1.6" stroke-linecap="round"/>
+    </mask>
+  </defs>
+  <g mask="url(#cut)">
+    <rect x="9" y="3.2" width="12" height="9.4" rx="2.4" fill="none" stroke="#000" stroke-width="1.6"/>
+    <rect x="3" y="8" width="13.4" height="11.4" rx="2.6" fill="#000"/>
+  </g>
+</svg>

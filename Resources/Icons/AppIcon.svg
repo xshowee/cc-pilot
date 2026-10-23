@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- App 图标（方案 A"双终端"）：64 像素及以上的尺寸用它，16、32 像素用 AppIcon-small.svg。
+       改完运行 ./scripts/make-icons.sh 重新生成 Resources/AppIcon.icns -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2E3549"/>
+      <stop offset="1" stop-color="#12151F"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feGaussianBlur stdDeviation="14"/>
+    </filter>
+  </defs>
+  <rect x="100" y="116" width="824" height="824" rx="186" fill="#000" opacity="0.22" filter="url(#shadow)"/>
+  <rect x="100" y="100" width="824" height="824" rx="186" fill="url(#bg)"/>
+  <rect x="318" y="244" width="460" height="350" rx="48" fill="#4B5573"/>
+  <rect x="246" y="380" width="460" height="350" rx="48" fill="#F5F0E6"/>
+  <circle cx="300" cy="430" r="12" fill="#CBC1B0"/>
+  <circle cx="338" cy="430" r="12" fill="#CBC1B0"/>
+  <circle cx="376" cy="430" r="12" fill="#CBC1B0"/>
+  <polyline points="318,520 392,574 318,628" fill="none" stroke="#E39B2E" stroke-width="36" stroke-linecap="round" stroke-linejoin="round"/>
+  <line x1="430" y1="636" x2="540" y2="636" stroke="#2E3549" stroke-width="36" stroke-linecap="round"/>
+</svg>

@@ -3,6 +3,7 @@
 // 画成 22pt 高的模板图（isTemplate），由系统按菜单栏的明暗着色。
 // 额度一行需要着色时（ticket 12）不能用模板图：档案名用 labelColor（绘制时按菜单栏明暗取色），
 // 额度用传入的颜色。
+// "只显示图标"模式用的图标（icon）也放在这里。
 
 import AppKit
 
@@ -10,6 +11,17 @@ import AppKit
 enum MenuBarImage {
     /// 档案名一行的最大宽度（pt），超出时中间截断
     static let maxWidth: CGFloat = 96
+
+    /// "只显示图标"模式的图标（ticket 17）：Resources/MenuBarIcon.png 与 @2x，18pt 的单色模板图，
+    /// 由系统按菜单栏明暗着色。由 scripts/make-icons.sh 从 Resources/Icons/MenuBarIcon.svg 生成。
+    /// 不在 App 包里运行（找不到资源）时退回 SF Symbol。
+    static let icon: NSImage = {
+        let image = Bundle.main.image(forResource: "MenuBarIcon")
+            ?? NSImage(systemSymbolName: "person.2.circle", accessibilityDescription: nil)
+            ?? NSImage()
+        image.isTemplate = true
+        return image
+    }()
 
     private static var cachedKey: [AnyHashable] = []
     private static var cachedImage: NSImage?

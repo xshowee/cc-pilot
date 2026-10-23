@@ -11,7 +11,8 @@ struct MenuBarLabel: View {
     var body: some View {
         Group {
             if iconOnly {
-                Image(systemName: "person.2.circle")
+                Image(nsImage: MenuBarImage.icon)
+                    .renderingMode(.template)
             } else {
                 let color = summary.quotaTint.nsColor
                 Image(nsImage: MenuBarImage.image(top: summary.profileName,

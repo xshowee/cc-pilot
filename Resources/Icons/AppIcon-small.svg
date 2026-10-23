@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- 16、32 像素用的简化版：布局与 AppIcon.svg 相同，去掉阴影和窗口圆点、提示符加粗，
+       以免缩小后糊成一团。改完运行 ./scripts/make-icons.sh -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2E3549"/>
+      <stop offset="1" stop-color="#12151F"/>
+    </linearGradient>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="186" fill="url(#bg)"/>
+  <rect x="318" y="244" width="460" height="350" rx="48" fill="#4B5573"/>
+  <rect x="246" y="380" width="460" height="350" rx="48" fill="#F5F0E6"/>
+  <polyline points="318,500 410,574 318,648" fill="none" stroke="#E39B2E" stroke-width="64" stroke-linecap="round" stroke-linejoin="round"/>
+  <line x1="456" y1="648" x2="570" y2="648" stroke="#2E3549" stroke-width="64" stroke-linecap="round"/>
+</svg>

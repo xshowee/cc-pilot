@@ -21,6 +21,7 @@
 | `scripts/build-app.sh` | 编译并组装 `build/CC Pilot.app`；release.sh 调用它。单独运行时是本机架构、ad-hoc 签名的开发构建 |
 | `scripts/fetch-sparkle.sh` | 首次运行时下载 Sparkle 2.10.0 到 `build/deps/` 并校验 SHA-256，之后不联网 |
 | `Resources/Info.plist` | 版本号、Sparkle 配置（更新地址、公钥、每天检查一次、默认开启、不上报系统信息）的唯一来源 |
+| `Resources/Icons/*.svg`、`scripts/make-icons.sh` | 图标源文件与重新生成命令；产物 `Resources/AppIcon.icns`、`Resources/MenuBarIcon*.png` 随仓库提交（见"图标"） |
 | `Sources/App/Updater.swift` | 面板设置菜单里的"检查更新…"与"自动检查更新" |
 | `Sources/Core/LaunchAtLogin.swift`、`Sources/App/LaunchAtLoginModel.swift` | "登录时启动"（`SMAppService.mainApp`，默认关闭） |
 
@@ -206,6 +207,31 @@ git push
 | 确认安装更新、下载过程中 | `github.com` 及其下载跳转到的 `*.githubusercontent.com`（DMG 附件） |
 
 更新说明嵌入在 appcast 里，Sparkle 不会再去请求别的页面；"查看完整更新说明"只会在你点击时用浏览器打开。
+
+## 图标
+
+源文件在 `Resources/Icons/`：
+
+| 源文件 | 产物 | 用途 |
+| --- | --- | --- |
+| `AppIcon.svg` | `Resources/AppIcon.icns` 中 64 像素及以上的尺寸 | App 图标（Finder、"应用程序"、DMG、"关于"、登录项） |
+| `AppIcon-small.svg` | `Resources/AppIcon.icns` 中 16、32 像素 | 同上的简化版：去掉阴影和窗口圆点、提示符加粗 |
+| `MenuBarIcon.svg` | `Resources/MenuBarIcon.png`（18 像素）、`MenuBarIcon@2x.png`（36 像素） | 菜单栏"只显示图标"的模板图（18pt，单色，系统按明暗着色） |
+
+改了 SVG 之后重新生成，并把源文件和产物一起提交：
+
+```zsh
+./scripts/make-icons.sh
+git add Resources/Icons Resources/AppIcon.icns Resources/MenuBarIcon.png Resources/MenuBarIcon@2x.png
+```
+
+脚本只用系统自带的 `swift`（`NSImage` 解析 SVG，见 `scripts/render-icons.swift`）和 `iconutil`，不联网。
+产物提交进仓库而不是构建时生成，因为 `build-app.sh` 只编译和复制、没有生成步骤，
+这样每次构建和发布用的都是同一份已审过的图标，不受构建机器上 SVG 渲染差异的影响。
+`Info.plist` 的 `CFBundleIconFile` 是 `AppIcon`。`tests/shell/test-app-icon.zsh` 检查尺寸齐全、构建产物里有图标，
+`tests/swift/AppIconChecks.swift` 检查菜单栏图只有黑色与透明度。
+
+Finder 和 Dock 会缓存图标。换了图标后如果看到的还是旧的，执行 `touch "/Applications/CC Pilot.app"`，再重新打开 Finder 窗口。
 
 ## 排查
 
