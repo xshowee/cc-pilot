@@ -67,25 +67,17 @@ struct TerminalLauncher {
 
     /// 在终端的新窗口里执行 command（一行 shell 命令）。阻塞，不要在主线程调用。
     func run(_ command: String) -> Outcome {
-        let process = Process()
-        process.executableURL = environment.osascript
-        process.arguments = Self.script.flatMap { ["-e", $0] } + [command]
-        process.environment = ["PATH": "/usr/bin:/bin:/usr/sbin:/sbin", "LANG": "en_US.UTF-8"]
-        let err = Pipe()
-        process.standardInput = FileHandle.nullDevice
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = err
+        let result: Subprocess.Result
         do {
-            try process.run()
+            result = try Subprocess.run(environment.osascript, Self.script.flatMap { ["-e", $0] } + [command],
+                                        environment: ["PATH": "/usr/bin:/bin:/usr/sbin:/sbin", "LANG": "en_US.UTF-8"])
         } catch {
             return .failed(String(describing: error))
         }
-        let errData = err.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        if process.terminationStatus == 0 { return .opened }
-        let message = String(decoding: errData, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        if result.status == 0 { return .opened }
+        let message = result.stderr
         if message.contains("(\(Permission.errAEEventNotPermitted))") { return .notAuthorized }
-        return .failed(message.isEmpty ? "osascript exited with status \(process.terminationStatus)" : message)
+        return .failed(message.isEmpty ? "osascript exited with status \(result.status)" : message)
     }
 
     /// AppleScript，每个元素一行（osascript -e）。命令从 argv 取。

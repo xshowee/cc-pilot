@@ -63,7 +63,7 @@ final class ShellIntegrationModel: ObservableObject {
 
             You can remove this line later from CC Pilot’s settings, or by running ccp uninstall.
             """)
-        alert.accessoryView = Self.lineView(ShellIntegration.zshrcLine)
+        alert.accessoryView = CommandTextView.make(ShellIntegration.zshrcLine, fontSize: NSFont.smallSystemFontSize)
         alert.addButton(withTitle: String(localized: "Add to ~/.zshrc"))
         alert.addButton(withTitle: String(localized: "Not Now"))
         NSApp.activate(ignoringOtherApps: true)
@@ -91,7 +91,7 @@ final class ShellIntegrationModel: ObservableObject {
             This removes the line below, the same as running ccp uninstall. \
             New terminal windows will no longer load cc-pilot; claude will run without profiles.
             """)
-        alert.accessoryView = Self.lineView(ShellIntegration.zshrcLine)
+        alert.accessoryView = CommandTextView.make(ShellIntegration.zshrcLine, fontSize: NSFont.smallSystemFontSize)
         alert.addButton(withTitle: String(localized: "Remove"))
         alert.addButton(withTitle: String(localized: "Cancel"))
         NSApp.activate(ignoringOtherApps: true)
@@ -113,16 +113,5 @@ final class ShellIntegrationModel: ObservableObject {
         alert.informativeText = text
         NSApp.activate(ignoringOtherApps: true)
         alert.runModal()
-    }
-
-    /// 等宽、可选中复制的一行文字
-    private static func lineView(_ line: String) -> NSView {
-        let field = NSTextField(labelWithString: line)
-        field.font = .monospacedSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
-        field.isSelectable = true
-        field.lineBreakMode = .byCharWrapping
-        field.preferredMaxLayoutWidth = 360
-        field.frame.size = field.fittingSize
-        return field
     }
 }

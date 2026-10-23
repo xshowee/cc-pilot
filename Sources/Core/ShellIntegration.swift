@@ -153,26 +153,13 @@ struct ShellIntegration {
 
     /// 以干净的环境运行 ccp：只有 HOME、PATH、LANG，标准输入为空（不会卡在询问上）。
     private func runCcp(_ ccp: URL, _ arguments: [String]) throws {
-        let process = Process()
-        process.executableURL = ccp
-        process.arguments = arguments
-        process.environment = [
+        let result = try Subprocess.run(ccp, arguments, environment: [
             "HOME": environment.home.path,
             "PATH": environment.searchPath,
             "LANG": "en_US.UTF-8",
-        ]
-        process.currentDirectoryURL = environment.home
-        let err = Pipe()
-        process.standardInput = FileHandle.nullDevice
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = err
-        try process.run()
-        let errData = err.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else {
-            throw CcpFailure(arguments: arguments, status: process.terminationStatus,
-                             message: String(decoding: errData, as: UTF8.self)
-                                .trimmingCharacters(in: .whitespacesAndNewlines))
+        ], currentDirectory: environment.home)
+        guard result.status == 0 else {
+            throw CcpFailure(arguments: arguments, status: result.status, message: result.stderr)
         }
     }
 }

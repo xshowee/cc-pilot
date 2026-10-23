@@ -111,7 +111,7 @@ final class ProfileActionsModel: ObservableObject {
 
             If you’d rather not allow it, copy the command and run it in a terminal yourself.
             """)
-        alert.accessoryView = Self.commandView(command)
+        alert.accessoryView = CommandTextView.make(command)
         alert.addButton(withTitle: String(localized: "Open Terminal"))
         alert.addButton(withTitle: String(localized: "Copy Command"))
         alert.addButton(withTitle: String(localized: "Cancel"))
@@ -140,7 +140,7 @@ final class ProfileActionsModel: ObservableObject {
             alert.informativeText = String(localized: "Copy the command below and run it in a terminal yourself.")
                 + "\n\n" + message
         }
-        alert.accessoryView = Self.commandView(command)
+        alert.accessoryView = CommandTextView.make(command)
         alert.addButton(withTitle: String(localized: "Copy Command"))
         if case .notAuthorized = reason {
             alert.addButton(withTitle: String(localized: "Open System Settings"))
@@ -159,16 +159,5 @@ final class ProfileActionsModel: ObservableObject {
     private static func copy(_ command: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(command, forType: .string)
-    }
-
-    /// 等宽、可选中复制的命令
-    private static func commandView(_ command: String) -> NSView {
-        let field = NSTextField(labelWithString: command)
-        field.font = .monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
-        field.isSelectable = true
-        field.lineBreakMode = .byCharWrapping
-        field.preferredMaxLayoutWidth = 360
-        field.frame.size = field.fittingSize
-        return field
     }
 }
