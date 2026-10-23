@@ -4,6 +4,8 @@
 // 钥匙串：`environment` 里的 security 一律是假的 tests/fakes/security（经 root/bin/security 包一层，
 // 带上本 TempHome 自己的 FAKE_SECURITY_DIR = root/security），检查程序绝不会调用真的 /usr/bin/security。
 // 用 `keychainItem(...)` 准备钥匙串项，用 `securityCalls()` 读取调用记录（格式见 tests/fakes/security）。
+//
+// 网络：`environment` 里的网络层一律是 `transport`（假的，见 FakeUsageTransport.swift），绝不访问真的网络。
 
 import Foundation
 
@@ -19,6 +21,10 @@ final class TempHome {
     let securityTool: URL
     /// 注入给 App 核心的"当前用户名"
     static let userName = "tester"
+    /// 注入给 App 核心的版本号（额度请求的 User-Agent 用它）
+    static let appVersion = "9.8.7-check"
+    /// 注入给 App 核心的假网络层，记录所有请求
+    let transport = FakeUsageTransport()
 
     init(homeName: String = "home dir") throws {
         let fm = FileManager.default
@@ -50,7 +56,8 @@ final class TempHome {
     }
 
     var environment: CoreEnvironment {
-        CoreEnvironment(home: url, security: securityTool, userName: Self.userName, securityTimeout: 10)
+        CoreEnvironment(home: url, security: securityTool, userName: Self.userName, securityTimeout: 10,
+                        transport: transport, appVersion: Self.appVersion)
     }
 
     var profilesRoot: URL { url.appendingPathComponent(".claude-profiles") }

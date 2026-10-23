@@ -3,7 +3,7 @@
 //
 // 扩展方式：新增一个带默认值的存储属性，并在 init 里加一个带默认值的参数，
 // 已有调用点（`CoreEnvironment()`、`CoreEnvironment(home:)`）不用改。
-// 预计的扩展：网络层（ticket 11）。当前时间不放在这里，由各方法的 `now` 参数传入。
+// 当前时间不放在这里，由各方法的 `now` 参数传入。
 //
 // 本目录（Sources/Core）只依赖 Foundation / CoreServices 等系统框架，不 import SwiftUI / AppKit。
 
@@ -18,19 +18,32 @@ struct CoreEnvironment {
     var userName: String
     /// 单次调用 security 的最长等待时间（秒）。超时视为出现了授权弹窗，按"版本不兼容"处理。
     var securityTimeout: TimeInterval
+    /// 网络层：App 核心只通过它访问额度接口。测试换成假的，绝不能让检查程序访问真的网络。
+    var transport: UsageTransport
+    /// App 版本号，额度请求的 User-Agent 写成 cc-pilot/<版本>
+    var appVersion: String
 
     init(home: URL = CoreEnvironment.userHome(),
          security: URL = URL(fileURLWithPath: "/usr/bin/security"),
          userName: String = NSUserName(),
-         securityTimeout: TimeInterval = 5) {
+         securityTimeout: TimeInterval = 5,
+         transport: UsageTransport = URLSessionUsageTransport.shared,
+         appVersion: String = CoreEnvironment.bundleVersion()) {
         self.home = home
         self.security = security
         self.userName = userName
         self.securityTimeout = securityTimeout
+        self.transport = transport
+        self.appVersion = appVersion
     }
 
     /// 真实环境
     static var live: CoreEnvironment { CoreEnvironment() }
+
+    /// Info.plist 里的版本号（CFBundleShortVersionString）；没有时（例如检查程序）为 "dev"
+    static func bundleVersion() -> String {
+        (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "dev"
+    }
 
     /// 用户主目录：优先用环境变量 HOME（Claude Code 的 os.homedir() 和 ccp 都以它为准），
     /// 没有时才用系统记录的主目录。从 Finder / launchd 启动时两者相同。
