@@ -9,7 +9,8 @@
 #   默认档案      ~/.claude（不设置 CLAUDE_CONFIG_DIR）
 #   其他档案      ~/.claude-profiles/<名字>/
 #   当前档案记录  ~/.claude-profiles/active，一行，档案名；不存在、为空或为 default 表示默认档案
-#   档案名规则    ^[A-Za-z0-9][A-Za-z0-9._-]*$，default 是保留名
+#   档案名规则    ^[A-Za-z0-9][A-Za-z0-9._-]*$，default 和 active 是保留名
+#                 （active 与当前档案记录文件同路径，不能用作档案目录）
 
 # 输出档案根目录的绝对路径：$HOME/.claude-profiles（去掉 HOME 结尾的 /）
 _ccp_profiles_root() {
@@ -29,6 +30,21 @@ _ccp_valid_name() {
   emulate -L zsh
   setopt extended_glob
   [[ $1 == [A-Za-z0-9][A-Za-z0-9._-]# ]]
+}
+
+# 是否为保留名：default（表示默认档案）和 active（当前档案记录文件占用了这个路径）。
+# 新建档案时，名字必须合规且不是保留名。
+_ccp_reserved_name() {
+  emulate -L zsh
+  [[ $1 == (default|active) ]]
+}
+
+# 输出默认档案的配置目录：$HOME/.claude（去掉 HOME 结尾的 /）。
+# 只用于定位默认档案里的文件；启动默认档案时不能把它设为 CLAUDE_CONFIG_DIR。
+_ccp_default_config_dir() {
+  emulate -L zsh
+  setopt extended_glob
+  print -r -- "${HOME%%/##}/.claude"
 }
 
 # 输出某个非默认档案的配置目录：$HOME/.claude-profiles/<名字>
