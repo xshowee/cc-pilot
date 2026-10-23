@@ -2,6 +2,70 @@
 # ccp current / ls / use：查看和切换当前档案（ticket 02）
 source "${0:A:h}/lib.zsh"
 
+# ---------- ccp ls ----------
+
+test_ls_without_profiles_lists_only_default_as_current() {
+  t_ccp ls
+  assert_rc 0
+  assert_stderr_empty
+  assert_eq "$T_OUT" "* default" "ccp ls"
+}
+
+test_ls_lists_default_first_then_sorted_profiles_and_marks_current() {
+  t_profile work personal Alpha
+  t_active personal
+  t_ccp ls
+  assert_rc 0
+  assert_stderr_empty
+  assert_eq "$T_OUT" "  default
+  Alpha
+* personal
+  work" "ccp ls"
+}
+
+test_ls_skips_record_temp_files_hidden_and_invalid_entries() {
+  t_profile work
+  t_active work
+  mkdir -p -- "$T_HOME/.claude-profiles/.hidden" "$T_HOME/.claude-profiles/a b" \
+    "$T_HOME/.claude-profiles/default"
+  : > "$T_HOME/.claude-profiles/.active.Ab12Cd"
+  : > "$T_HOME/.claude-profiles/plainfile"
+  mkdir -p -- "$T/elsewhere"
+  ln -s -- "$T/elsewhere" "$T_HOME/.claude-profiles/linked"
+  ln -s -- "$T/nowhere" "$T_HOME/.claude-profiles/dangling"
+  t_ccp ls
+  assert_rc 0
+  assert_eq "$T_OUT" "  default
+  linked
+* work" "ccp ls"
+}
+
+test_ls_shows_no_account_information() {
+  t_profile work
+  print -r -- '{"oauthAccount":{"emailAddress":"someone@example.com"}}' \
+    > "$T_HOME/.claude-profiles/work/.claude.json"
+  print -r -- '{"oauthAccount":{"emailAddress":"me@example.com"}}' > "$T_HOME/.claude.json"
+  t_ccp ls
+  assert_rc 0
+  [[ $T_OUT$T_ERR != *@* ]] || fail "ccp ls 不应显示账号信息"
+}
+
+test_ls_warns_when_current_profile_is_missing() {
+  t_profile work
+  t_active gone
+  t_ccp ls
+  assert_eq "$T_OUT" "  default
+  work" "ccp ls"
+  assert_contains "$T_ERR" gone "stderr 应提到不存在的当前档案"
+  assert_contains "$T_ERR" "ccp use default" "stderr 里应有修复建议"
+}
+
+test_ls_with_extra_argument_prints_usage() {
+  t_ccp ls -l
+  assert_rc 2
+  assert_contains "$T_ERR" "用法" "应输出用法说明"
+}
+
 # ---------- ccp current ----------
 
 test_current_without_record_prints_default() {
