@@ -6,7 +6,8 @@
 // - 切换同 `ccp use`（shell/lib/cmd-use.zsh）：内容是档案名加一个换行，UTF-8 无 BOM；
 //   切回默认档案时写入 "default\n"，不删除记录。原子写入：在同一目录下建临时文件
 //   .active.XXXXXX（mkstemp，权限 0600，与 mktemp 相同），写完后 rename 到 active。
-//   名字不合规、是保留名、档案目录不存在、或记录的位置是目录时拒绝，记录保持不变。
+//   名字不合规、是保留名、档案目录不存在（名字须与目录名逐字节相同）、或记录的位置是目录时拒绝，
+//   记录保持不变。
 //
 // 切换只写这一个文件：不读凭据、不联网，也不影响已在运行的会话。
 
@@ -35,7 +36,7 @@ struct CurrentProfileRecord {
         let fm = FileManager.default
         if name != ProfileName.defaultName {
             guard ProfileName.isProfileName(name) else { throw SwitchError.invalidName }
-            guard Self.isDirectory(paths.configDir(for: name)) else { throw SwitchError.profileMissing }
+            guard paths.profileDirectoryExists(name) else { throw SwitchError.profileMissing }
         }
         let record = paths.activeRecord.path
         // rename 到一个目录上会失败或把文件放进去（软链接指向目录时），ccp use 同样拒绝
@@ -91,7 +92,7 @@ struct CurrentProfileRecord {
     enum SwitchError: Error, Equatable {
         /// 名字不符合档案名规则，或是保留名 active
         case invalidName
-        /// ~/.claude-profiles/<名字>/ 不存在或不是目录
+        /// ~/.claude-profiles/<名字>/ 不存在或不是目录（名字须与目录名逐字节相同）
         case profileMissing
         /// ~/.claude-profiles/active 的位置是一个目录
         case recordIsDirectory

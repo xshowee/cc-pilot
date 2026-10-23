@@ -96,6 +96,8 @@ final class ProfileSwitchChecks: CheckSuite {
             ("", .invalidName), ("-x", .invalidName), (".hidden", .invalidName), ("a b", .invalidName),
             ("../work", .invalidName), ("ｗork", .invalidName), ("active", .invalidName),
             ("missing", .profileMissing), ("a-file", .profileMissing),
+            // 名字须与目录名逐字节相同（不分大小写的文件系统上 Work 也能找到 work 目录），与 ccp use 一致
+            ("Work", .profileMissing), ("WORK", .profileMissing),
         ]
         for (name, expected) in cases {
             do {

@@ -65,6 +65,39 @@ _ccp_profile_dir() {
   print -r -- "$(_ccp_profiles_root)/$1"
 }
 
+# 名为 $1 的档案目录是否存在：~/.claude-profiles/ 下有一个名字与 $1 逐字节相同的目录
+# （或指向目录的软链接）。macOS 的文件系统默认不分大小写，只用 [[ -d ]] 判断时 Work 也能找到
+# work 目录，但 CLAUDE_CONFIG_DIR 会是 .../Work，钥匙串 service 名随之不同，表现为未登录；
+# 所以档案名必须与目录名完全一致。不检查名字规则。
+_ccp_profile_exists() {
+  emulate -L zsh
+  local -a names
+  names=("$(_ccp_profiles_root)"/*(N-/:t))
+  (( ${names[(Ie)$1]} ))
+}
+
+# 与 $1 只差大小写的已有档案名（用于错误信息里的提示）；没有时什么都不输出
+_ccp_profile_case_variant() {
+  emulate -L zsh
+  setopt extended_glob
+  local -a names
+  names=("$(_ccp_profiles_root)"/*(N-/:t))
+  local n
+  for n in $names; do
+    [[ ${(L)n} == ${(L)1} && $n != "$1" ]] && { print -r -- "$n"; return 0 }
+  done
+  return 0
+}
+
+# 错误信息里"档案不存在"之后的补充：有只差大小写的档案时提醒档案名区分大小写
+_ccp_print_case_hint() {
+  emulate -L zsh
+  local variant
+  variant=$(_ccp_profile_case_variant "$1")
+  [[ -n $variant ]] && print -u2 -r -- "  档案名区分大小写：已有的档案是 \"$variant\"。"
+  return 0
+}
+
 # 输出当前档案记录中的档案名；记录不存在、不可读或为空时输出 default。
 # 只取第一行，去掉首尾空白（含 \r）。不校验名字是否合规。
 _ccp_active_name() {
@@ -106,8 +139,9 @@ _ccp_resolve_config_dir() {
   fi
 
   dir=$(_ccp_profile_dir "$name")
-  if [[ ! -d $dir ]]; then
+  if ! _ccp_profile_exists "$name"; then
     print -u2 -r -- "cc-pilot: ${origin}档案 \"$name\" 不存在（$dir）。"
+    _ccp_print_case_hint "$name"
     _ccp_print_fix_hint $source_kind
     return 1
   fi

@@ -71,6 +71,19 @@ test_missing_active_profile_fails_with_hint_and_does_not_run_claude() {
   assert_claude_calls 0
 }
 
+test_active_name_differing_only_in_case_counts_as_missing() {
+  # 只有 work 目录时，记录里的 Work 不能用：否则 CLAUDE_CONFIG_DIR 是 .../Work，钥匙串项对不上
+  t_profile work
+  t_active Work
+  t_claude
+  assert_rc_nonzero
+  assert_contains "$T_ERR" Work "错误信息里应有档案名"
+  assert_claude_calls 0
+  t_claude CLAUDE_PROFILE=Work
+  assert_rc_nonzero
+  assert_claude_calls 0
+}
+
 test_active_record_naming_a_non_directory_counts_as_missing() {
   # 内容为 active：拼出来的路径就是记录文件本身，不是档案目录；active 是保留名
   t_active active

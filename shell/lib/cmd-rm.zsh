@@ -12,7 +12,7 @@
 
 _ccp_cmd_rm() {
   emulate -L zsh
-  local name dir svc answer
+  local name dir svc answer active
   integer rc
 
   # 所有检查都放在确认、启动 Claude Code 和查询钥匙串之前
@@ -29,13 +29,17 @@ _ccp_cmd_rm() {
     print -u2 -r -- "ccp rm: 档案名 \"$name\" 不合规（只能包含字母、数字、. _ -，且以字母或数字开头）。"
     return 1
   fi
-  if [[ $name == "$(_ccp_active_name)" ]]; then
+  dir=$(_ccp_profile_dir "$name")
+  active=$(_ccp_active_name)
+  # 当前档案记录可能只与目录名差在大小写（手写或旧版本写入）：按是否同一个目录判断
+  if [[ $name == "$active" ]] \
+      || { [[ $active != default ]] && _ccp_valid_name "$active" && [[ $(_ccp_profile_dir "$active") -ef $dir ]] }; then
     print -u2 -r -- "ccp rm: \"$name\" 是当前档案，不能删除。请先用 \`ccp use <其他档案>\` 切换（例如 \`ccp use default\`）。"
     return 1
   fi
-  dir=$(_ccp_profile_dir "$name")
-  if [[ ! -d $dir ]]; then
+  if ! _ccp_profile_exists "$name"; then
     print -u2 -r -- "ccp rm: 档案 \"$name\" 不存在（$dir）。可以用 \`ccp ls\` 查看已有档案。"
+    _ccp_print_case_hint "$name"
     return 1
   fi
 

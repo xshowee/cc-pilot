@@ -46,10 +46,15 @@ struct ProfileCommands {
     }
 
     /// 删除入口是否可用：默认档案和当前档案不能删除，返回原因；可以删除时返回 nil。
-    /// currentProfile：当前档案名（CurrentProfileRecord.currentName()）
-    static func removalBlocker(profile: String, currentProfile: String) -> RemovalBlocker? {
+    /// currentProfile：当前档案名（CurrentProfileRecord.currentName()）。记录里的名字可能只与目录名
+    /// 差在大小写（手写或旧版本写入），所以与 ccp rm 一样，指向同一个目录也算当前档案。
+    func removalBlocker(profile: String, currentProfile: String) -> RemovalBlocker? {
         if profile == ProfileName.defaultName { return .defaultProfile }
         if profile == currentProfile { return .currentProfile }
+        if currentProfile != ProfileName.defaultName, ProfileName.isProfileName(currentProfile),
+           paths.sameProfileDirectory(profile, currentProfile) {
+            return .currentProfile
+        }
         return nil
     }
 

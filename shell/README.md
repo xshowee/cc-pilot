@@ -53,6 +53,8 @@ source "$HOME/.cc-pilot/cc-pilot.zsh"  # cc-pilot
 
 档案名必须符合 `^[A-Za-z0-9][A-Za-z0-9._-]*$`，`default` 和 `active` 是保留名（`active` 与当前档案记录同路径）。共享库里对应 `_ccp_valid_name`（只检查字符规则）、`_ccp_reserved_name`（保留名）和 `_ccp_invalid_name_reason`（错误信息里的原因）；可用作档案目录的名字要两者同时满足。
 
+档案名区分大小写：`ccp use`、`ccp rm`、包装函数（以及 App 的切换）都要求名字与 `~/.claude-profiles/` 下的目录名逐字节相同（`_ccp_profile_exists`）。macOS 的文件系统默认不分大小写，只用 `[[ -d ]]` 判断时 `Work` 也能找到 `work` 目录，但 `CLAUDE_CONFIG_DIR` 会变成 `.../Work`，钥匙串 service 名随之不同，表现为未登录。`ccp rm` 判断"是不是当前档案"时比较的是目录本身（`-ef`），所以记录里写的是 `Work` 时也删不掉 `work`。
+
 `ccp ls` 第一行总是 `default`，之后按字节序列出 `~/.claude-profiles/` 下名字合规的目录（含指向目录的软链接）；当前档案前面是 `* `，其他是两个空格。`ccp current` 只看当前档案记录，不看 `CLAUDE_PROFILE`。
 
 ## claude 包装函数的行为

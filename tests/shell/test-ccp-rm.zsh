@@ -231,6 +231,28 @@ test_current_profile_is_recognized_despite_whitespace_in_record() {
   assert_nothing_launched
 }
 
+test_current_profile_recorded_with_different_case_cannot_be_removed() {
+  # 记录里是 Work（手写或旧版本写入），磁盘上是 work：两者是同一个目录，仍是当前档案
+  t_profile_with_data work
+  t_active Work
+  t_stdin y
+  t_ccp -- rm work
+  assert_rc_nonzero
+  assert_contains "$T_ERR" 当前档案 "错误信息"
+  assert_profile_intact work
+  assert_nothing_launched
+}
+
+test_name_must_match_the_profile_directory_case_exactly() {
+  t_profile_with_data work
+  t_stdin y
+  t_ccp -- rm Work
+  assert_rc_nonzero
+  assert_contains "$T_ERR" 不存在 "错误信息"
+  assert_profile_intact work
+  assert_nothing_launched
+}
+
 test_missing_profile_fails() {
   t_profile_with_data personal
   t_stdin y

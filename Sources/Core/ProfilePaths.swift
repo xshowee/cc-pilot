@@ -31,4 +31,24 @@ struct ProfilePaths {
     func claudeJSON(for name: String) -> URL {
         URL(fileURLWithPath: configDir(for: name) + "/.claude.json")
     }
+
+    /// ~/.claude-profiles/ 下有没有名字与 name 逐字节相同的目录（跟随软链接，与 shell 的
+    /// _ccp_profile_exists 一致）。macOS 的文件系统默认不分大小写，只看路径是否存在时 Work 也能
+    /// 找到 work 目录，但 CLAUDE_CONFIG_DIR 会是 .../Work，钥匙串 service 名随之不同；所以按目录名比较。
+    /// 不检查名字规则。
+    func profileDirectoryExists(_ name: String) -> Bool {
+        guard let entries = try? FileManager.default.contentsOfDirectory(atPath: profilesRootPath),
+              entries.contains(where: { $0.utf8.elementsEqual(name.utf8) })
+        else { return false }
+        var isDir: ObjCBool = false
+        return FileManager.default.fileExists(atPath: configDir(for: name), isDirectory: &isDir) && isDir.boolValue
+    }
+
+    /// 两个档案名是否指向同一个目录（跟随软链接，比较设备号和 inode，与 shell 的 [[ a -ef b ]] 一致）。
+    /// 任一个不存在时为 false。
+    func sameProfileDirectory(_ a: String, _ b: String) -> Bool {
+        var sa = stat(), sb = stat()
+        guard stat(configDir(for: a), &sa) == 0, stat(configDir(for: b), &sb) == 0 else { return false }
+        return sa.st_dev == sb.st_dev && sa.st_ino == sb.st_ino
+    }
 }

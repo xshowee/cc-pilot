@@ -114,21 +114,26 @@ final class ProfileCommandChecks: CheckSuite {
     }
 
     static func removalBlockers() throws {
-        try expectEqual(ProfileCommands.removalBlocker(profile: "default", currentProfile: "work"), .defaultProfile)
-        try expectEqual(ProfileCommands.removalBlocker(profile: "default", currentProfile: "default"), .defaultProfile)
-        try expectEqual(ProfileCommands.removalBlocker(profile: "work", currentProfile: "work"), .currentProfile)
-        try expectEqual(ProfileCommands.removalBlocker(profile: "work", currentProfile: "default"), nil)
-        try expectEqual(ProfileCommands.removalBlocker(profile: "work", currentProfile: "personal"), nil)
-
-        // ccp rm 对同样的档案也拒绝，而且在确认之前就拒绝（不读标准输入、不启动 Claude Code）
         let home = try TempHome()
         defer { home.remove() }
         try home.makeProfileDir("work")
-        try home.write(".claude-profiles/active", "work\n")
-        for name in ["default", "work"] {
+        try home.makeProfileDir("personal")
+        let c = commands(home)
+        try expectEqual(c.removalBlocker(profile: "default", currentProfile: "work"), .defaultProfile)
+        try expectEqual(c.removalBlocker(profile: "default", currentProfile: "default"), .defaultProfile)
+        try expectEqual(c.removalBlocker(profile: "work", currentProfile: "work"), .currentProfile)
+        try expectEqual(c.removalBlocker(profile: "work", currentProfile: "default"), nil)
+        try expectEqual(c.removalBlocker(profile: "work", currentProfile: "personal"), nil)
+        // 当前档案记录只与目录名差在大小写（手写或旧版本写入）：在不分大小写的文件系统上是同一个目录
+        try expectEqual(c.removalBlocker(profile: "work", currentProfile: "Work"), .currentProfile)
+        try expectEqual(c.removalBlocker(profile: "work", currentProfile: "missing"), nil)
+
+        // ccp rm 对同样的档案也拒绝，而且在确认之前就拒绝（不读标准输入、不启动 Claude Code）
+        for (name, active) in [("default", "work"), ("work", "work"), ("work", "Work")] {
+            try home.write(".claude-profiles/active", active + "\n")
             let result = try ShellRun.run(home, [bundledCcp.path, "rm", name], extraEnvironment: fakeClaude(home),
                                           stdin: "y\n")
-            try expect(result.status != 0, "ccp rm \(name) 应被拒绝")
+            try expect(result.status != 0, "当前档案是 \(active) 时 ccp rm \(name) 应被拒绝")
         }
         try expect(!FileManager.default.fileExists(atPath: home.root.appendingPathComponent("claude-log").path),
                    "被拒绝时不应启动 Claude Code")

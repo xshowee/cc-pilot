@@ -45,9 +45,14 @@ final class ProfileActionsModel: ObservableObject {
 
     /// 打开终端执行 ccp rm（ccp 自己确认、引导登出）。默认档案和当前档案什么都不做。
     func remove(_ name: String, currentProfile: String) {
-        guard !isOpening, ProfileCommands.removalBlocker(profile: name, currentProfile: currentProfile) == nil
+        guard !isOpening, removalBlocker(profile: name, currentProfile: currentProfile) == nil
         else { return }
         open(commands.removeCommand(name), pending: .removing(name))
+    }
+
+    /// 删除入口是否可用（默认档案、当前档案不能删除，规则与 ccp rm 相同）
+    func removalBlocker(profile: String, currentProfile: String) -> ProfileCommands.RemovalBlocker? {
+        commands.removalBlocker(profile: profile, currentProfile: currentProfile)
     }
 
     /// 档案列表变化时调用：进行中的添加或删除完成了就清除

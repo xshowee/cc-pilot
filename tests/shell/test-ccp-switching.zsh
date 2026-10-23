@@ -211,6 +211,12 @@ test_use_rejects_a_file_that_looks_like_a_profile() {
   assert_use_rejected notadir "不存在"
 }
 
+test_use_name_must_match_the_profile_directory_case_exactly() {
+  # macOS 文件系统默认不分大小写：Work 也能找到 work 目录，但 CLAUDE_CONFIG_DIR 会变成 .../Work，
+  # 钥匙串 service 名随之不同（表现为未登录）。所以档案名按目录名逐字节比较。
+  assert_use_rejected Work "work"
+}
+
 test_use_accepts_profile_dir_reached_through_symlink() {
   # 与包装函数一致：档案目录本身是指向目录的软链接也算存在
   mkdir -p -- "$T/elsewhere"

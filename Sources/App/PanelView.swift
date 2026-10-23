@@ -35,8 +35,8 @@ struct PanelView: View {
                                 usage.refresh(profile, in: profiles.profiles)
                             },
                             onDelete: (
-                                blocker: ProfileCommands.removalBlocker(profile: profile.name,
-                                                                        currentProfile: current.name),
+                                blocker: actions.removalBlocker(profile: profile.name,
+                                                                currentProfile: current.name),
                                 action: { actions.remove(profile.name, currentProfile: current.name) }
                             )
                         ) {
