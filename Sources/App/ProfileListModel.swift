@@ -1,5 +1,6 @@
 // 档案列表的界面状态：启动时读一次，之后由 ProfileWatcher 在文件变化时触发重读。
 // 读文件在后台串行队列上做（~/.claude.json 可能有几 MB），结果回到主线程发布。
+// 每次重读都顺带用 LoginChecker 读取钥匙串、判定登录状态（只读，不联网；结果不含凭据）。
 
 import Foundation
 import SwiftUI
@@ -9,11 +10,13 @@ final class ProfileListModel: ObservableObject {
     @Published private(set) var profiles: [Profile] = []
 
     private let store: ProfileStore
+    private let loginChecker: LoginChecker
     private let loadQueue = DispatchQueue(label: "com.ccpilot.profile-load", qos: .userInitiated)
     private var watcher: ProfileWatcher?
 
     init(environment: CoreEnvironment = .live) {
         store = ProfileStore(environment: environment)
+        loginChecker = LoginChecker(environment: environment)
         let watcher = ProfileWatcher(environment: environment) { [weak self] in
             Task { @MainActor in self?.reload() }
         }
@@ -27,8 +30,9 @@ final class ProfileListModel: ObservableObject {
         generation += 1
         let request = generation
         let store = store
+        let loginChecker = loginChecker
         loadQueue.async { [weak self] in
-            let list = store.listProfiles()
+            let list = loginChecker.withLoginStates(store.listProfiles())
             Task { @MainActor in
                 guard let self, request == self.generation, list != self.profiles else { return }
                 self.profiles = list

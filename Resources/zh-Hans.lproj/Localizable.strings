@@ -15,6 +15,23 @@
 "Same account as %@" = "与 %@ 是同一账号";
 "list-separator" = "、";
 
+/* 登录状态（ticket 10） */
+"Signed in" = "已登录";
+"Needs renewal" = "待续期";
+"Needs to sign in again" = "需重新登录";
+"Usage not supported" = "不支持额度显示";
+"Incompatible with the current Claude Code version" = "与当前 Claude Code 版本不兼容";
+"Open claude in this profile once to restore it." = "打开一次该档案的 claude 即可恢复。";
+"Run /login in this profile’s claude to sign in again." = "在该档案的 claude 里执行 /login 重新登录。";
+"This sign-in method doesn’t support usage display." = "此登录方式不支持额度显示。";
+"Please update cc-pilot. If macOS asks for keychain access, don’t allow it." = "请更新 cc-pilot。如果系统弹窗请求访问钥匙串，请不要点“允许”。";
+"This profile is signed in, but its credentials weren’t found in the keychain." = "这个档案已登录，但钥匙串里找不到它的凭据。";
+"This profile is signed in, but its keychain item is empty." = "这个档案已登录，但它的钥匙串项是空的。";
+"The credentials in the keychain are in an unrecognized format." = "钥匙串里的凭据格式无法识别。";
+"Reading the keychain failed (security exit code %lld)." = "读取钥匙串失败（security 退出码 %lld）。";
+"The security tool couldn’t be started." = "无法启动 security 工具。";
+"Reading the keychain didn’t finish in time; a keychain access prompt may have appeared." = "读取钥匙串超时，可能弹出了钥匙串授权窗口。";
+
 /* 订阅等级（产品名，中文保持原样） */
 "Pro" = "Pro";
 "Max" = "Max";

@@ -1,4 +1,4 @@
-// 档案列表的一行：邮箱为主，档案名为副标题；再显示组织与订阅等级、是否与其他档案同一账号。
+// 档案列表的一行：邮箱为主，档案名为副标题；再显示组织与订阅等级、登录状态、是否与其他档案同一账号。
 
 import SwiftUI
 
@@ -11,11 +11,12 @@ struct ProfileRow: View {
             Text(verbatim: profile.name)
                 .font(.caption)
                 .foregroundColor(.secondary)
-            if let details = AccountText.details(profile.account.account) {
+            if let details = AccountText.details(for: profile) {
                 Text(verbatim: details)
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
+            LoginStatusLabel(status: profile.login?.status)
             if !profile.sameAccountAs.isEmpty {
                 Label {
                     Text("Same account as \(AccountText.joinedNames(profile.sameAccountAs))")

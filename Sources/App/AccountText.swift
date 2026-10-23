@@ -3,10 +3,10 @@
 import Foundation
 
 enum AccountText {
-    /// "组织 · 订阅等级"，两者都没有时为 nil
-    static func details(_ account: Account?) -> String? {
-        guard let account else { return nil }
-        let parts = [account.organizationName, account.tier.map(tierName)].compactMap { $0 }
+    /// "组织 · 订阅等级"，两者都没有时为 nil。订阅等级以凭据为准（见 Profile.displayTier）
+    static func details(for profile: Profile) -> String? {
+        guard let account = profile.account.account else { return nil }
+        let parts = [account.organizationName, profile.displayTier.map(tierName)].compactMap { $0 }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
