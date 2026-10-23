@@ -51,6 +51,13 @@ struct ShellIntegration {
             .contains { Data($0) == line }
     }
 
+    /// 面板是否要提示"未接入 zsh，切换不会对终端里的 claude 生效"（ticket 25）：面板切换只改写当前档案记录，
+    /// 真正读它的是 ~/.zshrc 接入的 claude 包装函数。available：App 带有内置的 shell/（不是从 .app 运行时
+    /// 为 false，既不能接入也不提示）；connected：最近一次读到的 isConnected。
+    static func showsNotConnectedHint(available: Bool, connected: Bool) -> Bool {
+        available && !connected
+    }
+
     /// 用户同意接入：安装（或更新）~/.cc-pilot/，再执行 ccp init --yes
     /// 已经接入时什么都不改（ccp init 保证只有一行）。
     func connect() throws {

@@ -70,6 +70,11 @@
 "Cancel" = "取消";
 "Couldn’t remove the line from ~/.zshrc" = "无法从 ~/.zshrc 删除接入行";
 
+/* 未接入 zsh 时面板顶部的提示（ticket 25） */
+"zsh isn’t set up, so switching here won’t affect claude in Terminal." = "未接入 zsh，这里的切换不会对终端里的 claude 生效。";
+"Set Up…" = "接入…";
+"Set up zsh so that claude in Terminal uses the profile selected here" = "接入 zsh，让终端里的 claude 使用这里选中的档案";
+
 /* 添加与删除档案（ticket 09） */
 "Add Profile…" = "添加档案…";
 "Profile name" = "档案名";

@@ -3,7 +3,8 @@
 //
 // - App 启动时（AppDelegate）调用 startup()：已安装过就静默更新到内置版本；首次运行先说明再询问。
 // - 用户回答过（同意或拒绝）就记在 UserDefaults 里，之后不再主动询问；拒绝后可从设置菜单重新发起。
-// - 设置菜单里的"接入 zsh…"/"移除 zsh 接入…"调用 connectWithConsent() / disconnectWithConfirmation()。
+// - 设置菜单里的"接入 zsh…"/"移除 zsh 接入…"调用 connectWithConsent() / disconnectWithConfirmation()；
+//   未接入时面板顶部的提示（ticket 25）也调用 connectWithConsent()。
 
 import AppKit
 import Foundation
@@ -13,7 +14,7 @@ final class ShellIntegrationModel: ObservableObject {
     /// UserDefaults 键：是否已经问过用户要不要接入（无论同意还是拒绝）
     static let askedKey = "shellIntegrationAsked"
 
-    /// ~/.zshrc 里是否有接入行（终端里也可能 ccp init / ccp uninstall，菜单打开时用 refresh() 重读）
+    /// ~/.zshrc 里是否有接入行（终端里也可能 ccp init / ccp uninstall，面板和菜单打开时用 refresh() 重读）
     @Published private(set) var isConnected = false
 
     private let integration: ShellIntegration?
@@ -31,6 +32,11 @@ final class ShellIntegrationModel: ObservableObject {
     }
 
     var isAvailable: Bool { integration != nil }
+
+    /// 面板顶部是否提示"未接入 zsh，切换不会对终端里的 claude 生效"（ticket 25；规则见 App 核心）
+    var showsNotConnectedHint: Bool {
+        ShellIntegration.showsNotConnectedHint(available: isAvailable, connected: isConnected)
+    }
 
     func refresh() {
         let latest = integration?.isConnected ?? false
