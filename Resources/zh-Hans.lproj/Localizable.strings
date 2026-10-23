@@ -1,0 +1,23 @@
+/*
+ 简体中文翻译。键是代码里的英文原文；SwiftUI 插值在键里写成 %@（字符串）或 %lld（整数）。
+ 新增界面文字时在这里加上对应的翻译，按功能分组，每组前写注释。
+*/
+
+/* 面板 */
+"Profiles" = "档案";
+"Quit CC Pilot" = "退出 CC Pilot";
+
+/* 档案列表 */
+"Not signed in" = "未登录";
+"Can’t read account info" = "无法读取账号资料";
+"This profile’s .claude.json can’t be opened." = "无法打开这个档案的 .claude.json。";
+"This profile’s .claude.json is damaged or in an unrecognized format." = "这个档案的 .claude.json 已损坏或格式无法识别。";
+"Same account as %@" = "与 %@ 是同一账号";
+"list-separator" = "、";
+
+/* 订阅等级（产品名，中文保持原样） */
+"Pro" = "Pro";
+"Max" = "Max";
+"Max %lldx" = "Max %lldx";
+"Team" = "Team";
+"Enterprise" = "Enterprise";
