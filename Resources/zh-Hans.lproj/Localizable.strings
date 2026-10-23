@@ -70,6 +70,30 @@
 "Cancel" = "取消";
 "Couldn’t remove the line from ~/.zshrc" = "无法从 ~/.zshrc 删除接入行";
 
+/* 添加与删除档案（ticket 09） */
+"Add Profile…" = "添加档案…";
+"Profile name" = "档案名";
+"Add" = "添加";
+"Use only letters, digits, “.”, “_” and “-”, starting with a letter or digit." = "只能包含字母、数字、“.”、“_”和“-”，且以字母或数字开头。";
+"“%@” is reserved and can’t be used as a profile name." = "“%@”是保留名，不能用作档案名。";
+"A profile named “%@” already exists." = "已有名为“%@”的档案。";
+"Terminal will open so you can sign in to the new profile." = "将打开终端，在里面登录新档案。";
+"Dismiss" = "关闭";
+"Sign in to “%@” in the Terminal window. It will show as signed in here when you’re done." = "请在终端窗口里登录“%@”。完成后这里会显示为已登录。";
+"Follow the steps in the Terminal window to sign out of and delete “%@”." = "请按终端窗口里的提示登出并删除“%@”。";
+"Delete “%@”…" = "删除“%@”…";
+"The default profile can’t be deleted" = "默认档案不能删除";
+"The current profile can’t be deleted. Switch to another profile first." = "当前档案不能删除，请先切换到其他档案。";
+"CC Pilot will open Terminal" = "CC Pilot 将打开终端";
+"To add or delete a profile, CC Pilot opens a new Terminal window and runs the command below there. macOS will ask whether CC Pilot may control Terminal; CC Pilot uses this only to run this command.\n\nIf you’d rather not allow it, copy the command and run it in a terminal yourself." = "添加或删除档案时，CC Pilot 会打开一个新的终端窗口，在里面执行下面这条命令。macOS 会询问是否允许 CC Pilot 控制“终端”；CC Pilot 只用它来执行这条命令。\n\n如果不想允许，可以复制这条命令，自己在终端里执行。";
+"Open Terminal" = "打开终端";
+"Copy Command" = "复制命令";
+"Couldn’t open Terminal" = "无法打开终端";
+"CC Pilot isn’t allowed to control Terminal. Copy the command below and run it in a terminal yourself.\n\nTo let CC Pilot open Terminal for you, turn on Terminal under CC Pilot in System Settings > Privacy & Security > Automation." = "CC Pilot 没有获得控制“终端”的授权。请复制下面这条命令，自己在终端里执行。\n\n如果希望 CC Pilot 替你打开终端，请在“系统设置 > 隐私与安全性 > 自动化”中，打开 CC Pilot 下的“终端”。";
+"Copy the command below and run it in a terminal yourself." = "请复制下面这条命令，自己在终端里执行。";
+"Open System Settings" = "打开系统设置";
+"Close" = "关闭";
+
 /* 额度（ticket 11） */
 "Refresh All" = "刷新全部";
 "Refresh usage for all accounts" = "刷新所有账号的额度";

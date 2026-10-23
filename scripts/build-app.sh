@@ -5,7 +5,9 @@
 #   默认只编译本机架构、ad-hoc 签名，只供本机运行；运行：open "build/CC Pilot.app"
 #   --universal         编译 arm64 + x86_64 并用 lipo 合并
 #   --sign <身份>        签名身份（证书名称或 SHA-1），默认 "-"（ad-hoc）
-#   --hardened-runtime  启用 hardened runtime（公证要求）；不附加任何 entitlements，不启用 App Sandbox
+#   --hardened-runtime  启用 hardened runtime（公证要求）；不启用 App Sandbox
+#   App 本体签名时附加 Resources/CCPilot.entitlements：只有 com.apple.security.automation.apple-events，
+#   hardened runtime 下发送 Apple 事件（添加/删除档案时让"终端"执行 ccp，ticket 09）需要它。
 #   --timestamp         签名带安全时间戳（公证要求，会访问 Apple 的时间戳服务）
 #   Sparkle 框架由 scripts/fetch-sparkle.sh 准备（首次下载到 build/deps/），嵌入 Contents/Frameworks/。
 #
@@ -25,6 +27,7 @@ EXECUTABLE=CCPilot
 BUILD=$ROOT/build
 APP="$BUILD/$APP_NAME.app"
 PLIST=Resources/Info.plist
+ENTITLEMENTS=Resources/CCPilot.entitlements
 
 archs=($(uname -m))
 identity=-
@@ -49,7 +52,7 @@ VERSION=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' $PLIST)
 }
 
 print -r -- "==> 检查资源文件"
-/usr/bin/plutil -lint -s $PLIST Resources/*.lproj/*.strings
+/usr/bin/plutil -lint -s $PLIST $ENTITLEMENTS Resources/*.lproj/*.strings
 
 SPARKLE=$(./scripts/fetch-sparkle.sh)
 
@@ -81,9 +84,10 @@ rm -rf -- "$sparkle_fw/XPCServices" "$sparkle_fw/Versions/B/XPCServices"
 
 print -r -- "==> 签名（${${identity:#-}:-ad-hoc}）"
 # hardened runtime 的库校验要求框架与 App 同一团队签名，所以由内向外重签 Sparkle
-for code in "$sparkle_fw/Versions/B/Autoupdate" "$sparkle_fw/Versions/B/Updater.app" "$sparkle_fw" "$APP"; do
+for code in "$sparkle_fw/Versions/B/Autoupdate" "$sparkle_fw/Versions/B/Updater.app" "$sparkle_fw"; do
   codesign --force $sign_opts --sign $identity "$code"
 done
+codesign --force $sign_opts --entitlements $ENTITLEMENTS --sign $identity "$APP"
 codesign --verify --deep --strict "$APP"
 
 print -r -- "完成：$APP"

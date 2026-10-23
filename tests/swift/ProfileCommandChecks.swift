@@ -14,6 +14,7 @@ final class ProfileCommandChecks: CheckSuite {
             Check("默认档案和当前档案的删除入口不可用，与 ccp rm 一致", removalBlockers),
             Check("删除命令：在终端里确认并登出后，档案从列表中消失", removeCommandDeletesLoggedOutProfile),
             Check("删除命令：仍在登录时 ccp rm 拒绝删除，档案留在列表里", removeCommandKeepsSignedInProfile),
+            Check("进行中的添加在新档案登录后结束，删除在档案消失后结束", pendingChangeFinishes),
         ]
     }
 
@@ -133,6 +134,26 @@ final class ProfileCommandChecks: CheckSuite {
                    "被拒绝时不应启动 Claude Code")
         try expect(FileManager.default.fileExists(atPath: home.profilesRoot.appendingPathComponent("work").path),
                    "当前档案 work 不应被删除")
+    }
+
+    static func pendingChangeFinishes() throws {
+        let home = try TempHome()
+        defer { home.remove() }
+        let store = ProfileStore(environment: home.environment)
+        let adding = ProfileCommands.PendingChange.adding("work")
+        let removing = ProfileCommands.PendingChange.removing("old")
+        try home.makeProfile("old", config: claudeConfig(uuid: "u-o", email: "o@example.com"))
+
+        try expectEqual(adding.isFinished(in: store.listProfiles()), false, "还没有档案目录")
+        try home.makeProfileDir("work")
+        try home.writeJSON(".claude-profiles/work/.claude.json", ["mcpServers": [String: Any]()])
+        try expectEqual(adding.isFinished(in: store.listProfiles()), false, "目录已建好、还没登录")
+        try home.writeJSON(".claude-profiles/work/.claude.json", claudeConfig(uuid: "u-w", email: "w@example.com"))
+        try expectEqual(adding.isFinished(in: store.listProfiles()), true, "登录后")
+
+        try expectEqual(removing.isFinished(in: store.listProfiles()), false, "档案还在")
+        try FileManager.default.removeItem(at: home.profilesRoot.appendingPathComponent("old"))
+        try expectEqual(removing.isFinished(in: store.listProfiles()), true, "档案目录删除后")
     }
 
     static func removeCommandDeletesLoggedOutProfile() throws {

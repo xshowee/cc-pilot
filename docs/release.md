@@ -7,7 +7,7 @@
 ```
 
 它依次执行：发布前检查 → universal 构建（arm64 + x86_64）→ Developer ID 签名（hardened runtime，带时间戳，
-不启用 App Sandbox，没有 entitlements）→ 公证并 staple App → 打包 `build/CCPilot-<版本>.dmg` →
+不启用 App Sandbox，只有发送 Apple 事件的 entitlement）→ 公证并 staple App → 打包 `build/CCPilot-<版本>.dmg` →
 签名、公证并 staple DMG → Gatekeeper 校验 → 用 Sparkle 的 `generate_appcast --account cc-pilot`
 把新版本加进仓库根目录的 `appcast.xml`（EdDSA 签名，更新说明嵌入其中）。
 
@@ -163,7 +163,7 @@ git push
    spctl --assess --type execute -vv "/Applications/CC Pilot.app"   # accepted, source=Notarized Developer ID
    xcrun stapler validate "/Applications/CC Pilot.app"              # The validate action worked!
    lipo -archs "/Applications/CC Pilot.app/Contents/MacOS/CCPilot"  # x86_64 arm64
-   codesign -d --entitlements - "/Applications/CC Pilot.app"        # 没有 entitlements（未启用 App Sandbox）
+   codesign -d --entitlements - "/Applications/CC Pilot.app"        # 只有 com.apple.security.automation.apple-events
    ```
 
 4. 签名后的版本里，读取凭据仍然正常：对一个已登录的档案点刷新，能显示额度，且不弹出钥匙串授权窗口

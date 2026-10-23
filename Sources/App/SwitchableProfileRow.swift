@@ -2,7 +2,8 @@
 // 当前档案用强调色背景、左侧色条和"当前"标记醒目地标出。
 // 已登录的档案右侧有刷新按钮，刷新这个档案所在账号的额度（放在切换按钮外面，点它不会切换）；
 // 频率限制的等待期内按钮不可用（ticket 12）。
-// 有额度详情（按模型细分的周窗口、超额付费）时，右侧还有展开按钮，展开后详情显示在行下方（ticket 13）。
+// 有额度详情（按模型细分的周窗口、超额付费）时，刷新按钮下方还有展开按钮，展开后详情显示在行下方（ticket 13）。
+// 鼠标移到行上时显示删除按钮（ticket 09，默认档案和当前档案不可用）；右键菜单里也有删除。
 
 import SwiftUI
 
@@ -15,6 +16,8 @@ struct SwitchableProfileRow: View {
     var isRefreshing = false
     /// 刷新这个档案所在账号的额度；档案未登录时为 nil（不显示按钮）
     var onRefresh: (() -> Void)? = nil
+    /// 删除入口：不能删除的原因（nil 表示可以删除）和删除动作；为 nil 时不显示删除入口
+    var onDelete: (blocker: ProfileCommands.RemovalBlocker?, action: () -> Void)? = nil
     let onSelect: () -> Void
 
     @State private var hovering = false
@@ -50,7 +53,7 @@ struct SwitchableProfileRow: View {
                             .labelStyle(.titleAndIcon)
                             .font(.caption.weight(.semibold))
                             .foregroundColor(.accentColor)
-                            .padding(.trailing, onRefresh == nil && !hasDetails ? 14 : 4)
+                            .padding(.trailing, onRefresh == nil && !hasDetails && onDelete == nil ? 14 : 4)
                     }
                 }
                 .contentShape(Rectangle())
@@ -69,7 +72,19 @@ struct SwitchableProfileRow: View {
                     }
                 }
                 .padding(.top, 8)
-                .padding(.trailing, 10)
+                .padding(.trailing, onDelete == nil ? 10 : 2)
+            }
+            if let onDelete {
+                DeleteProfileButton(profileName: profile.name, blocker: onDelete.blocker, action: onDelete.action)
+                    .opacity(hovering ? 1 : 0)
+                    .padding(.top, 8)
+                    .padding(.trailing, 10)
+            }
+        }
+        .contextMenu {
+            if let onDelete {
+                Button("Delete “\(profile.name)”…", action: onDelete.action)
+                    .disabled(onDelete.blocker != nil)
             }
         }
     }

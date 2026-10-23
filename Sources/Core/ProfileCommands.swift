@@ -53,6 +53,29 @@ struct ProfileCommands {
         return nil
     }
 
+    /// 已在终端里开始、还没完成的添加或删除。App 不知道终端里发生了什么，只看档案列表：
+    /// 列表由 ProfileWatcher 在文件变化时重读，这里据此判断是否已经完成。
+    enum PendingChange: Equatable {
+        case adding(String)
+        case removing(String)
+
+        var profileName: String {
+            switch self {
+            case .adding(let name), .removing(let name): return name
+            }
+        }
+
+        /// 添加：新档案出现且 .claude.json 里有了账号资料（已登录）。删除：档案从列表中消失。
+        /// ccp rm 拒绝删除时档案一直在列表里，删除就一直不算完成。
+        func isFinished(in profiles: [Profile]) -> Bool {
+            let profile = profiles.first { $0.name == profileName }
+            switch self {
+            case .adding: return profile?.account.account != nil
+            case .removing: return profile == nil
+            }
+        }
+    }
+
     // MARK: 交给终端执行的命令
 
     /// 新建档案：在终端里执行的一行命令（ccp add 会创建档案并进入它的 Claude Code 登录）

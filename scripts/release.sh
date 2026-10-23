@@ -7,7 +7,8 @@
 # 产物：build/CC Pilot.app、build/CCPilot-<版本>.dmg、appcast.xml。上传与推送由用户手动完成，
 # 完整步骤见 docs/release.md。
 #
-# 不启用 App Sandbox，没有 entitlements。
+# 不启用 App Sandbox；
+# 唯一的 entitlement 是发送 Apple 事件（见 scripts/build-app.sh）。
 #
 # 环境变量：
 #   CCP_TEAM_ID             签名所属团队

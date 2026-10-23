@@ -37,7 +37,7 @@ test_public_key_placeholder_is_the_same_everywhere() {
     fail "Updater.swift 的占位值与测试不一致"
 }
 
-test_app_sandbox_is_not_enabled() {
+test_app_sandbox_is_not_enabled_and_only_apple_events_entitlement() {
   # spec：App 通过子进程调用 /usr/bin/security 读凭据，不能启用 App Sandbox
   local -a entitlements
   entitlements=($ROOT/**/*.entitlements(N))
@@ -45,7 +45,16 @@ test_app_sandbox_is_not_enabled() {
   for f in $entitlements; do
     [[ $(< $f) != *com.apple.security.app-sandbox* ]] || fail "$f 启用了 App Sandbox"
   done
-  [[ $(< $ROOT/scripts/build-app.sh) != *--entitlements* ]] || fail "build-app.sh 不应附加 entitlements"
+  # App 本体唯一的 entitlement 是发送 Apple 事件（ticket 09：让"终端"执行 ccp add / ccp rm）
+  local ent=$ROOT/Resources/CCPilot.entitlements
+  [[ $(/usr/libexec/PlistBuddy -c Print $ent) == $'Dict {\n    com.apple.security.automation.apple-events = true\n}' ]] ||
+    fail "$ent 应只有 com.apple.security.automation.apple-events"
+  local -a uses
+  uses=(${(M)${(f)"$(< $ROOT/scripts/build-app.sh)"}:#*--entitlements*})
+  [[ ${#uses} == 1 && $uses[1] == *'--entitlements $ENTITLEMENTS '* ]] ||
+    fail "build-app.sh 只应在签 App 本体时附加 \$ENTITLEMENTS"
+  [[ $(< $ROOT/scripts/build-app.sh) == *$'\nENTITLEMENTS=Resources/CCPilot.entitlements\n'* ]] ||
+    fail "build-app.sh 的 ENTITLEMENTS 应指向 Resources/CCPilot.entitlements"
 }
 
 t_main "$@"

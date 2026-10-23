@@ -73,7 +73,7 @@ fi
 #    但要保证它能按最低系统版本编译，资源文件格式正确。完整构建用 scripts/build-app.sh。
 typeset -a app_sources resource_files
 app_sources=(Sources/App/*.swift)
-resource_files=(Resources/Info.plist Resources/*.lproj/*.strings)
+resource_files=(Resources/Info.plist Resources/*.entitlements Resources/*.lproj/*.strings)
 if (( ${#app_sources} )); then
   step "App 类型检查（macOS $(/usr/libexec/PlistBuddy -c 'Print LSMinimumSystemVersion' Resources/Info.plist)+）"
   CHECK_BUILD=$ROOT/.build/checks
