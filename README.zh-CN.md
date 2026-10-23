@@ -126,8 +126,8 @@ CLAUDE_PROFILE=work claude   # 只在这一次、这个终端里临时使用 wor
 | `ccp ls` | 列出所有档案，当前档案前面标 `*`。第一行总是 `default`。 |
 | `ccp current` | 只输出当前档案的名字，方便在脚本或提示符里使用。只看当前档案，不看 `CLAUDE_PROFILE`。 |
 | `ccp use <名字>` | 切换当前档案；`ccp use default` 切回默认档案。只影响之后新启动的会话。 |
-| `ccp add <名字>` | 新建档案，并直接进入它的 Claude Code 完成首次引导和登录。不改变当前档案。 |
-| `ccp rm <名字>` | 删除档案：先请你确认，然后打开该档案的 Claude Code，请你在里面执行 `/logout` 并退出；确认已经登出后才删除。默认档案和当前档案不能删除。 |
+| `ccp add <名字>` | 新建档案，并直接进入它的 Claude Code 完成首次引导和登录。不改变当前档案。Claude Code 在档案目录里的专用空目录 `.ccp-workdir` 中启动，而不是在你的当前目录；如果它询问是否信任这个目录，放心选 Yes，之后对这个档案执行 `ccp rm` 时不会再问。 |
+| `ccp rm <名字>` | 删除档案：先请你确认，然后打开该档案的 Claude Code，请你在里面执行 `/logout` 并退出；确认已经登出后才删除。默认档案和当前档案不能删除。Claude Code 同样在档案的 `.ccp-workdir` 中启动，删除档案时一并删除。 |
 | `ccp init [--yes]` | 接入 zsh：征得同意后在 `~/.zshrc` 末尾加上接入行；`--yes` 不询问。已经接入时什么都不改。 |
 | `ccp uninstall` | 从 `~/.zshrc` 里删除 `ccp init` 加的那一行，其他内容不动。 |
 

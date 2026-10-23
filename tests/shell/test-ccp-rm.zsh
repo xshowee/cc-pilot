@@ -111,6 +111,69 @@ test_config_dir_is_normalized_even_if_home_ends_with_slash() {
   assert_claude_config_dir "$T_HOME/.claude-profiles/work"
 }
 
+# ---------- Claude Code 的工作目录（ticket 21） ----------
+
+test_claude_starts_in_neutral_dir_when_run_from_home() {
+  t_profile_with_data work
+  t_stdin y
+  t_ccp_in "$T_HOME" rm work
+  assert_rc 0
+  assert_claude_in_neutral_dir work "$T_HOME" > /dev/null
+  [[ ! -e $T_HOME/.claude-profiles/work ]] || fail "档案目录（连同工作目录）应已删除"
+}
+
+test_claude_starts_in_neutral_dir_when_run_from_a_project_dir() {
+  t_profile_with_data work
+  mkdir -p -- "$T/project/.claude" || exit 1
+  t_stdin y
+  t_ccp_in "$T/project" rm work
+  assert_rc 0
+  assert_claude_in_neutral_dir work "$T/project" > /dev/null
+}
+
+test_uses_the_same_dir_as_add_so_trust_is_asked_at_most_once() {
+  # Claude Code 按路径记住信任：add 时信任过的目录，rm 时就不会再问
+  t_ccp_in "$T_HOME" add work
+  assert_rc 0
+  local add_cwd
+  add_cwd=$(assert_claude_in_neutral_dir work "$T_HOME")
+  t_stdin y
+  t_ccp_in "$T_HOME" rm work
+  assert_rc 0
+  assert_eq "$(assert_claude_in_neutral_dir work "$T_HOME")" "$add_cwd" "rm 与 add 的工作目录"
+}
+
+test_neutral_dir_is_empty_when_claude_starts() {
+  t_profile_with_data work
+  t_stdin y
+  t_ccp_in "$T_HOME" FAKE_CLAUDE_HOOK='print -rl -- *(DN) > "$FAKE_CLAUDE_LOG_DIR/cwd-entries"' -- rm work
+  assert_rc 0
+  assert_eq "$(< $T_CLAUDE_LOG/cwd-entries)" "" "claude 启动时工作目录里的内容"
+}
+
+test_refused_removal_leaves_nothing_outside_the_profile_dir() {
+  t_profile_with_data work
+  t_keychain_item "$(service_for "$T_HOME/.claude-profiles/work")" tester secret
+  mkdir -p -- "$T/tmp" || exit 1
+  local before
+  before=$(outside_profile_snapshot work)
+  t_stdin y
+  t_ccp_in "$T_HOME" TMPDIR=$T/tmp -- rm work
+  assert_rc_nonzero
+  assert_profile_intact work
+  assert_eq "$(outside_profile_snapshot work)" "$before" "档案目录之外不应有变化"
+}
+
+test_explains_that_trusting_the_neutral_dir_is_safe() {
+  t_profile_with_data work
+  t_stdin y
+  t_ccp_in "$T_HOME" rm work
+  assert_rc 0
+  assert_contains "$T_OUT" "信任" "应说明 Claude Code 可能询问是否信任"
+  assert_contains "$T_OUT" "Yes" "应说明可以放心选 Yes"
+  assert_contains "$T_OUT" "$T_HOME/.claude-profiles/work/" "说明里应有工作目录的路径"
+}
+
 test_queries_keychain_for_the_profile_service_without_reading_password() {
   t_profile_with_data work
   t_stdin y

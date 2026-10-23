@@ -3,7 +3,8 @@
 #
 # 流程（spec "ccp 命令 / rm"）：
 #   1. 请用户确认（从标准输入读一行，y / yes 才继续；其他回答或读不到都算拒绝）。
-#   2. 直接设置 CLAUDE_CONFIG_DIR 启动该档案的 Claude Code，等用户在里面 /logout 并退出。
+#   2. 直接设置 CLAUDE_CONFIG_DIR 启动该档案的 Claude Code（工作目录见 lib/launch.zsh），
+#      等用户在里面 /logout 并退出。
 #   3. 用 _ccp_service_name 算出该档案的钥匙串 service 名，
 #      用 `security find-generic-password -s <service>` 检查钥匙串项是否还存在。
 #      不带 -w：只判断是否存在，不读取凭据内容。
@@ -56,7 +57,9 @@ _ccp_cmd_rm() {
   fi
 
   print -r -- "接下来会打开档案 \"$name\" 的 Claude Code：请在里面执行 /logout，然后退出。"
-  CLAUDE_CONFIG_DIR=$dir command claude
+  # 在档案目录里的专用空目录中启动（见 lib/launch.zsh）。不看 claude 的退出码，也不看工作目录
+  # 是否建立成功：能否删除只由下面的钥匙串检查决定。
+  _ccp_launch_profile_claude rm "$dir"
 
   security find-generic-password -s "$svc" >/dev/null 2>&1
   rc=$?

@@ -41,9 +41,8 @@ _ccp_cmd_add() {
 
   print -r -- "已创建档案 \"$name\"（$dir）。"
   print -r -- "正在进入这个档案的 Claude Code，请完成首次引导和登录，完成后退出即可。"
-  # ccp 是独立的脚本进程，没有加载 claude 包装函数，CLAUDE_PROFILE 在这里不起作用：
-  # 必须直接把这个档案的配置目录设为 CLAUDE_CONFIG_DIR（覆盖环境里已有的值）。
-  CLAUDE_CONFIG_DIR=$dir command claude
+  # 在档案目录里的专用空目录中启动（见 lib/launch.zsh），不在调用者的当前目录
+  _ccp_launch_profile_claude add "$dir"
 }
 
 # ---------- .claude.json 的初始值 ----------

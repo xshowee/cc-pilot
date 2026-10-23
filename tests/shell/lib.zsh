@@ -11,7 +11,7 @@
 #               其中 $T_HOME/.cc-pilot/ 是仓库 shell/ 目录的原样复制（即安装后的布局）
 #   $T_CLAUDE_LOG  假 claude 的记录目录
 #   $T_SECURITY    假 security 的钥匙串内容和调用记录（即 FAKE_SECURITY_DIR，格式见 tests/fakes/security）
-# 被测程序一律通过 t_run / t_claude / t_zsh / t_ccp 启动：`env -i` 清空环境，
+# 被测程序一律通过 t_run / t_claude / t_zsh / t_ccp / t_ccp_in 启动：`env -i` 清空环境，
 # PATH 最前面是 tests/fakes/（假 claude、假 security），然后才是 /usr/bin:/bin:/usr/sbin:/sbin。
 # 标准输入默认是 /dev/null；用 t_stdin 准备输入（例如回答确认提示）。
 # 运行结果在 $T_OUT、$T_ERR、$T_RC 里。
@@ -101,6 +101,19 @@ t_ccp() {
   while [[ ${1-} == [A-Za-z_][A-Za-z0-9_]#=* ]]; do extra+=("$1"); shift; done
   [[ ${1-} == -- ]] && shift
   t_run "${extra[@]}" -- "$T_HOME/.cc-pilot/bin/ccp" "$@"
+}
+
+# t_ccp_in 目录 [VAR=值 ...] [--] 参数...
+# 先在一个新的 zsh 里 cd 到这个目录（模拟用户在这里输入命令；App 打开的终端里是 ~），
+# 再执行已安装的 ccp。ccp 结束后，这个 shell（调用者）的当前目录写进 $T/caller-pwd。
+t_ccp_in() {
+  local dir=$1; shift
+  local -a extra
+  while [[ ${1-} == [A-Za-z_][A-Za-z0-9_]#=* ]]; do extra+=("$1"); shift; done
+  [[ ${1-} == -- ]] && shift
+  t_run CALLER_PWD_FILE=$T/caller-pwd "${extra[@]}" -- /bin/zsh -f -c \
+    'cd -- "$1" || exit 97; shift; "$HOME/.cc-pilot/bin/ccp" "$@"; rc=$?
+     print -r -- "$PWD" > "$CALLER_PWD_FILE"; exit $rc' _ "$dir" "$@"
 }
 
 # ---------- 读取假 claude 的记录 ----------
@@ -206,6 +219,27 @@ assert_claude_args() {  # 期望的参数...（最后一次调用）
   for (( i = 1; i <= $#; i++ )); do
     assert_eq "${reply[i]}" "${@[i]}" "第 $i 个参数"
   done
+}
+
+# ---------- ccp add / rm 启动 Claude Code 的工作目录（ticket 21） ----------
+
+# 断言最后一次 claude 是在档案 $1 目录里的某个子目录中启动的，且不是调用者所在的目录 $2；
+# 调用者 shell 的当前目录仍是 $2。输出 claude 的工作目录。
+assert_claude_in_neutral_dir() {  # 档案名 调用者所在目录
+  local cwd profile=${T_HOME}/.claude-profiles/$1
+  cwd=$(claude_field cwd) || fail "假 claude 没有记录工作目录"
+  [[ $cwd == ${profile:A}/?* ]] || fail "claude 应在档案目录 $profile 里的子目录中启动，实际是 [$cwd]"
+  assert_ne "$cwd" "${2:A}" "claude 的工作目录不应是调用者所在的目录"
+  assert_ne "$cwd" "${T_HOME:A}" "claude 的工作目录不应是 ~"
+  assert_eq "$(< $T/caller-pwd)" "$2" "调用者 shell 的当前目录"
+  print -r -- "$cwd"
+}
+
+# 临时 HOME 和测试临时目录 $T/tmp 下，除档案 $1 的目录和安装目录以外每一项的路径和类型
+# （不比较目录的大小和修改时间：新建档案目录本身会改变档案根目录的这两项）
+outside_profile_snapshot() {  # 档案名
+  /usr/bin/find "$T_HOME" "$T/tmp" \( -path "$T_HOME/.cc-pilot" -o -path "$T_HOME/.claude-profiles/$1" \) -prune \
+    -o -print0 | /usr/bin/xargs -0 /usr/bin/stat -f '%N|%HT' | /usr/bin/sort
 }
 
 # ---------- 运行 ----------

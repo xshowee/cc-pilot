@@ -3,6 +3,8 @@
 source "${0:A:h}/lib.zsh"
 
 typeset -ga SHARED_ITEMS=(settings.json CLAUDE.md skills agents commands plugins projects)
+# 启动 Claude Code 用的专用空目录（ticket 21），也在档案目录里
+WORKDIR=.ccp-workdir
 
 # 输出一个 JSON 文件的紧凑形式（保持键的顺序），用来和手写的期望值比较。只用 macOS 自带的 JXA。
 json_canon() {
@@ -53,7 +55,7 @@ test_new_profile_has_only_shared_links_and_its_own_claude_json() {
   t_ccp -- add work
   assert_rc 0
   assert_eq "$(dir_entries "$T_HOME/.claude-profiles/work")" \
-    "$(print -rl -- .claude.json $SHARED_ITEMS | sort)" "新档案目录的内容"
+    "$(print -rl -- .claude.json $WORKDIR $SHARED_ITEMS | sort)" "新档案目录的内容"
 }
 
 # ---------- .claude.json 的初始值 ----------
@@ -104,7 +106,7 @@ assert_created_without_initial_values() {  # 档案名
   [[ -d $dir ]] || fail "仍应创建档案目录"
   [[ -L $dir/settings.json ]] || fail "仍应建立共享资源的软链接"
   [[ ! -e $dir/.claude.json && ! -L $dir/.claude.json ]] || fail "不应写入 .claude.json"
-  assert_eq "$(dir_entries $dir)" "$(print -rl -- $SHARED_ITEMS | sort)" "档案目录里不应留下临时文件"
+  assert_eq "$(dir_entries $dir)" "$(print -rl -- $WORKDIR $SHARED_ITEMS | sort)" "档案目录里不应留下临时文件"
   assert_contains "$T_ERR" ".claude.json" "应提示没有复制初始值"
   assert_claude_calls 1
 }
@@ -165,6 +167,60 @@ test_profile_is_kept_when_claude_exits_with_error() {
   t_ccp FAKE_CLAUDE_EXIT=3 -- add work
   assert_rc 3
   [[ -L $T_HOME/.claude-profiles/work/settings.json ]] || fail "档案应保留"
+}
+
+# ---------- Claude Code 的工作目录（ticket 21） ----------
+# 在 ~ 或调用者的项目目录里启动会先弹出针对该目录的信任询问（默认选项是退出），
+# 所以 claude 要在档案目录里一个固定的空目录中启动。
+
+# 档案 $1 的工作目录（未解析软链接的写法，与 ccp 输出的路径一致）
+_ccp_test_workdir() {
+  print -r -- "$T_HOME/.claude-profiles/$1/$WORKDIR"
+}
+
+test_claude_starts_in_neutral_dir_when_run_from_home() {
+  prepare_typical_home
+  t_ccp_in "$T_HOME" add work
+  assert_rc 0
+  assert_claude_in_neutral_dir work "$T_HOME" > /dev/null
+}
+
+test_claude_starts_in_neutral_dir_when_run_from_a_project_dir() {
+  prepare_typical_home
+  mkdir -p -- "$T/project/.claude" || exit 1
+  t_ccp_in "$T/project" add work
+  assert_rc 0
+  assert_claude_in_neutral_dir work "$T/project" > /dev/null
+}
+
+test_neutral_dir_is_empty_when_claude_starts() {
+  # 空目录：没有项目设置（.claude/）、CLAUDE.md 或其他文件；记录 claude 启动时看到的内容
+  prepare_typical_home
+  t_ccp_in "$T_HOME" FAKE_CLAUDE_HOOK='print -rl -- *(DN) > "$FAKE_CLAUDE_LOG_DIR/cwd-entries"' -- add work
+  assert_rc 0
+  assert_eq "$(< $T_CLAUDE_LOG/cwd-entries)" "" "claude 启动时工作目录里的内容"
+}
+
+test_leaves_nothing_outside_the_profile_dir() {
+  # 档案根目录事先存在；临时目录也换成测试里的，一并检查
+  prepare_typical_home
+  mkdir -p -- "$T_HOME/.claude-profiles" "$T/tmp" || exit 1
+  local before
+  before=$(outside_profile_snapshot work)
+  t_ccp_in "$T_HOME" TMPDIR=$T/tmp -- add work
+  assert_rc 0
+  assert_eq "$(outside_profile_snapshot work)" "$before" "档案目录之外不应有变化"
+}
+
+test_explains_that_trusting_the_neutral_dir_is_safe() {
+  prepare_typical_home
+  t_ccp_in "$T_HOME" add work
+  assert_rc 0
+  local cwd
+  cwd=$(assert_claude_in_neutral_dir work "$T_HOME")
+  assert_contains "$T_OUT" "信任" "应说明 Claude Code 可能询问是否信任"
+  assert_contains "$T_OUT" "Yes" "应说明可以放心选 Yes"
+  [[ $T_OUT == *"$(_ccp_test_workdir work)"* ]] || fail "说明里应有工作目录的路径：$T_OUT"
 }
 
 # ---------- 拒绝的情况：报错、非零退出、不修改任何文件 ----------

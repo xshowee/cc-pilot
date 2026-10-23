@@ -12,6 +12,7 @@
     ├── profiles.zsh    共享库：档案目录、当前档案记录、档案名规则、档案解析
     ├── keychain.zsh    共享库：钥匙串 service 名计算 _ccp_service_name
     ├── zshrc.zsh       共享库（只给 ccp 用）：~/.zshrc 的接入行与读写辅助
+    ├── launch.zsh      共享库（只给 ccp 用）：以某个档案启动 Claude Code（ccp add / rm）
     └── cmd-<命令>.zsh  ccp 每个子命令一个文件，定义 _ccp_cmd_<命令>
 ```
 
@@ -70,16 +71,28 @@ source "$HOME/.cc-pilot/cc-pilot.zsh"  # cc-pilot
 
 ## ccp add 建立的档案
 
-`ccp add <名字>` 在 `~/.claude-profiles/<名字>/` 里只放两类东西：
+`ccp add <名字>` 在 `~/.claude-profiles/<名字>/` 里只放三类东西：
 
 - 共享资源的软链接：`settings.json`、`CLAUDE.md`、`skills`、`agents`、`commands`、`plugins`、`projects`，各自指向 `~/.claude/` 中的同名项（绝对路径；默认档案里还没有的项也照建）。清单和建立方式集中在 `cmd-add.zsh` 的 `_ccp_shared_resources` / `_ccp_share_resources`，单个文件改用复制时只改这两个函数。
 - `.claude.json`：只含默认档案 `~/.claude.json`（不在 `~/.claude/` 里）的 `mcpServers` 和 `projects` 两个字段，用 JXA 原样复制。默认档案的 `.claude.json` 不存在或无法解析时不写这个文件，只给出提示。
+- `.ccp-workdir/`：启动 Claude Code 用的空目录（见下面"启动 Claude Code 的工作目录"）。
 
 然后以 `CLAUDE_CONFIG_DIR=<档案目录>` 直接启动 `claude`（不经过包装函数，也不看 `CLAUDE_PROFILE`），不改变当前档案。
 
+## 启动 Claude Code 的工作目录（`ccp add` / `ccp rm`）
+
+两者都通过 `lib/launch.zsh` 的 `_ccp_launch_profile_claude` 启动 `claude`：在子 shell 里 cd 到 `<档案目录>/.ccp-workdir`（不存在时建立，只建这一层）再启动，调用者的当前目录不变。不在调用者的当前目录启动，是因为：
+
+- Claude Code 第一次在某个目录里启动时会询问是否信任它（"Accessing workspace"，默认选项是退出），结果按绝对路径记在**各档案自己的** `.claude.json` 的 `projects` 里。新档案没有信任过调用者的目录（App 打开的终端里是 `~`）；在 `~` 下这个询问每次都会出现，还会把 `~/.claude/settings.json` 当作项目设置，提示预先批准其中的工具权限。误选退出就中断了 add / rm。
+- 路径固定，所以用户在 `ccp add` 里对它选过一次"信任"，同一档案之后的 `ccp rm` 不会再问。启动前的提示语说明这是 ccp 专用的空目录，可以放心选 Yes。
+- 目录是空的：没有项目设置、`CLAUDE.md` 或可供读取的文件。
+- 放在档案目录里：不在 `~` 或档案目录之外留下文件，`ccp rm` 删除档案时一并删除。系统临时目录则会让信任落在一个与 ccp 无关、其他程序也在写入的目录上。
+
+工作目录建立失败时报错，不启动 `claude`；`ccp rm` 照常做钥匙串检查（能否删除只由它决定）。
+
 ## ccp rm 的删除条件
 
-`ccp rm <名字>` 先拒绝默认档案、当前档案、不合规或不存在的档案；然后请用户确认，以 `CLAUDE_CONFIG_DIR=<档案目录>` 启动 `claude` 让用户 `/logout`，再用 `security find-generic-password -s <service 名>`（不带 `-w`）检查钥匙串项。只有退出码 44（钥匙串项不存在）才删除档案目录；还在（0）或查询失败（其他退出码）都拒绝删除。
+`ccp rm <名字>` 先拒绝默认档案、当前档案、不合规或不存在的档案；然后请用户确认，以 `CLAUDE_CONFIG_DIR=<档案目录>` 在档案的 `.ccp-workdir` 里启动 `claude` 让用户 `/logout`，再用 `security find-generic-password -s <service 名>`（不带 `-w`）检查钥匙串项。只有退出码 44（钥匙串项不存在）才删除档案目录；还在（0）或查询失败（其他退出码）都拒绝删除。
 
 ## service 名的跨端一致性
 

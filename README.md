@@ -126,8 +126,8 @@ If the current profile points to a profile that no longer exists, `claude` stops
 | `ccp ls` | List all profiles, with `*` before the current one. The first line is always `default`. |
 | `ccp current` | Print only the current profile's name, for scripts and prompts. Reads the current profile only, ignoring `CLAUDE_PROFILE`. |
 | `ccp use <name>` | Switch the current profile; `ccp use default` switches back to the default profile. Only affects sessions started afterwards. |
-| `ccp add <name>` | Create a profile and go straight into its Claude Code to onboard and sign in. Doesn't change the current profile. |
-| `ccp rm <name>` | Delete a profile: asks for confirmation, opens that profile's Claude Code for you to run `/logout` and exit, and deletes it only once it's confirmed signed out. The default profile and the current profile can't be deleted. |
+| `ccp add <name>` | Create a profile and go straight into its Claude Code to onboard and sign in. Doesn't change the current profile. Claude Code starts in an empty directory reserved for ccp inside the profile directory (`.ccp-workdir`), not in your current directory; if it asks whether to trust that directory, it's safe to answer Yes, and `ccp rm` won't ask again for this profile. |
+| `ccp rm <name>` | Delete a profile: asks for confirmation, opens that profile's Claude Code for you to run `/logout` and exit, and deletes it only once it's confirmed signed out. The default profile and the current profile can't be deleted. Claude Code starts in the profile's `.ccp-workdir` here too, which is deleted along with the profile. |
 | `ccp init [--yes]` | Set up zsh: with your consent, add the line to the end of `~/.zshrc`; `--yes` skips the question. Does nothing if it's already there. |
 | `ccp uninstall` | Remove the line `ccp init` added from `~/.zshrc`, leaving everything else as it was. |
 
