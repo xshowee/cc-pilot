@@ -7,13 +7,6 @@ LINE='source "$HOME/.cc-pilot/cc-pilot.zsh"  # cc-pilot'
 
 ZSHRC() { print -r -- "$T_HOME/.zshrc" }
 
-# 带标准输入运行 ccp：ccp_input 输入 参数...
-ccp_input() {
-  local input=$1; shift
-  t_run -- /bin/zsh -f -c 'print -rn -- "$1" | "$2" "${@:3}"' _ "$input" \
-    "$T_HOME/.cc-pilot/bin/ccp" "$@"
-}
-
 # 把一个文件的原始字节保存一份，供之后按字节比较：snapshot 文件 副本
 snapshot() { /bin/cp -p -- "$1" "$2" || fail "无法复制 $1" }
 
@@ -46,7 +39,8 @@ write_tricky_zshrc() {
 test_init_declined_changes_nothing() {
   write_tricky_zshrc "$(ZSHRC)"
   snapshot "$(ZSHRC)" $T/orig
-  ccp_input $'n\n' init
+  t_stdin n
+  t_ccp init
   assert_rc_nonzero
   assert_contains "$T_OUT" "$LINE" "征求同意时应列出要写入的那一行"
   assert_same_bytes "$(ZSHRC)" $T/orig "~/.zshrc 应保持不变"
@@ -62,14 +56,16 @@ test_init_without_answer_changes_nothing() {
 test_init_confirmed_appends_one_line() {
   write_tricky_zshrc "$(ZSHRC)"
   snapshot "$(ZSHRC)" $T/orig
-  ccp_input $'y\n' init
+  t_stdin y
+  t_ccp init
   assert_rc 0
   { /bin/cat -- $T/orig; print -r -- "$LINE" } > $T/expected
   assert_same_bytes "$(ZSHRC)" $T/expected "应在末尾追加一行"
 }
 
 test_init_accepts_yes_in_any_case() {
-  ccp_input $'YES\n' init
+  t_stdin YES
+  t_ccp init
   assert_rc 0
   assert_eq "$(line_count "$(ZSHRC)")" 1 "接入行的数量"
 }
@@ -100,13 +96,16 @@ test_init_terminates_last_line_when_zshrc_lacks_final_newline() {
 }
 
 test_init_repeated_writes_only_one_line_and_does_not_ask_again() {
-  ccp_input $'y\n' init
+  t_stdin y
+  t_ccp init
   assert_rc 0
   t_ccp init --yes
   assert_rc 0
+  unset T_STDIN
   t_ccp init            # 已接入：不再询问，标准输入为空也成功
   assert_rc 0
-  ccp_input $'y\n' init
+  t_stdin y
+  t_ccp init
   assert_rc 0
   assert_eq "$(line_count "$(ZSHRC)")" 1 "接入行的数量"
 }
