@@ -1,9 +1,10 @@
-// 点击菜单栏图标后弹出的面板：标题、档案列表、底部操作。
+// 点击菜单栏图标后弹出的面板：标题、档案列表（点击即切换）、菜单栏显示设置、底部操作。
 
 import SwiftUI
 
 struct PanelView: View {
     @ObservedObject var profiles: ProfileListModel
+    @ObservedObject var current: CurrentProfileModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -16,7 +17,9 @@ struct PanelView: View {
             ScrollView {
                 VStack(spacing: 0) {
                     ForEach(profiles.profiles) { profile in
-                        ProfileRow(profile: profile)
+                        SwitchableProfileRow(profile: profile, isCurrent: profile.name == current.name) {
+                            current.switchTo(profile.name)
+                        }
                         if profile.id != profiles.profiles.last?.id {
                             Divider().padding(.leading, 14)
                         }
@@ -27,9 +30,11 @@ struct PanelView: View {
             .fixedSize(horizontal: false, vertical: true)
 
             Divider()
+            MenuBarIconOnlyToggle()
+            Divider()
             PanelFooter()
         }
         .frame(width: 320)
-        .onAppear { profiles.reload() }
+        .onAppear { profiles.reload(); current.reload() }
     }
 }

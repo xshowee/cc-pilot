@@ -1,10 +1,23 @@
-// 菜单栏上显示的内容。目前只有图标；ticket 07 在这里加上当前档案名和额度两行。
+// 菜单栏上显示的内容：默认两行（当前档案名、额度），打开"只显示图标"后只显示图标。
+// 额度一行的内容来自 MenuBarSummary.quotaLine（ticket 11 接入前一律"—"）。
 
 import SwiftUI
 
 struct MenuBarLabel: View {
+    let summary: MenuBarSummary
+    let iconOnly: Bool
+
     var body: some View {
-        Image(systemName: "person.2.circle")
-            .accessibilityLabel(Text("CC Pilot"))
+        Group {
+            if iconOnly {
+                Image(systemName: "person.2.circle")
+            } else {
+                Image(nsImage: MenuBarImage.image(top: summary.profileName, bottom: summary.quotaLine))
+                    .renderingMode(.template)
+            }
+        }
+        .accessibilityLabel(Text("CC Pilot"))
+        .accessibilityValue(Text("Current profile: \(summary.profileName)"))
+        .help(Text("Current profile: \(summary.profileName)"))
     }
 }

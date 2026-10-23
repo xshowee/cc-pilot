@@ -11,12 +11,14 @@ import SwiftUI
 @main
 struct CCPilotApp: App {
     @StateObject private var profiles = ProfileListModel()
+    @StateObject private var current = CurrentProfileModel()
+    @AppStorage(MenuBarPreferences.iconOnlyKey) private var menuBarIconOnly = false
 
     var body: some Scene {
         MenuBarExtra {
-            PanelView(profiles: profiles)
+            PanelView(profiles: profiles, current: current)
         } label: {
-            MenuBarLabel()
+            MenuBarLabel(summary: MenuBarSummary(profileName: current.name), iconOnly: menuBarIconOnly)
         }
         .menuBarExtraStyle(.window)
     }
