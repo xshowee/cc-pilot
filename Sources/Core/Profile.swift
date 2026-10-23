@@ -14,12 +14,14 @@ struct Profile: Identifiable, Equatable {
     let account: AccountState
     /// 与本档案登录同一账号（accountUuid 相同）的其他档案名，按列表顺序；未登录时为空
     var sameAccountAs: [String] = []
+    /// 登录状态（读取钥匙串后才有，见 LoginChecker.withLoginStates；listProfiles 不填）
+    var login: LoginInfo? = nil
 
     var id: String { name }
     var isDefault: Bool { name == ProfileName.defaultName }
 }
 
-/// 档案的账号状态（P1 阶段只看 .claude.json；ticket 10 读取凭据后会细分已登录的状态）
+/// 档案的账号状态（只看 .claude.json；读取凭据后的细分状态见 Profile.login）
 enum AccountState: Equatable {
     /// .claude.json 不存在，或其中没有账号资料（oauthAccount）
     case loggedOut
