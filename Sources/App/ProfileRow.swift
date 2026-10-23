@@ -4,8 +4,10 @@ import SwiftUI
 
 struct ProfileRow: View {
     let profile: Profile
-    /// 这个档案所在账号最近一次获取的额度；还没刷新过时为 nil
-    var usage: UsageSnapshot? = nil
+    /// 这个档案所在账号的额度状态；还没刷新过时为 nil
+    var usage: AccountUsage? = nil
+    /// 界面时钟（UsageModel.now），用来判断变灰、已重置、还要等多久
+    var now = Date()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -20,7 +22,7 @@ struct ProfileRow: View {
             }
             LoginStatusLabel(status: profile.login?.status)
             if let usage {
-                UsageSummaryView(snapshot: usage)
+                UsageSummaryView(usage: usage, loginStatus: profile.login?.status, now: now)
             }
             if !profile.sameAccountAs.isEmpty {
                 Label {

@@ -1,13 +1,16 @@
 // 面板里可点击的档案行：在 ProfileRow 外面包一层，点击即切换为当前档案；
 // 当前档案用强调色背景、左侧色条和"当前"标记醒目地标出。
-// 已登录的档案右侧有刷新按钮，刷新这个档案所在账号的额度（放在切换按钮外面，点它不会切换）。
+// 已登录的档案右侧有刷新按钮，刷新这个档案所在账号的额度（放在切换按钮外面，点它不会切换）；
+// 频率限制的等待期内按钮不可用（ticket 12）。
 
 import SwiftUI
 
 struct SwitchableProfileRow: View {
     let profile: Profile
     let isCurrent: Bool
-    var usage: UsageSnapshot? = nil
+    var usage: AccountUsage? = nil
+    /// 界面时钟（UsageModel.now）
+    var now = Date()
     var isRefreshing = false
     /// 刷新这个档案所在账号的额度；档案未登录时为 nil（不显示按钮）
     var onRefresh: (() -> Void)? = nil
@@ -22,7 +25,7 @@ struct SwitchableProfileRow: View {
                     Rectangle()
                         .fill(isCurrent ? Color.accentColor : Color.clear)
                         .frame(width: 3)
-                    ProfileRow(profile: profile, usage: usage)
+                    ProfileRow(profile: profile, usage: usage, now: now)
                     if isCurrent {
                         Label("Current", systemImage: "checkmark.circle.fill")
                             .labelStyle(.titleAndIcon)
@@ -58,9 +61,16 @@ struct SwitchableProfileRow: View {
                     .frame(width: 18, height: 18)
             }
             .buttonStyle(.borderless)
-            .help(Text("Refresh usage for this account"))
+            .disabled(waitMinutes != nil)
+            .help(waitMinutes.map { Text("Too many requests. Try again in \($0) min.") }
+                  ?? Text("Refresh usage for this account"))
             .accessibilityLabel(Text("Refresh usage for this account"))
         }
+    }
+
+    /// 频率限制还要等几分钟；不用等时为 nil
+    private var waitMinutes: Int? {
+        usage?.waitRemaining(now: now).map(UsageDisplay.waitMinutes)
     }
 
     private var background: Color {

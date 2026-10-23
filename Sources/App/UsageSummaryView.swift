@@ -1,46 +1,77 @@
 // 档案行里的额度：5 小时窗口和"全部模型"周窗口的剩余百分比（明确标注"剩余"）与重置时间（本地时区），
-// 以及这次数据是几分钟前获取的。没有数字的窗口（utilization 为 null）不显示。
+// 这次数据是几分钟前获取的，以及最近一次刷新失败的原因（ticket 12）。
+// 没有数字的窗口（utilization 为 null）不显示；怎么显示每个窗口由 App 核心的 UsageReading 决定。
 
 import SwiftUI
 
 struct UsageSummaryView: View {
-    let snapshot: UsageSnapshot
+    let usage: AccountUsage
+    /// 档案行已显示的登录状态；失败原因是同一个状态时不重复提示
+    var loginStatus: LoginStatus?
+    let now: Date
 
     var body: some View {
-        // 每 30 秒重算一次"几分钟前"和"当天/非当天"的重置时间写法
-        TimelineView(.periodic(from: .now, by: 30)) { context in
-            VStack(alignment: .leading, spacing: 1) {
-                if let window = snapshot.fiveHour {
-                    line(String(localized: "5-hour"), window, now: context.date)
-                }
-                if let window = snapshot.sevenDay {
-                    line(String(localized: "Weekly (all models)"), window, now: context.date)
-                }
-                Text(verbatim: fetchedText(now: context.date))
+        VStack(alignment: .leading, spacing: 1) {
+            if let reading = usage.fiveHour(now: now) {
+                line(String(localized: "5-hour"), reading, resetsAt: usage.snapshot?.fiveHour?.resetsAt)
+            }
+            if let reading = usage.sevenDay(now: now) {
+                line(String(localized: "Weekly (all models)"), reading, resetsAt: usage.snapshot?.sevenDay?.resetsAt)
+            }
+            if let snapshot = usage.snapshot {
+                Text(verbatim: fetchedText(snapshot.fetchedAt))
                     .foregroundColor(.secondary)
             }
-            .font(.caption)
+            if let problem = usage.problem, let text = problemText(problem) {
+                Label {
+                    Text(verbatim: text)
+                        .fixedSize(horizontal: false, vertical: true)
+                } icon: {
+                    Image(systemName: "exclamationmark.circle")
+                }
+                .foregroundColor(.orange)
+            }
         }
+        .font(.caption)
     }
 
-    private func line(_ title: String, _ window: UsageWindow, now: Date) -> some View {
+    private func line(_ title: String, _ reading: UsageReading, resetsAt: Date?) -> some View {
         HStack(spacing: 4) {
             Text(verbatim: title)
                 .foregroundColor(.secondary)
-            Text("\(window.remainingPercent)% left")
-                .fontWeight(.semibold)
-                .monospacedDigit()
-            if let resetsAt = window.resetsAt {
+            UsageReadingText(reading: reading)
+            if case .remaining = reading, let resetsAt {
                 Text("· resets \(UsageDisplay.resetTime(resetsAt, now: now))")
                     .foregroundColor(.secondary)
             }
         }
     }
 
-    private func fetchedText(now: Date) -> String {
-        let minutes = UsageDisplay.minutesSince(snapshot.fetchedAt, now: now)
+    private func fetchedText(_ fetchedAt: Date) -> String {
+        let minutes = UsageDisplay.minutesSince(fetchedAt, now: now)
         return minutes == 0
             ? String(localized: "Updated just now")
             : String(localized: "Updated \(minutes) min ago")
+    }
+
+    /// 失败原因的提示；不需要提示时为 nil
+    private func problemText(_ problem: UsageProblem) -> String? {
+        switch problem {
+        case .login(let status):
+            // 没发请求（与行里的登录状态相同）时不重复；401 时行里还是"已登录"，要说明
+            guard status != loginStatus, let title = LoginStatusText.title(status) else { return nil }
+            return [title, LoginStatusText.hint(status)].compactMap { $0 }.joined(separator: " — ")
+        case .rateLimited:
+            guard let wait = usage.waitRemaining(now: now) else { return nil }
+            return String(localized: "Too many requests. Try again in \(UsageDisplay.waitMinutes(wait)) min.")
+        case .httpStatus(let code):
+            return String(localized: "The server returned an error (HTTP \(code)).")
+        case .networkFailure:
+            return usage.snapshot == nil
+                ? String(localized: "Couldn’t reach the server.")
+                : String(localized: "Couldn’t reach the server. Showing the last data fetched.")
+        case .unrecognizedFormat:
+            return String(localized: "The usage API may have changed. Please update cc-pilot.")
+        }
     }
 }

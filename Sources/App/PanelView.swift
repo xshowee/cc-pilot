@@ -26,7 +26,8 @@ struct PanelView: View {
                         SwitchableProfileRow(
                             profile: profile,
                             isCurrent: profile.name == current.name,
-                            usage: usage.board.snapshot(for: profile),
+                            usage: usage.usage(for: profile),
+                            now: usage.now,
                             isRefreshing: usage.isRefreshing(profile),
                             onRefresh: profile.usageAccount == nil ? nil : {
                                 usage.refresh(profile, in: profiles.profiles)
@@ -64,7 +65,8 @@ struct PanelView: View {
         }
         .buttonStyle(.borderless)
         .font(.caption)
-        .disabled(usage.isRefreshing || UsageRefresher.accounts(in: profiles.profiles).isEmpty)
+        // 正在刷新，或每个账号都还在频率限制的等待期内（ticket 12）时不可用
+        .disabled(usage.isRefreshing || !usage.canRefreshAny(profiles.profiles))
         .help(Text("Refresh usage for all accounts"))
     }
 }

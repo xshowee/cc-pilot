@@ -21,4 +21,9 @@ enum UsageDisplay {
     static func minutesSince(_ fetchedAt: Date, now: Date) -> Int {
         max(0, Int(now.timeIntervalSince(fetchedAt) / 60))
     }
+
+    /// 频率限制还要等几分钟（AccountUsage.waitRemaining 的秒数）：向上取整，至少 1，宁可多说不少说
+    static func waitMinutes(_ seconds: TimeInterval) -> Int {
+        max(1, Int((seconds / 60).rounded(.up)))
+    }
 }

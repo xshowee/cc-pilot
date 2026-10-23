@@ -7,6 +7,7 @@ final class UsageDisplayChecks: CheckSuite {
         [
             Check("重置时间按本地时区显示：当天只显示时刻，不是当天加上日期", resetTimeInLocalTimeZone),
             Check("获取时间显示为几分钟前（不足一分钟算 0）", minutesSinceFetch),
+            Check("频率限制还要等几分钟：向上取整，至少 1 分钟（ticket 12）", waitMinutes),
         ]
     }
 
@@ -37,6 +38,13 @@ final class UsageDisplayChecks: CheckSuite {
         for (elapsed, minutes) in cases {
             try expectEqual(UsageDisplay.minutesSince(fixedNow, now: fixedNow.addingTimeInterval(elapsed)),
                             minutes, "过了 \(elapsed) 秒")
+        }
+    }
+
+    static func waitMinutes() throws {
+        let cases: [(TimeInterval, Int)] = [(1, 1), (59, 1), (60, 1), (61, 2), (299.5, 5), (3600, 60)]
+        for (seconds, minutes) in cases {
+            try expectEqual(UsageDisplay.waitMinutes(seconds), minutes, "还要等 \(seconds) 秒")
         }
     }
 }
