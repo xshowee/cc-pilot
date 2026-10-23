@@ -73,6 +73,10 @@ source "$HOME/.cc-pilot/cc-pilot.zsh"  # cc-pilot
 
 然后以 `CLAUDE_CONFIG_DIR=<档案目录>` 直接启动 `claude`（不经过包装函数，也不看 `CLAUDE_PROFILE`），不改变当前档案。
 
+## ccp rm 的删除条件
+
+`ccp rm <名字>` 先拒绝默认档案、当前档案、不合规或不存在的档案；然后请用户确认，以 `CLAUDE_CONFIG_DIR=<档案目录>` 启动 `claude` 让用户 `/logout`，再用 `security find-generic-password -s <service 名>`（不带 `-w`）检查钥匙串项。只有退出码 44（钥匙串项不存在）才删除档案目录；还在（0）或查询失败（其他退出码）都拒绝删除。
+
 ## service 名的跨端一致性
 
 `_ccp_service_name [配置目录]`：不带参数时返回 `Claude Code-credentials`（默认档案）；带参数时对原始字符串做 NFC 规范化后取 sha256 前 8 位。App 核心应对 `tests/fixtures/service-names.tsv` 的每一行得到相同结果，也可以直接调用 shell 函数比较：
