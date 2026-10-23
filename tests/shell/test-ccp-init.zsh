@@ -158,4 +158,106 @@ test_init_unknown_argument_prints_usage() {
   [[ ! -e $(ZSHRC) ]] || fail "不应创建 ~/.zshrc"
 }
 
+# ---------- ccp uninstall ----------
+
+test_uninstall_after_init_restores_zshrc_byte_for_byte() {
+  write_tricky_zshrc "$(ZSHRC)"
+  snapshot "$(ZSHRC)" $T/orig
+  t_ccp init --yes
+  assert_rc 0
+  t_ccp uninstall
+  assert_rc 0
+  assert_same_bytes "$(ZSHRC)" $T/orig "卸载后 ~/.zshrc 应与接入前完全相同"
+}
+
+test_uninstall_removes_only_the_line_when_user_added_more_afterwards() {
+  write_tricky_zshrc "$(ZSHRC)"
+  snapshot "$(ZSHRC)" $T/orig
+  t_ccp init --yes
+  print -r -- 'export LATER=1' >> "$(ZSHRC)"
+  t_ccp uninstall
+  assert_rc 0
+  { /bin/cat -- $T/orig; print -r -- 'export LATER=1' } > $T/expected
+  assert_same_bytes "$(ZSHRC)" $T/expected "其余内容应按字节保持不变"
+}
+
+test_uninstall_removes_every_exact_copy_and_keeps_lookalikes() {
+  printf '%s\n' 'a' "$LINE" 'b' "$LINE" "# $LINE" > "$(ZSHRC)"
+  t_ccp uninstall
+  assert_rc 0
+  printf '%s\n' 'a' 'b' "# $LINE" > $T/expected
+  assert_same_bytes "$(ZSHRC)" $T/expected "卸载结果"
+}
+
+test_uninstall_leaves_the_newline_init_added_to_an_unterminated_last_line() {
+  # 已定义的行为：接入前最后一行没有换行时，init 补上的那个换行在卸载后保留
+  printf 'export FOO=1' > "$(ZSHRC)"
+  t_ccp init --yes
+  t_ccp uninstall
+  assert_rc 0
+  printf 'export FOO=1\n' > $T/expected
+  assert_same_bytes "$(ZSHRC)" $T/expected "卸载结果"
+}
+
+test_uninstall_removes_line_even_if_user_stripped_its_newline() {
+  printf '%s\n%s' 'export FOO=1' "$LINE" > "$(ZSHRC)"
+  t_ccp uninstall
+  assert_rc 0
+  printf 'export FOO=1' > $T/expected
+  assert_same_bytes "$(ZSHRC)" $T/expected "卸载结果"
+}
+
+test_uninstall_after_init_on_missing_zshrc_keeps_an_empty_file() {
+  t_ccp init --yes
+  t_ccp uninstall
+  assert_rc 0
+  [[ -f $(ZSHRC) && ! -s $(ZSHRC) ]] || fail "~/.zshrc 应为空文件（不删除用户的文件）"
+}
+
+test_uninstall_without_zshrc_succeeds_and_creates_nothing() {
+  t_ccp uninstall
+  assert_rc 0
+  [[ ! -e $(ZSHRC) && ! -L $(ZSHRC) ]] || fail "不应创建 ~/.zshrc"
+}
+
+test_uninstall_without_the_line_leaves_file_untouched() {
+  write_tricky_zshrc "$(ZSHRC)"
+  snapshot "$(ZSHRC)" $T/orig
+  local before
+  before=$(/usr/bin/stat -f %i -- "$(ZSHRC)")
+  t_ccp uninstall
+  assert_rc 0
+  assert_same_bytes "$(ZSHRC)" $T/orig "~/.zshrc 应保持不变"
+  assert_eq "$(/usr/bin/stat -f %i -- "$(ZSHRC)")" "$before" "不应重写文件"
+}
+
+test_uninstall_keeps_symlink_and_file_mode() {
+  mkdir -p -- "$T/dotfiles"
+  write_tricky_zshrc "$T/dotfiles/zshrc"
+  chmod 600 "$T/dotfiles/zshrc"
+  snapshot "$T/dotfiles/zshrc" $T/orig
+  ln -s -- "$T/dotfiles/zshrc" "$(ZSHRC)"
+  t_ccp init --yes
+  t_ccp uninstall
+  assert_rc 0
+  [[ -L $(ZSHRC) ]] || fail "~/.zshrc 应仍是软链接"
+  assert_eq "$(/usr/bin/readlink -- "$(ZSHRC)")" "$T/dotfiles/zshrc" "软链接的指向"
+  assert_same_bytes "$T/dotfiles/zshrc" $T/orig "软链接指向的文件"
+  assert_eq "$(/usr/bin/stat -f %Lp -- "$T/dotfiles/zshrc")" 600 "文件权限"
+  local -a left
+  left=("$T/dotfiles"/*(DN:t))
+  assert_eq "${(j: :)left}" zshrc "不应留下临时文件"
+}
+
+test_uninstall_accepts_yes_flag_and_rejects_unknown_arguments() {
+  printf '%s\n' 'a' "$LINE" > "$(ZSHRC)"
+  t_ccp uninstall --bogus
+  assert_rc 2
+  assert_contains "$T_ERR" "用法" "应输出用法说明"
+  assert_eq "$(line_count "$(ZSHRC)")" 1 "参数错误时不应修改"
+  t_ccp uninstall --yes
+  assert_rc 0
+  assert_eq "$(line_count "$(ZSHRC)")" 0 "接入行的数量"
+}
+
 t_main "$@"
