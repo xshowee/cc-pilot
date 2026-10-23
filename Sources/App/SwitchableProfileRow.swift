@@ -3,7 +3,8 @@
 // 不单独占一列，当前行与其他行的内容宽度相同，ticket 18）。
 // 已登录的档案右侧有刷新按钮，刷新这个档案所在账号的额度（放在切换按钮外面，点它不会切换）；
 // 频率限制的等待期内按钮不可用（ticket 12）。
-// 有额度详情（按模型细分的周窗口、超额付费）时，刷新按钮下方还有展开按钮，展开后详情显示在行下方（ticket 13）。
+// 有额度详情（按模型细分的周窗口、超额付费）时，刷新按钮下方还有展开按钮（ticket 13）；展开后详情显示在
+// 行内主窗口之后、获取时间之前（ticket 19），点详情也会切换档案。
 // 鼠标移到行上时显示删除按钮（ticket 09，默认档案和当前档案不可用）；右键菜单里也有删除。
 
 import SwiftUI
@@ -25,18 +26,9 @@ struct SwitchableProfileRow: View {
     @State private var expanded = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            row
-            if expanded, hasDetails, let usage {
-                UsageDetailsView(usage: usage, now: now)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.leading, 17)
-                    .padding(.trailing, 14)
-                    .padding(.bottom, 8)
-            }
-        }
-        .background(background)
-        .onHover { hovering = $0 }
+        row
+            .background(background)
+            .onHover { hovering = $0 }
     }
 
     private var hasDetails: Bool { UsageDetailsView.hasDetails(usage, now: now) }
@@ -48,7 +40,8 @@ struct SwitchableProfileRow: View {
                     Rectangle()
                         .fill(isCurrent ? Color.accentColor : Color.clear)
                         .frame(width: 3)
-                    ProfileRow(profile: profile, isCurrent: isCurrent, usage: usage, now: now)
+                    ProfileRow(profile: profile, isCurrent: isCurrent, usage: usage, now: now,
+                               expanded: expanded && hasDetails)
                 }
                 .contentShape(Rectangle())
             }

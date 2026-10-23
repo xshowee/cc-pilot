@@ -1,17 +1,20 @@
-// 档案行里的额度：5 小时窗口和"全部模型"周窗口的剩余百分比（明确标注"剩余"）与重置时间（本地时区），
-// 这次数据是几分钟前获取的，以及最近一次刷新失败的原因（ticket 12）。
+// 档案行里的一项额度信息（ticket 19 起由 ProfileRow 按 App 核心的 ProfileRowPart.order 逐项显示）：
+// 5 小时窗口和"全部模型"周窗口的剩余百分比（明确标注"剩余"）与重置时间（本地时区），
+// 这次数据是几分钟前获取的，以及最近一次刷新失败的原因（ticket 12）；展开后的详情交给 UsageDetailsView。
 // 没有数字的窗口（utilization 为 null）不显示；怎么显示每个窗口由 App 核心的 UsageReading 决定。
 
 import SwiftUI
 
 struct UsageSummaryView: View {
     let usage: AccountUsage
+    let part: ProfileRowPart
     /// 档案行已显示的登录状态；失败原因是同一个状态时不重复提示
     var loginStatus: LoginStatus?
     let now: Date
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 1) {
+        switch part {
+        case .mainWindows:
             if let reading = usage.fiveHour(now: now) {
                 UsageWindowLine(title: String(localized: "5-hour"), reading: reading,
                                 resetsAt: usage.snapshot?.fiveHour?.resetsAt, now: now)
@@ -20,10 +23,14 @@ struct UsageSummaryView: View {
                 UsageWindowLine(title: String(localized: "Weekly (all models)"), reading: reading,
                                 resetsAt: usage.snapshot?.sevenDay?.resetsAt, now: now)
             }
+        case .modelWeekly, .extraUsage:
+            UsageDetailsView(usage: usage, part: part, now: now)
+        case .fetchedAt:
             if let snapshot = usage.snapshot {
                 Text(verbatim: fetchedText(snapshot.fetchedAt))
                     .foregroundColor(.secondary)
             }
+        case .problem:
             if let problem = usage.problem, let text = problemText(problem) {
                 Label {
                     Text(verbatim: text)
@@ -33,8 +40,10 @@ struct UsageSummaryView: View {
                 }
                 .foregroundColor(.orange)
             }
+        case .sameAccount:
+            // 不是额度信息，由 ProfileRow 显示
+            EmptyView()
         }
-        .font(.caption)
     }
 
     private func fetchedText(_ fetchedAt: Date) -> String {

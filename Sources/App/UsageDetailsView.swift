@@ -1,11 +1,14 @@
 // 展开账号后显示的额度详情（ticket 13）：按模型细分的各个周窗口（剩余、重置时间、颜色），
-// 以及超额付费（未开启；或月度上限、已使用金额）。
+// 以及超额付费（未开启；或月度上限、已使用金额）。由 UsageSummaryView 按 ProfileRowPart 逐项交过来，
+// 显示在档案行里主窗口之后、获取时间之前（ticket 19）。
 // 过期变灰、已重置、着色都由 App 核心（AccountUsage.modelWeekly / extraUsage）决定，这里只选文字。
 
 import SwiftUI
 
 struct UsageDetailsView: View {
     let usage: AccountUsage
+    /// .modelWeekly 或 .extraUsage；其他项不显示
+    let part: ProfileRowPart
     let now: Date
 
     /// 有没有可展开的内容（没有时不显示展开按钮）
@@ -15,16 +18,19 @@ struct UsageDetailsView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 1) {
+        switch part {
+        case .modelWeekly:
             ForEach(Array(usage.modelWeekly(now: now).enumerated()), id: \.offset) { _, window in
                 UsageWindowLine(title: title(window.model), reading: window.reading,
                                 resetsAt: window.resetsAt, now: now)
             }
+        case .extraUsage:
             if let extra = usage.extraUsage(now: now) {
                 extraUsage(extra)
             }
+        default:
+            EmptyView()
         }
-        .font(.caption)
     }
 
     private func title(_ model: String?) -> String {
