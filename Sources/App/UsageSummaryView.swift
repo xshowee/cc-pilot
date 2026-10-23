@@ -67,7 +67,7 @@ struct UsageSummaryView: View {
 }
 
 /// 一个额度窗口的一行：标题、剩余（或"已重置，待刷新""—"），有数字时附上重置时间（本地时区）。
-/// 档案行和展开后的详情（ticket 13）共用。
+/// 档案行和展开后的详情（ticket 13）共用。宽度不足时放不下的那段整段折到下一行，不截断（ticket 23）。
 struct UsageWindowLine: View {
     let title: String
     let reading: UsageReading
@@ -75,7 +75,7 @@ struct UsageWindowLine: View {
     let now: Date
 
     var body: some View {
-        HStack(spacing: 4) {
+        WrappingHStack(spacing: 4) {
             Text(verbatim: title)
                 .foregroundColor(.secondary)
             UsageReadingText(reading: reading)

@@ -32,7 +32,7 @@ struct UsageDetailsView: View {
     }
 
     private func extraUsage(_ extra: ExtraUsageReading) -> some View {
-        HStack(spacing: 4) {
+        WrappingHStack(spacing: 4) {
             Text("Extra usage")
                 .foregroundColor(.secondary)
             extraUsageText(extra.usage)
