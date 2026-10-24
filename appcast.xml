@@ -1,8 +1,58 @@
-<?xml version="1.0" standalone="yes"?><!-- sparkle-sign-warning:
+<?xml version="1.0" standalone="yes"?>
+<!-- sparkle-sign-warning:
 IMPORTANT: This file was signed by Sparkle. Any modifications to this file requires re-signing this file with generate_appcast or sign_update! The signed signature will be embedded at the end of this file.
---><rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+-->
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
     <channel>
         <title>CC Pilot</title>
+        <item>
+            <title>0.2.0</title>
+            <pubDate>Sat, 24 Oct 2026 14:44:28 +0800</pubDate>
+            <link>https://github.com/xshowee/cc-pilot</link>
+            <sparkle:fullReleaseNotesLink>https://github.com/xshowee/cc-pilot/releases</sparkle:fullReleaseNotesLink>
+            <sparkle:version>2</sparkle:version>
+            <sparkle:shortVersionString>0.2.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <description sparkle:format="markdown"><![CDATA[CC Pilot 0.2.0: new profiles get their own settings instead of sharing the default profile's.
+
+- **Settings are now kept per profile.** When you add a profile (`ccp add`, or adding one in the app), the default profile's `~/.claude/settings.json` is copied once as its starting settings. After that, changing a setting in one profile, for example with `/model` or `/advisor`, affects only that profile. Profiles on different subscription tiers can now use different models and advisors.
+- **Plugins are still shared, but enabling them isn't.** Whether a plugin is enabled is part of each profile's settings, so a plugin you enable later in one profile has to be enabled with `/plugin` in the others.
+- **Profiles created with 0.1.0 are unchanged** and still share settings with the default profile. To give one its own settings:
+
+  ```sh
+  rm ~/.claude-profiles/<name>/settings.json && cp ~/.claude/settings.json ~/.claude-profiles/<name>/settings.json
+  ```
+
+- To have a new profile share settings like before:
+
+  ```sh
+  rm ~/.claude-profiles/<name>/settings.json && ln -s ~/.claude/settings.json ~/.claude-profiles/<name>/settings.json
+  ```
+
+The app updates `ccp` in `~/.cc-pilot/` the next time it starts. If you use only the command line tool without the app, copy the new `shell/` directory to `~/.cc-pilot/` again.
+
+---
+
+CC Pilot 0.2.0：新建的账号使用自己的一份设置，不再与默认账号共用。
+
+- **设置改为每个账号各一份**。新建账号时（`ccp add`，或在 App 里添加账号），把默认账号的 `~/.claude/settings.json` 复制一次作为初始设置，之后在某个账号里修改设置（比如执行 `/model`、`/advisor`）只影响这个账号。不同订阅等级的账号可以用不同的模型和 advisor 了。
+- **插件仍然共用，但"是否启用"各管各的**。插件的启用状态记在各账号的设置里，之后在一个账号里启用的插件，在其他账号里需要用 `/plugin` 再启用一次。
+- **0.1.0 建立的账号保持不变**，仍与默认账号共用设置。想让某个已有账号使用自己的设置：
+
+  ```sh
+  rm ~/.claude-profiles/<名字>/settings.json && cp ~/.claude/settings.json ~/.claude-profiles/<名字>/settings.json
+  ```
+
+- 想让新账号像以前一样共用设置：
+
+  ```sh
+  rm ~/.claude-profiles/<名字>/settings.json && ln -s ~/.claude/settings.json ~/.claude-profiles/<名字>/settings.json
+  ```
+
+App 下次启动时会自动更新 `~/.cc-pilot/` 里的 `ccp`。只用命令行、没装 App 的话，把新版的 `shell/` 目录重新复制为 `~/.cc-pilot/`。
+]]></description>
+            <enclosure url="https://github.com/xshowee/cc-pilot/releases/download/v0.2.0/CCPilot-0.2.0.dmg" length="2281752" type="application/octet-stream" sparkle:edSignature="ttpMfmo2SE8zaPxMJ2679f4p2WG6CR1eOzzNL3RZxawi4sZuNW2E+pQIekcTiX1XlLV1qgPn4S0Gh3YMXHnrBg=="/>
+        </item>
         <item>
             <title>0.1.0</title>
             <pubDate>Sat, 24 Oct 2026 10:41:09 +0800</pubDate>
@@ -27,10 +77,11 @@ CC Pilot 首个版本：在一台 Mac 上切换你自己的多个 Claude Code �
 - **菜单栏 App**：显示当前账号的套餐和 5 小时窗口剩余额度；面板列出所有账号的 5 小时与每周剩余额度，只在你点刷新时获取。
 - 支持 Apple 芯片和 Intel 芯片的 Mac，macOS 13 及以上。界面支持英文和简体中文。
 ]]></description>
-            <enclosure url="https://github.com/xshowee/cc-pilot/releases/download/v0.1.0/CCPilot-0.1.0.dmg" length="2281546" type="application/octet-stream" sparkle:edSignature="O2asqwLxWhb/9W0tdg0Xvl5FjK44IVb1kT6YjWcAaCgeRNp01Y1pU5O+PhMKd+6IQRKwyuIxLUNUuTIFXRiPBg=="></enclosure>
+            <enclosure url="https://github.com/xshowee/cc-pilot/releases/download/v0.1.0/CCPilot-0.1.0.dmg" length="2281546" type="application/octet-stream" sparkle:edSignature="O2asqwLxWhb/9W0tdg0Xvl5FjK44IVb1kT6YjWcAaCgeRNp01Y1pU5O+PhMKd+6IQRKwyuIxLUNUuTIFXRiPBg=="/>
         </item>
     </channel>
-</rss><!-- sparkle-signatures:
-edSignature: u2v6btKaJfYkTWEC+xksQMtpVVRF0OlA0wzDcqLa5fGMkv7gi7O4XpUM5KyAx2UEYn4jiTH1oCA1CVT0dpR6Dw==
-length: 2831
+</rss>
+<!-- sparkle-signatures:
+edSignature: Tkt0Ie+qIrAsf1qhw2YD4HWy+gqMyGTrDbH2n/cQrzVOTYrUEbkV2fn/8YDzB02MNYoZRJDrGbz2mcnucE5VAw==
+length: 6272
 -->
