@@ -15,7 +15,7 @@
 //
 // 账本只在 `queue`（默认是一个后台串行队列）上访问：同步、归属钩子、onUpdate 和 `read` 的 body
 // 都在它上面执行，界面需要自己切回主线程。start / stop / read 可以在任意线程调用。
-// 账本打不开、读入出错时跳过这一次，下次变化再试。
+// 账本打不开、读入出错时跳过这一次，下次变化（不管在哪个项目）时全量再试。
 // 统计面板（ticket 07）用 accountUsage 查询、clearCumulative / clearAllCumulative 清空，同样在 `queue` 上执行。
 
 import CoreServices
@@ -43,6 +43,8 @@ final class TokenUsageRecorder: @unchecked Sendable {
     private var stream: FSEventStreamRef?
     /// 上次汇总时的本地日期
     private var rolledUpDay: DateComponents?
+    /// 上次同步没做成（账本打不开、读入出错）：下次不管哪里有变化都全量扫描，没读完的文件不必等它所在的项目再变
+    private var needsFullScan = false
 
     /// - ledgerURL: 账本文件，默认是 TokenLedger.defaultURL
     /// - latency: FSEvents 合并事件的时间窗口（秒）
@@ -151,9 +153,13 @@ final class TokenUsageRecorder: @unchecked Sendable {
 
     /// - projects: 只扫描这些项目，nil 全量扫描
     private func sync(projects: Set<String>? = nil) {
-        guard let ledger = try? openLedger() else { return }
+        guard let ledger = try? openLedger() else {
+            needsFullScan = true
+            return
+        }
         let revision = ledger.revision
-        _ = try? ledger.ingest(projectsRoot: projectsRoot, projects: projects)
+        let scope = needsFullScan ? nil : projects
+        needsFullScan = (try? ledger.ingest(projectsRoot: projectsRoot, projects: scope)) == nil
         try? attribute(ledger)
         let current = now()
         let day = calendar.dateComponents([.year, .month, .day], from: current)
