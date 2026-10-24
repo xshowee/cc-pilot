@@ -30,10 +30,13 @@ final class TokenUsageRecorder: @unchecked Sendable {
     private let now: () -> Date
     private let attribute: (TokenLedger) throws -> Void
     private let onUpdate: () -> Void
+    private let createStream: (() -> FSEventStreamRef?) -> FSEventStreamRef?
     private var historyWatcher: ProfileWatcher?
 
     // 以下只在 queue 上访问
     private var ledger: TokenLedger?
+    /// start 之后、stop 之前为 true（与 projects/ 的流建没建成无关）
+    private var running = false
     private var stream: FSEventStreamRef?
     /// 上次汇总时的本地日期
     private var rolledUpDay: DateComponents?
@@ -42,10 +45,12 @@ final class TokenUsageRecorder: @unchecked Sendable {
     /// - latency: FSEvents 合并事件的时间窗口（秒）
     /// - calendar: 按天汇总用的日历和时区
     /// - attribute: 归属钩子，每次读入之后、汇总之前调用；nil（默认）是按 history.jsonl 归属的 SessionAttribution
+    /// - createStream: 建立 projects/ 的 FSEvents 流，参数是真正建立它的函数（检查用它模拟建立失败）
     init(environment: CoreEnvironment, ledgerURL: URL? = nil, latency: TimeInterval = 2,
          queue: DispatchQueue = DispatchQueue(label: "com.ccpilot.token-usage", qos: .utility),
          calendar: Calendar = .autoupdatingCurrent, now: @escaping () -> Date = Date.init,
          attribute: ((TokenLedger) throws -> Void)? = nil,
+         createStream: @escaping (() -> FSEventStreamRef?) -> FSEventStreamRef? = { $0() },
          onUpdate: @escaping () -> Void = {}) {
         self.environment = environment
         self.ledgerURL = ledgerURL ?? TokenLedger.defaultURL(environment: environment)
@@ -58,6 +63,7 @@ final class TokenUsageRecorder: @unchecked Sendable {
         self.now = now
         self.attribute = attribute ?? SessionAttribution(environment: environment, now: now).attribute
         self.onUpdate = onUpdate
+        self.createStream = createStream
         queue.setSpecific(key: queueKey, value: true)
         historyWatcher = ProfileWatcher(environment: environment, latency: latency, watching: .history) {
             [weak self] in self?.syncIfRunning()
@@ -69,8 +75,11 @@ final class TokenUsageRecorder: @unchecked Sendable {
     /// 开始监听，并在后台回填一次；重复调用无副作用
     func start() {
         queue.async { [self] in
-            guard stream == nil else { return }
+            guard !running else { return }
+            running = true
             stream = makeStream()
+            // 建不成时 projects/ 的变化收不到，history.jsonl 变化时照常同步
+            if stream == nil { NSLog("CC Pilot: 无法监听 %@，会话记录只在 history.jsonl 变化时读入", projectsRoot.path) }
             historyWatcher?.start()
             sync()
         }
@@ -79,6 +88,7 @@ final class TokenUsageRecorder: @unchecked Sendable {
     /// 停止监听；返回后不会再有新的同步。账本仍可通过 `read` 读取
     func stop() {
         onQueue {
+            running = false
             historyWatcher?.stop()
             if let s = stream {
                 FSEventStreamStop(s)
@@ -136,7 +146,7 @@ final class TokenUsageRecorder: @unchecked Sendable {
     /// history.jsonl 变化时用：和 projects/ 的流一样，stop 之后不再同步（回调可能恰好在 stop 时排进队列）
     private func syncIfRunning() {
         queue.async { [self] in
-            guard stream != nil else { return }
+            guard running else { return }
             sync()
         }
     }
@@ -160,10 +170,13 @@ final class TokenUsageRecorder: @unchecked Sendable {
             version: 0, info: Unmanaged.passUnretained(self).toOpaque(),
             retain: nil, release: nil, copyDescription: nil)
         // 不要 NoDefer：第一个事件之后等满 latency 再回调，短时间内的多次变化合并成一次
-        guard let s = FSEventStreamCreate(
-            kCFAllocatorDefault, Self.callback, &context, [projectsRoot.path] as CFArray,
-            FSEventStreamEventId(kFSEventStreamEventIdSinceNow), latency,
-            FSEventStreamCreateFlags(kFSEventStreamCreateFlagNone))
+        let path = projectsRoot.path, latency = latency
+        guard let s = createStream({
+            FSEventStreamCreate(
+                kCFAllocatorDefault, Self.callback, &context, [path] as CFArray,
+                FSEventStreamEventId(kFSEventStreamEventIdSinceNow), latency,
+                FSEventStreamCreateFlags(kFSEventStreamCreateFlagNone))
+        })
         else { return nil }
         FSEventStreamSetDispatchQueue(s, queue)
         FSEventStreamStart(s)
@@ -174,7 +187,7 @@ final class TokenUsageRecorder: @unchecked Sendable {
     private static let callback: FSEventStreamCallback = { _, info, _, _, _, _ in
         guard let info else { return }
         let recorder = Unmanaged<TokenUsageRecorder>.fromOpaque(info).takeUnretainedValue()
-        guard recorder.stream != nil else { return }
+        guard recorder.running else { return }
         recorder.sync()
     }
 

@@ -10,6 +10,7 @@ final class TokenUsageRecorderChecks: CheckSuite {
             Check("projects/ 启动时还不存在，之后创建也能读入", picksUpProjectsCreatedLater),
             Check("读入之后、汇总之前先调用归属钩子；汇总只合并已归属的明细", runsAttributionBeforeRollup),
             Check("默认按 history.jsonl 归属；history.jsonl 后写出来也会自动归属", attributesWhenHistoryAppears),
+            Check("projects/ 的监听建立失败：仍算在运行，history.jsonl 变化照常触发同步", keepsRunningWithoutProjectsStream),
         ]
     }
 
@@ -21,9 +22,11 @@ final class TokenUsageRecorderChecks: CheckSuite {
 
     static func makeRecorder(_ env: LedgerEnv, now: Date = Date(),
                              attribute: ((TokenLedger) throws -> Void)? = { _ in },
+                             streamFails: Bool = false,
                              onUpdate: @escaping () -> Void) -> TokenUsageRecorder {
         TokenUsageRecorder(environment: env.home.environment, ledgerURL: env.ledgerURL, latency: 0.05,
-                           calendar: calendar, now: { now }, attribute: attribute, onUpdate: onUpdate)
+                           calendar: calendar, now: { now }, attribute: attribute,
+                           createStream: streamFails ? { _ in nil } : { $0() }, onUpdate: onUpdate)
     }
 
     static func backfillsThenFollowsChanges() throws {
@@ -97,6 +100,31 @@ final class TokenUsageRecorderChecks: CheckSuite {
 
         // 只写 history.jsonl，会话记录不变：靠监听 history.jsonl 触发同步
         updates.settle()
+        try env.history("work", [HistoryFixture.prompt(session: "s-1", at: stamp)])
+        let expected = LedgerAttribution.attributed(profile: "work", account: "account:u-1")
+        let deadline = Date().addingTimeInterval(5)
+        while Date() < deadline,
+              (try? recorder.read { try $0.messages().map(\.attribution) }) != [expected] {
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        try expectEqual(try recorder.read { try $0.messages().map(\.attribution) }, [expected],
+                        "history.jsonl 写出来 5 秒内没有归属")
+    }
+
+    static func keepsRunningWithoutProjectsStream() throws {
+        let env = try LedgerEnv()
+        defer { env.remove() }
+        let stamp = "2026-10-20T01:00:00Z"
+        try env.home.makeProfile("work", config: claudeConfig(uuid: "u-1", email: "one@example.com"))
+        try env.transcript("p/s-1.jsonl", [TranscriptFixture.assistant(id: "m1", session: "s-1", at: stamp, output: 1)])
+        let updates = ProfileWatcherChecks.Counter()
+        let recorder = makeRecorder(env, now: TranscriptLine.parseTimestamp(stamp)!.addingTimeInterval(30),
+                                    attribute: nil, streamFails: true) { updates.increment() }
+        recorder.start()
+        defer { recorder.stop() }
+        try expect(updates.wait(beyond: 0), "启动后 5 秒内没有回填")
+        try expectEqual(try recorder.read { try $0.messages().map(\.attribution) }, [.pending])
+
         try env.history("work", [HistoryFixture.prompt(session: "s-1", at: stamp)])
         let expected = LedgerAttribution.attributed(profile: "work", account: "account:u-1")
         let deadline = Date().addingTimeInterval(5)
