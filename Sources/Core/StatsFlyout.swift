@@ -195,10 +195,11 @@ enum StatsFlyoutPlacement {
             let right = anchor.maxX + gap
             x = right + size.width <= visible.maxX ? right : max(visible.minX, min(x, visible.maxX - size.width))
         }
-        // 顶边与主面板对齐，再压进可用区域；比可用区域还高时保住顶部
-        var y = min(anchor.maxY, visible.maxY) - size.height
+        // 比可用区域还高时窗口只有可用区域那么高，内容在里面滚动（StatsFlyoutRoot）
+        let height = min(size.height, visible.height)
+        // 顶边与主面板对齐，再压进可用区域
+        var y = min(anchor.maxY, visible.maxY) - height
         y = max(y, visible.minY)
-        if size.height > visible.height { y = visible.maxY - size.height }
-        return CGRect(x: x, y: y, width: size.width, height: size.height)
+        return CGRect(x: x, y: y, width: size.width, height: height)
     }
 }

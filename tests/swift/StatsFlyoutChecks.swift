@@ -224,10 +224,10 @@ final class StatsFlyoutChecks: CheckSuite {
         try expectEqual(place(CGRect(x: 50, y: 375, width: 340, height: 500),
                               CGRect(x: 0, y: 0, width: 500, height: 875)),
                         CGRect(x: 0, y: 275, width: 320, height: 600))
-        // 屏幕比弹出面板还矮：保住顶部
+        // 内容比可用区域还高：窗口只有可用区域那么高（内容在里面滚动），占满可用区域
         try expectEqual(place(CGRect(x: 1000, y: 0, width: 340, height: 400),
                               CGRect(x: 0, y: 0, width: 1440, height: 500)),
-                        CGRect(x: 674, y: -100, width: 320, height: 600))
+                        CGRect(x: 674, y: 0, width: 320, height: 500))
         // 副屏（原点不在 0）
         try expectEqual(place(CGRect(x: -500, y: 375, width: 340, height: 500),
                               CGRect(x: -1920, y: 0, width: 1920, height: 875)),
