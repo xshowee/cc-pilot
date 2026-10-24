@@ -1,5 +1,5 @@
 // 面板底部的设置菜单（齿轮图标）：顶部是"关于 CC Pilot"（ticket 27），然后是"登录时启动"、
-// "菜单栏只显示图标"、zsh 接入（ticket 08）、"自动检查更新"、"检查更新…"。
+// "菜单栏只显示图标"、zsh 接入（ticket 08）、"实时额度"开关（token-usage ticket 04）、"自动检查更新"、"检查更新…"。
 // 定时检查发现新版本时，图标换成下载箭头，菜单项变成"有可用更新…"。
 // Updater 和 LaunchAtLoginModel 在 App 启动时创建（CCPilotApp），通过 environmentObject 传进来。
 
@@ -10,6 +10,8 @@ struct SettingsMenu: View {
     @EnvironmentObject private var launchAtLogin: LaunchAtLoginModel
     @EnvironmentObject private var shellIntegration: ShellIntegrationModel
     @AppStorage(MenuBarPreferences.iconOnlyKey) private var menuBarIconOnly = false
+    /// 状态栏转发开关：存在 ~/.claude-profiles/.live-quota/disabled 里（包装函数读它），菜单打开时重读
+    @State private var liveQuotaOn = LiveQuotaFiles().isForwardingEnabled
 
     var body: some View {
         Menu {
@@ -26,6 +28,17 @@ struct SettingsMenu: View {
                 } else {
                     Button("Set Up zsh Integration…") { shellIntegration.connectWithConsent() }
                 }
+                Toggle("Live Quota from Claude Code Status Line", isOn: Binding(
+                    get: { liveQuotaOn },
+                    set: { on in
+                        do {
+                            try LiveQuotaFiles().setForwardingEnabled(on)
+                        } catch {
+                            NSLog("CC Pilot: 无法更改实时额度开关：%@", String(describing: error))
+                        }
+                        liveQuotaOn = LiveQuotaFiles().isForwardingEnabled
+                    }
+                ))
             }
             Divider()
             Toggle("Automatically Check for Updates", isOn: Binding(
@@ -50,6 +63,7 @@ struct SettingsMenu: View {
         .onAppear {
             launchAtLogin.refresh()
             shellIntegration.refresh()
+            liveQuotaOn = LiveQuotaFiles().isForwardingEnabled
         }
     }
 }

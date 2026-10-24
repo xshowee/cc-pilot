@@ -4,7 +4,7 @@
 # `<安装目录>/bin/ccp statusline <档案名>`。Claude Code 每次刷新状态栏时运行它（sh -c，
 # 工作目录是会话的当前目录），把状态栏 JSON 从标准输入交给它。它做两件事：
 #   1. 把这份 JSON 原样（不在 shell 里解析）加上档案名和时间，写进实时额度文件
-#      ~/.claude-profiles/.live-quota/<档案名>.json，格式是一行
+#      ~/.claude-profiles/.live-quota/<档案名>.json，内容是
 #        {"profile":"<档案名>","received_at":<Unix 秒，三位小数>,"status":<原始 stdin JSON>}
 #      先写同目录里的临时文件 .<档案名>.json.<pid>，再 rename 原子替换。由 App 读取和解析。
 #   2. 找出原本生效的状态栏命令，把标准输入原样交给它（/bin/sh -c，~ 等写法照常展开），

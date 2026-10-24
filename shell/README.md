@@ -88,11 +88,12 @@ ccp 的路径先按 sh 引用（只在需要时加引号），再按 JSON 字符
 - `--settings` 与各级 `settings.json` **逐字段深合并**（Claude Code 内部是 lodash `mergeWith`）：只换掉 `statusLine.type` 和 `statusLine.command`，用户的 `padding` 等字段照常生效。优先级是 user < project < local < `--settings` < 托管设置。
 - 传两个 `--settings` 时**只有最后一个生效**，前一个整个被丢弃，不合并。所以用户传了 `--settings` 时包装函数不加覆盖，用户的设置优先，这次会话没有实时额度。
 - 前面加了 `--settings` 后，`claude --version`、`claude mcp list`、`claude update --help`、`claude doctor --help` 都照常工作；未登录时 `claude -p` 的输出与不加完全相同（`-p` 本来就不运行状态栏）。所以子命令不需要特殊处理。
+- 以 `{` 开头、`}` 结尾的值按内联 JSON 处理：Claude Code 把它写进一个临时的 `claude-settings-*.json`，之后与 `--settings <文件>` 走同一条路径（读源码确认；其中的同意检查只针对 attribution 相关字段，不涉及 `statusLine`）。真实交互式会话里状态栏确实被替换，留给人工验收确认。
 - 用户没有配置状态栏时，覆盖会让 Claude Code 运行一个什么都不输出的状态栏命令。
 
 `ccp statusline <档案名>`（`lib/cmd-statusline.zsh`，不列在用法说明里）由 Claude Code 在每次刷新状态栏时运行（`sh -c`，工作目录是会话的当前目录，状态栏 JSON 从标准输入给出）：
 
-1. 把标准输入原样（不在 shell 里解析）写进 `~/.claude-profiles/.live-quota/<档案名>.json`，默认档案是 `default.json`。内容是一行：`{"profile":"<档案名>","received_at":<Unix 秒，三位小数>,"status":<原始状态栏 JSON>}`。先写同目录的 `.<档案名>.json.<pid>`，再 rename 原子替换；读的时候忽略以 `.` 开头的文件。标准输入不以 `{` 开头（例如为空）时不写。档案名不合规时什么都不做。
+1. 把标准输入原样（不在 shell 里解析）写进 `~/.claude-profiles/.live-quota/<档案名>.json`，默认档案是 `default.json`。内容是（status 原样嵌入，原始 JSON 里的换行也保留，不保证只有一行）：`{"profile":"<档案名>","received_at":<Unix 秒，三位小数>,"status":<原始状态栏 JSON>}`。先写同目录的 `.<档案名>.json.<pid>`，再 rename 原子替换；读的时候忽略以 `.` 开头的文件。标准输入不以 `{` 开头（例如为空）时不写。档案名不合规时什么都不做。
 2. 找出原本生效的状态栏命令：依次查 `<project_dir>/.claude/settings.local.json`、`<project_dir>/.claude/settings.json`、档案自己的 `settings.json`（默认档案是 `~/.claude/settings.json`），`project_dir` 取状态栏 JSON 的 `workspace.project_dir`，取第一个有非空 `statusLine.command` 的。字段用 `/usr/bin/plutil -extract … raw` 读，不依赖 jq。每次运行都重新读，所以在会话里用 `/statusline` 改过的设置照常生效。
 3. 把标准输入逐字节交给它（`/bin/sh -c`，`~` 等写法照常展开），原样输出它的标准输出，退出码也用它的；都没配置时什么都不输出。
 

@@ -7,6 +7,8 @@
 //   ~/.claude-profiles/<条目>          档案目录增删、当前档案记录 active 的写入（含原子写入的临时文件）
 //   ~/.claude-profiles/<名字>/.claude.json   某个档案登录、登出
 // 档案目录里的运行时文件（history.jsonl、sessions/ 等）频繁变化，不通知。
+// 实时额度目录 ~/.claude-profiles/.live-quota（见 LiveQuotaFiles）不算档案：其中的变化（状态栏转发写出的
+// 实时额度文件、开关）只调用 onLiveQuotaChange，每批事件至多一次，所以短时间内的多次写入按 latency 合并。
 // 事件丢失或需要重新扫描时（FSEvents 的 MustScanSubDirs 等标志），一律通知。
 //
 // 软链接档案：ProfileStore 和 ccp ls 都把"指向目录的软链接"当作档案，但 FSEvents 不跟随软链接，
@@ -26,8 +28,10 @@ final class ProfileWatcher {
     private let queue: DispatchQueue
     private let queueKey = DispatchSpecificKey<Bool>()
     private let onChange: () -> Void
+    private let onLiveQuotaChange: (() -> Void)?
     private let homeConfig: String
     private let profilesRoot: String
+    private let liveQuotaDir: String
 
     // 以下只在 queue 上访问
     private var rootStream: FSEventStreamRef?
@@ -35,16 +39,20 @@ final class ProfileWatcher {
     private var linkStreams: [String: FSEventStreamRef] = [:]
 
     /// - latency: FSEvents 合并事件的时间窗口（秒），短时间内的多次变化合并成一次通知
+    /// - onLiveQuotaChange: 实时额度目录里有变化时调用（可选；与 onChange 在同一个队列上）
     init(environment: CoreEnvironment, latency: TimeInterval = 0.3,
          queue: DispatchQueue = DispatchQueue(label: "com.ccpilot.profile-watcher"),
+         onLiveQuotaChange: (() -> Void)? = nil,
          onChange: @escaping () -> Void) {
         self.latency = latency
         self.queue = queue
         self.onChange = onChange
+        self.onLiveQuotaChange = onLiveQuotaChange
         // FSEvents 报告的是解析过软链接的真实路径（例如 /var → /private/var），比较前先解析 HOME
         let paths = ProfilePaths(environment: CoreEnvironment(home: Self.realPath(environment.home)))
         homeConfig = paths.defaultClaudeJSON.path
         profilesRoot = paths.profilesRootPath
+        liveQuotaDir = profilesRoot + "/" + LiveQuotaFiles.directoryName
         queue.setSpecific(key: queueKey, value: true)
     }
 
@@ -84,14 +92,19 @@ final class ProfileWatcher {
     private func handleRootEvents(_ paths: [String], _ flags: [FSEventStreamEventFlags]) {
         guard rootStream != nil else { return }
         let rescan = flags.contains { $0 & Self.rescanFlags != 0 }
+        if rescan || paths.contains(where: isUnderLiveQuota) { onLiveQuotaChange?() }
         guard rescan || paths.contains(where: isRelevantUnderRoot) else { return }
         updateLinkStreams()
         onChange()
     }
 
+    private func isUnderLiveQuota(_ path: String) -> Bool {
+        path == liveQuotaDir || path.hasPrefix(liveQuotaDir + "/")
+    }
+
     private func isRelevantUnderRoot(_ path: String) -> Bool {
         if path == homeConfig || path == profilesRoot { return true }
-        guard path.hasPrefix(profilesRoot + "/") else { return false }
+        guard path.hasPrefix(profilesRoot + "/"), !isUnderLiveQuota(path) else { return false }
         let parts = path.dropFirst(profilesRoot.count + 1).split(separator: "/", omittingEmptySubsequences: true)
         return parts.count == 1 || (parts.count == 2 && parts[1] == ".claude.json")
     }

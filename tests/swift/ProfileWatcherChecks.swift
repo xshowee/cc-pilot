@@ -9,7 +9,45 @@ final class ProfileWatcherChecks: CheckSuite {
             Check("档案目录、当前档案记录、.claude.json 变化时都会通知", notifiesOnRelevantChanges),
             Check("档案里的运行时文件变化不通知；stop 之后不再通知", ignoresRuntimeChurnAndStops),
             Check("指向别处的软链接档案：登录、登出也会通知（含启动后才建立的软链接）", followsSymlinkedProfiles),
+            Check("实时额度文件变化单独通知、合并短时间内的多次写入，不算档案变化", notifiesLiveQuotaSeparately),
         ]
+    }
+
+    static func notifiesLiveQuotaSeparately() throws {
+        let home = try TempHome()
+        defer { home.remove() }
+        try home.makeProfileDir("work")
+        let files = LiveQuotaFiles(environment: home.environment)
+        try FileManager.default.createDirectory(at: files.directory, withIntermediateDirectories: true)
+        let profiles = Counter(), live = Counter()
+        let watcher = ProfileWatcher(environment: home.environment, latency: 0.3,
+                                     onLiveQuotaChange: { live.increment() }) { profiles.increment() }
+        watcher.start()
+        defer { watcher.stop() }
+        profiles.settle()
+        live.settle()
+        let profilesBefore = profiles.count
+
+        // 与转发命令相同的写法：同目录临时文件 + rename，连续写 20 次
+        for i in 0..<20 {
+            let tmp = files.directory.appendingPathComponent(".work.json.\(i)")
+            try Data(#"{"profile":"work","received_at":1,"status":{}}"#.utf8).write(to: tmp)
+            _ = rename(tmp.path, files.file(for: "work").path)
+        }
+        try expect(live.wait(beyond: 0), "写入实时额度文件后 5 秒内没有收到实时额度通知")
+        live.settle()
+        try expect(live.count < 20, "短时间内的 20 次写入应合并成少数几次通知，实际 \(live.count) 次")
+        try expectEqual(profiles.count, profilesBefore, "实时额度文件变化不应触发档案变化通知")
+
+        // 开关文件也在这个目录里：不算档案变化
+        try files.setForwardingEnabled(false)
+        Thread.sleep(forTimeInterval: 1)
+        try expectEqual(profiles.count, profilesBefore, "开关变化不应触发档案变化通知")
+
+        // 档案变化照常通知
+        try expectNotified(profiles, "写入档案的 .claude.json") {
+            try home.writeJSON(".claude-profiles/work/.claude.json", claudeConfig(uuid: "u", email: "a@b.c"))
+        }
     }
 
     /// 记录回调次数（回调在后台队列上发生）
