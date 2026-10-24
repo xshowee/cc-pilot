@@ -20,6 +20,7 @@ DerivedData/
 .DS_Store
 .env
 .env.*
+!.env.example
 .claude/settings.local.json
 
 # 签名、公证、Sparkle 更新的密钥，绝不提交

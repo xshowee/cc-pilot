@@ -7,11 +7,11 @@
 # 产物：build/CC Pilot.app、build/CCPilot-<版本>.dmg、appcast.xml。上传与推送由用户手动完成，
 # 完整步骤见 docs/release.md。
 #
-# 不启用 App Sandbox；
-# 唯一的 entitlement 是发送 Apple 事件（见 scripts/build-app.sh）。
+# 不启用 App Sandbox；唯一的 entitlement 是发送 Apple 事件（见 scripts/build-app.sh）。
 #
-# 环境变量：
-#   CCP_TEAM_ID             签名所属团队
+# 环境变量（也可以写在仓库根目录的 .env 里，格式见 .env.example；命令行里设置的优先）：
+#   CCP_TEAM_ID            签名所属团队，默认取钥匙串里 Developer ID Application 证书所属的团队；
+#                           钥匙串里有多个团队的证书时必须指定
 #   CCP_RELEASE_IDENTITY    签名身份（名称或 SHA-1），默认取该团队的 Developer ID Application 证书；
 #                           "-" 表示 ad-hoc，只允许与 CCP_SKIP_NOTARIZE=1 一起用
 #   CCP_NOTARY_PROFILE      notarytool 钥匙串凭据名，默认 cc-pilot-notary
@@ -26,10 +26,27 @@ setopt err_exit pipe_fail
 ROOT=${0:A:h:h}
 cd -- "$ROOT"
 
+# load_env_file：读取 .env 里的 CCP_* 变量（只认 NAME=值 这样的行，值两边的引号会去掉），
+# 不执行其中的命令；值为空的行当作没写，已经设置的环境变量不覆盖。
+load_env_file() {
+  local line name value
+  while IFS= read -r line || [[ -n $line ]]; do
+    [[ $line =~ '^(CCP_[A-Z_]+)=(.*)$' ]] || continue
+    name=$match[1] value=$match[2]
+    [[ $value == \"*\" || $value == \'*\' ]] && value=${value[2,-2]}
+    if [[ -n $value && -z ${(P)name+set} ]]; then
+      export $name=$value
+    fi
+  done < $1
+}
+if [[ -f .env ]]; then
+  load_env_file .env
+fi
+
 PLIST=Resources/Info.plist
 # 与 Resources/Info.plist 和 Sources/App/Updater.swift 中的占位值一致（32 个零字节的 base64）
 PLACEHOLDER_KEY=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
-# 用户决定：cc-pilot 使用单独的 Sparkle 密钥，存放在钥匙串的这个账户下，不用默认账户
+# cc-pilot 使用单独的 Sparkle 密钥，存放在钥匙串的这个账户下，不用默认账户
 SPARKLE_ACCOUNT=cc-pilot
 REPO_URL=https://github.com/xshowee/cc-pilot
 TEAM_ID=${CCP_TEAM_ID:-}
@@ -75,14 +92,34 @@ if [[ $SKIP_NOTARIZE != 1 ]]; then
     die "钥匙串里账户 $SPARKLE_ACCOUNT 的 Sparkle 公钥与 $PLIST 的 SUPublicEDKey 不匹配，拒绝发布"
 fi
 
-# find_identity：输出 TEAM_ID 团队的第一个 Developer ID Application 证书的 SHA-1。
+# dev_id_certs：钥匙串里的 Developer ID Application 证书，每行"SHA-1 Team ID"。
 # Developer ID 证书名末尾括号里就是 Team ID（Apple Development 证书不是）。
-find_identity() {
+dev_id_certs() {
   security find-identity -v -p codesigning |
-    awk -F'"' -v suffix="($TEAM_ID)" '
-      $2 ~ /^Developer ID Application: / && substr($2, length($2) - length(suffix) + 1) == suffix {
-        split($1, f, " "); print f[2]; exit
+    awk -F'"' '$2 ~ /^Developer ID Application: .*\([A-Z0-9]+\)$/ {
+        split($1, f, " "); n = split($2, p, "("); team = p[n]; sub(/\)$/, "", team); print f[2], team
       }'
+}
+
+CERTS=$(dev_id_certs)
+# 没有指定 CCP_TEAM_ID 时，钥匙串里只有一个团队的证书就用这个团队
+if [[ -z $TEAM_ID ]]; then
+  typeset -aU teams
+  teams=(${${(f)CERTS}##* })
+  if (( ${#teams} == 1 )); then
+    TEAM_ID=$teams[1]
+  elif (( ${#teams} > 1 )) && [[ -z ${CCP_RELEASE_IDENTITY+set} ]]; then
+    die "钥匙串里有多个团队的 Developer ID Application 证书（${(j:、:)teams}），请用 CCP_TEAM_ID 指定"
+  fi
+fi
+
+# find_identity：输出 TEAM_ID 团队的第一个 Developer ID Application 证书的 SHA-1
+find_identity() {
+  if [[ -n $TEAM_ID ]]; then
+    local -a matched
+    matched=(${(M)${(f)CERTS}:#* $TEAM_ID})
+    print -r -- ${matched[1]%% *}
+  fi
 }
 
 IDENTITY=${CCP_RELEASE_IDENTITY-$(find_identity)}
@@ -90,7 +127,7 @@ if [[ $IDENTITY == - ]]; then
   [[ $SKIP_NOTARIZE == 1 ]] || die "ad-hoc 签名（CCP_RELEASE_IDENTITY=-）只能与 CCP_SKIP_NOTARIZE=1 一起用"
   warn "使用 ad-hoc 签名，产物无法通过 Gatekeeper"
 elif [[ -z $IDENTITY ]]; then
-  die "钥匙串里没有团队 $TEAM_ID 的 Developer ID Application 证书（可用 CCP_RELEASE_IDENTITY 指定）"
+  die "钥匙串里没有${TEAM_ID:+团队 $TEAM_ID 的} Developer ID Application 证书（可用 CCP_RELEASE_IDENTITY 指定）"
 elif ! security find-identity -v -p codesigning | grep -F -q -- "$IDENTITY"; then
   die "钥匙串里找不到签名身份 $IDENTITY"
 fi
@@ -98,7 +135,7 @@ fi
 if [[ $SKIP_NOTARIZE != 1 ]] &&
    ! xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" > /dev/null 2>&1; then
   die "找不到公证凭据 \"$NOTARY_PROFILE\"，请先执行（见 docs/release.md）：" \
-    "  xcrun notarytool store-credentials $NOTARY_PROFILE --apple-id <Apple ID> --team-id $TEAM_ID"
+    "  xcrun notarytool store-credentials $NOTARY_PROFILE --apple-id <Apple ID> --team-id ${TEAM_ID:-<Team ID>}"
 fi
 
 # ---------- 构建与签名 ----------

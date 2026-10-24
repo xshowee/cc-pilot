@@ -97,4 +97,48 @@ test_local_dry_run_skips_keychain_key_check() {
   assert_nothing_built
 }
 
+# 假 security：find-identity 输出给定的几行（不碰真实钥匙串）
+fake_identities() {
+  mkdir -p -- $T/bin || exit 1
+  { print -r -- '#!/bin/zsh -f'
+    print -r -- '[[ $1 == find-identity ]] || exit 1'
+    print -r -- "print -r -- ${(q)1}"
+  } > $T/bin/security && chmod +x $T/bin/security || exit 1
+}
+
+test_reads_settings_from_dot_env() {
+  # .env 里的 CCP_* 变量等同于环境变量；空值当作没写，不执行其中的命令
+  setup_repo
+  set_public_key $PLACEHOLDER_KEY
+  fake_identities '     0 valid identities found'
+  print -r -l -- '# 注释' 'CCP_SKIP_NOTARIZE=1' 'CCP_TEAM_ID=' 'CCP_RELEASE_IDENTITY="from-dot-env"' \
+    'touch should-not-exist' > $T/repo/.env
+  run_release PATH=$T/bin:$FAKES:/usr/bin:/bin:/usr/sbin:/sbin
+  assert_contains "$T_ERR" "from-dot-env" "应使用 .env 里的签名身份（引号已去掉）"
+  [[ ! -e $T/repo/should-not-exist ]] || fail "不应执行 .env 里的命令"
+  assert_rc_nonzero
+  assert_nothing_built
+}
+
+test_command_line_overrides_dot_env() {
+  setup_repo
+  set_public_key $PLACEHOLDER_KEY
+  fake_identities '     0 valid identities found'
+  print -r -l -- 'CCP_SKIP_NOTARIZE=1' 'CCP_RELEASE_IDENTITY=from-dot-env' > $T/repo/.env
+  run_release PATH=$T/bin:$FAKES:/usr/bin:/bin:/usr/sbin:/sbin CCP_RELEASE_IDENTITY=from-command-line
+  assert_contains "$T_ERR" "from-command-line" "命令行里的签名身份应优先"
+  [[ $T_ERR != *from-dot-env* ]] || fail "不应使用 .env 里的签名身份"
+  assert_rc_nonzero
+}
+
+test_requires_team_id_when_keychain_has_several_teams() {
+  setup_repo
+  set_public_key $PLACEHOLDER_KEY
+  fake_identities $'  1) AAAA1111 "Developer ID Application: A (TEAMAAAAAA)"\n  2) BBBB2222 "Developer ID Application: B (TEAMBBBBBB)"\n     2 valid identities found'
+  run_release PATH=$T/bin:$FAKES:/usr/bin:/bin:/usr/sbin:/sbin CCP_SKIP_NOTARIZE=1
+  assert_contains "$T_ERR" "CCP_TEAM_ID" "应要求用 CCP_TEAM_ID 指定团队"
+  assert_rc_nonzero
+  assert_nothing_built
+}
+
 t_main "$@"
