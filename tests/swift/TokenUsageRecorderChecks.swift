@@ -1,6 +1,7 @@
 // token-usage ticket 01：启动时回填现有会话记录，之后监听 projects/ 的变化（FSEvents）增量读入。
 // 用真实文件系统事件，每一步最多等 5 秒。
 
+import CoreServices
 import Foundation
 
 final class TokenUsageRecorderChecks: CheckSuite {
@@ -12,6 +13,7 @@ final class TokenUsageRecorderChecks: CheckSuite {
             Check("默认按 history.jsonl 归属；history.jsonl 后写出来也会自动归属", attributesWhenHistoryAppears),
             Check("projects/ 的监听建立失败：仍算在运行，history.jsonl 变化照常触发同步", keepsRunningWithoutProjectsStream),
             Check("同步没有新明细、归属也没变时不通知；归属变了才通知", notifiesOnlyOnChange),
+            Check("按 FSEvents 报告的目录只扫描有变化的项目；说不清时全量扫描", scopesScanToChangedProjects),
         ]
     }
 
@@ -169,6 +171,23 @@ final class TokenUsageRecorderChecks: CheckSuite {
         before = (syncs.count, updates.count)
         try env.append("p/s-1.jsonl", [TranscriptFixture.user(session: "s-1", at: stamp)])
         try expect(updates.wait(beyond: before.updates), "归属变了应通知")
+    }
+
+    static func scopesScanToChangedProjects() throws {
+        let root = "/h/.claude/projects"
+        func scope(_ paths: [String], _ flags: [Int] = []) -> Set<String>? {
+            TokenUsageRecorder.projectsToScan(
+                events: paths.enumerated().map { ($1, FSEventStreamEventFlags(flags.indices.contains($0) ? flags[$0] : 0)) },
+                projectsRoot: root)
+        }
+        try expectEqual(scope([root + "/p1/", root + "/p2/s-1/subagents/", root + "/p1"]), ["p1", "p2"],
+                        "项目目录、子代理目录")
+        try expectEqual(scope([root + "/p1/", root + "/"]), nil, "projects/ 本身有变化（新建项目、刚创建）")
+        try expectEqual(scope([root + "/p1/", "/h/.claude/"]), nil, "projects/ 之外")
+        try expectEqual(scope([root + "/p1/"], [kFSEventStreamEventFlagMustScanSubDirs]), nil, "要求重新扫描")
+        try expectEqual(scope([root + "/p1/"], [kFSEventStreamEventFlagKernelDropped]), nil, "事件丢失")
+        try expectEqual(scope([root + "/p1/"], [kFSEventStreamEventFlagRootChanged]), nil, "根目录变了")
+        try expectEqual(scope([root + "-other/p1/"]), nil, "名字以 projects 开头的别的目录")
     }
 
     final class Flag {

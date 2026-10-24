@@ -8,7 +8,9 @@
 // 消息可能先于 history.jsonl 的条目写出来，条目出现时要再归属一次。
 // 汇总按整天进行，只在启动后第一次同步和本地日期变了之后做（算保留期要读每个档案的设置，
 // 会话进行中每隔一两秒就同步一次，没必要每次都做）。
-// 不按 FSEvents 报告的路径过滤：任何事件（含需要重新扫描的标志）都做一次完整的增量同步，
+// projects/ 的事件按 FSEvents 报告的目录只扫描有变化的项目（projectsToScan）：会话进行中每一两秒同步一次，
+// 每次都遍历、stat 全部项目的全部会话记录太浪费。说不清哪些项目变了时（projects/ 本身或之外的目录、
+// 需要重新扫描、事件丢失、根目录变了）全量扫描；启动时和 history.jsonl 变化引起的同步也是全量。
 // 增量读取本身只读有变化的部分。projects/ 启动时可以不存在，之后创建也能收到。
 //
 // 账本只在 `queue`（默认是一个后台串行队列）上访问：同步、归属钩子、onUpdate 和 `read` 的 body
@@ -152,10 +154,11 @@ final class TokenUsageRecorder: @unchecked Sendable {
         }
     }
 
-    private func sync() {
+    /// - projects: 只扫描这些项目，nil 全量扫描
+    private func sync(projects: Set<String>? = nil) {
         guard let ledger = try? openLedger() else { return }
         let revision = ledger.revision
-        _ = try? ledger.ingest(projectsRoot: projectsRoot)
+        _ = try? ledger.ingest(projectsRoot: projectsRoot, projects: projects)
         try? attribute(ledger)
         let current = now()
         let day = calendar.dateComponents([.year, .month, .day], from: current)
@@ -186,11 +189,31 @@ final class TokenUsageRecorder: @unchecked Sendable {
     }
 
     /// 流只在 queue 上回调，stop 在 queue 上销毁流，所以回调时 self 一定还在（deinit 会先 stop）
-    private static let callback: FSEventStreamCallback = { _, info, _, _, _, _ in
+    private static let callback: FSEventStreamCallback = { _, info, count, paths, flags, _ in
         guard let info else { return }
         let recorder = Unmanaged<TokenUsageRecorder>.fromOpaque(info).takeUnretainedValue()
         guard recorder.running else { return }
-        recorder.sync()
+        // 没有 UseCFTypes：paths 是 C 字符串数组
+        let cPaths = paths.assumingMemoryBound(to: UnsafePointer<CChar>.self)
+        let events = (0..<count).map { (String(cString: cPaths[$0]), flags[$0]) }
+        recorder.sync(projects: projectsToScan(events: events, projectsRoot: recorder.projectsRoot.path))
+    }
+
+    /// 一批 FSEvents 事件（目录，标志）涉及哪些项目（projectsRoot 下的目录名）；要全量扫描时为 nil（见文件头）
+    static func projectsToScan(events: [(path: String, flags: FSEventStreamEventFlags)],
+                               projectsRoot: String) -> Set<String>? {
+        let rescan = FSEventStreamEventFlags(kFSEventStreamEventFlagMustScanSubDirs
+            | kFSEventStreamEventFlagUserDropped | kFSEventStreamEventFlagKernelDropped
+            | kFSEventStreamEventFlagRootChanged)
+        let prefix = projectsRoot + "/"
+        var projects: Set<String> = []
+        for event in events {
+            guard event.flags & rescan == 0, event.path.hasPrefix(prefix),
+                  let project = event.path.dropFirst(prefix.count).split(separator: "/").first
+            else { return nil }
+            projects.insert(String(project))
+        }
+        return projects
     }
 
     private static func realPath(_ path: String) -> String {

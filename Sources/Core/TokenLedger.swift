@@ -154,11 +154,12 @@ final class TokenLedger {
 
     // MARK: - 读入会话记录
 
-    /// 增量读取 projectsRoot（~/.claude/projects）下的全部会话记录；返回新记入的消息数。
-    /// 首次调用即回填现有的全部会话记录。projectsRoot 不存在时什么也不做。
+    /// 增量读取 projectsRoot（~/.claude/projects）下的会话记录；返回新记入的消息数。
+    /// projects 是只扫描的项目（projectsRoot 下的目录名），nil 扫描全部；首次调用即回填现有的全部会话记录。
+    /// projectsRoot 不存在时什么也不做。
     @discardableResult
-    func ingest(projectsRoot: URL) throws -> Int {
-        let files = Self.transcriptFiles(in: projectsRoot)
+    func ingest(projectsRoot: URL, projects: Set<String>? = nil) throws -> Int {
+        let files = Self.transcriptFiles(in: projectsRoot, projects: projects)
         var added = 0
         let positions = try readPositions()
         for file in files {
@@ -167,9 +168,13 @@ final class TokenLedger {
             if count > 0 { revision += 1 }
             added += count
         }
-        // 已经不存在的文件忘掉读取位置（账本里的明细不动）
+        // 已经不存在的文件忘掉读取位置（账本里的明细不动）。只看扫描过的项目：没扫描的项目里的文件
+        // 不在 files 里，但还在，忘掉它们的位置会从头重读、重复计入没有 message.id 的行
         let present = Set(files.map(\.path))
-        let gone = positions.keys.filter { !present.contains($0) }
+        let prefixes = projects.map { $0.map { projectsRoot.path + "/" + $0 + "/" } }
+        let gone = positions.keys.filter { path in
+            !present.contains(path) && (prefixes?.contains { path.hasPrefix($0) } ?? true)
+        }
         if !gone.isEmpty {
             try db.transaction {
                 for path in gone { try db.run("DELETE FROM files WHERE path = ?1", [.text(path)]) }
@@ -188,8 +193,8 @@ final class TokenLedger {
         let inode: Int
     }
 
-    /// projects/<项目>/*.jsonl 和 projects/<项目>/<会话>/subagents/*.jsonl
-    private static func transcriptFiles(in root: URL) -> [TranscriptFile] {
+    /// projects/<项目>/*.jsonl 和 projects/<项目>/<会话>/subagents/*.jsonl；projects 不为 nil 时只看这些项目
+    private static func transcriptFiles(in root: URL, projects: Set<String>?) -> [TranscriptFile] {
         let fm = FileManager.default
         func entries(_ path: String) -> [String] {
             ((try? fm.contentsOfDirectory(atPath: path)) ?? []).filter { !$0.hasPrefix(".") }.sorted()
@@ -199,7 +204,7 @@ final class TokenLedger {
             return fm.fileExists(atPath: path, isDirectory: &isDir) && isDir.boolValue
         }
         var files: [TranscriptFile] = []
-        for project in entries(root.path) {
+        for project in entries(root.path) where projects?.contains(project) ?? true {
             let projectPath = root.path + "/" + project
             guard isDirectory(projectPath) else { continue }
             for entry in entries(projectPath) {

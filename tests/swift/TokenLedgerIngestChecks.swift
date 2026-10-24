@@ -12,6 +12,7 @@ final class TokenLedgerIngestChecks: CheckSuite {
             Check("子代理会话记录也读，并记下父会话", readsSubagentTranscripts),
             Check("只读新追加的部分；写到一半的最后一行下次再读", readsIncrementallyAndWaitsForHalfLine),
             Check("重新打开账本再读不会重复计入；会话记录被删除不影响账本", survivesReopenAndDeletion),
+            Check("只扫描有变化的项目：别的项目的读取位置不丢，之后也不重复计入", scansOnlyGivenProjects),
         ]
     }
 
@@ -146,6 +147,24 @@ final class TokenLedgerIngestChecks: CheckSuite {
 }
 
 /// 一个临时主目录 + 其中的账本，会话记录写在 .claude/projects/ 下
+extension TokenLedgerIngestChecks {
+    static func scansOnlyGivenProjects() throws {
+        let env = try LedgerEnv()
+        defer { env.remove() }
+        // 没有 message.id 的行不参与去重：读取位置一丢就会重复计入
+        try env.transcript("p1/s-1.jsonl", [TranscriptFixture.assistant(id: nil, session: "s-1", at: t0, output: 1)])
+        try env.transcript("p2/s-2.jsonl", [TranscriptFixture.assistant(id: nil, session: "s-2", at: t0, output: 2)])
+        try env.ledger.ingest(projectsRoot: env.projects)
+
+        try env.append("p1/s-1.jsonl", [TranscriptFixture.assistant(id: nil, session: "s-1", at: t0, output: 4)])
+        try env.append("p2/s-2.jsonl", [TranscriptFixture.assistant(id: nil, session: "s-2", at: t0, output: 3)])
+        try expectEqual(try env.ledger.ingest(projectsRoot: env.projects, projects: ["p2"]), 1, "只读 p2")
+        try expectEqual(try env.ledger.ingest(projectsRoot: env.projects, projects: ["p1"]), 1, "p1 从上次的位置接着读")
+        try expectEqual(try env.ledger.messages().map(\.tokens.output).sorted(), [1, 2, 3, 4])
+        try expectEqual(try env.ledger.ingest(projectsRoot: env.projects), 0, "再全量读一遍也不重复")
+    }
+}
+
 final class LedgerEnv {
     let home: TempHome
     let ledgerURL: URL
