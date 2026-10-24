@@ -117,7 +117,11 @@ CCP_SKIP_NOTARIZE=1 ./scripts/release.sh
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString 0.2.0" Resources/Info.plist
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion 2" Resources/Info.plist
 git commit -am "chore(release): 版本 0.2.0（2）" -m "递增版本号与构建号，准备发布 0.2.0。"
+git push
 ```
+
+马上推送，因为第 3 步要把 tag 打在这个提交上，GitHub 只能给远端已有的提交打 tag。
+此时 appcast 还没变，推送不会让已安装的 App 发现新版本。
 
 ### 2. 构建、签名、公证、打包、生成 appcast
 
@@ -131,8 +135,12 @@ CCP_RELEASE_NOTES=/path/to/notes-0.2.0.md ./scripts/release.sh    # 没有更新
 ### 3. 先上传 DMG
 
 ```zsh
-gh release create v0.2.0 build/CCPilot-0.2.0.dmg --title "CC Pilot 0.2.0" --notes-file /path/to/notes-0.2.0.md
+gh release create v0.2.0 build/CCPilot-0.2.0.dmg --title "CC Pilot 0.2.0" --notes-file /path/to/notes-0.2.0.md \
+  --target "$(git rev-parse HEAD)"
 ```
+
+`--target` 把 tag 打在第 1 步的版本号提交上（此时 HEAD 就是它，appcast 还没提交）。
+不加的话，tag 打在远端 main 当时的最新提交上，不一定是构建 DMG 用的那个提交。
 
 tag 必须是 `v<版本>`，附件名必须保持 `CCPilot-<版本>.dmg`：appcast 里的下载地址是
 `https://github.com/xshowee/cc-pilot/releases/download/v<版本>/CCPilot-<版本>.dmg`。
