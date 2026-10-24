@@ -71,9 +71,10 @@ source "$HOME/.cc-pilot/cc-pilot.zsh"  # cc-pilot
 
 ## ccp add 建立的档案
 
-`ccp add <名字>` 在 `~/.claude-profiles/<名字>/` 里只放三类东西：
+`ccp add <名字>` 在 `~/.claude-profiles/<名字>/` 里只放四类东西：
 
-- 共享资源的软链接：`settings.json`、`CLAUDE.md`、`skills`、`agents`、`commands`、`plugins`、`projects`，各自指向 `~/.claude/` 中的同名项（绝对路径；默认档案里还没有的项也照建）。清单和建立方式集中在 `cmd-add.zsh` 的 `_ccp_shared_resources` / `_ccp_share_resources`，单个文件改用复制时只改这两个函数。
+- 共享资源的软链接：`CLAUDE.md`、`skills`、`agents`、`commands`、`plugins`、`projects`，各自指向 `~/.claude/` 中的同名项（绝对路径；默认档案里还没有的项也照建）。清单和建立方式集中在 `cmd-add.zsh` 的 `_ccp_shared_resources` / `_ccp_share_resources`。
+- `settings.json`：默认档案 `~/.claude/settings.json` 的副本（普通文件，之后各改各的，见 ADR 0003）。默认档案没有这个文件时不写；复制失败时不写，只给出提示。
 - `.claude.json`：只含默认档案 `~/.claude.json`（不在 `~/.claude/` 里）的 `mcpServers` 和 `projects` 两个字段，用 JXA 原样复制。默认档案的 `.claude.json` 不存在或无法解析时不写这个文件，只给出提示。
 - `.ccp-workdir/`：启动 Claude Code 用的空目录（见下面"启动 Claude Code 的工作目录"）。
 

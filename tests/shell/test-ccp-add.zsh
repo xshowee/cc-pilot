@@ -1,8 +1,9 @@
 #!/bin/zsh -f
-# ccp add：新建档案、共享资源的软链接、.claude.json 的初始值、进入新档案的 Claude Code（ticket 03）
+# ccp add：新建档案、共享资源的软链接、settings.json 和 .claude.json 的初始值、进入新档案的 Claude Code
+# （ticket 03；settings.json 每个档案一份见 ADR 0003）
 source "${0:A:h}/lib.zsh"
 
-typeset -ga SHARED_ITEMS=(settings.json CLAUDE.md skills agents commands plugins projects)
+typeset -ga SHARED_ITEMS=(CLAUDE.md skills agents commands plugins projects)
 # 启动 Claude Code 用的专用空目录（ticket 21），也在档案目录里
 WORKDIR=.ccp-workdir
 
@@ -46,7 +47,7 @@ test_new_profile_links_every_shared_item_to_default_profile() {
   done
 }
 
-test_new_profile_has_only_shared_links_and_its_own_claude_json() {
+test_new_profile_has_only_shared_links_and_its_own_settings_and_claude_json() {
   # 默认档案里有独有文件和运行时目录：都不应出现在新档案里
   mkdir -p -- "$T_HOME/.claude/"{skills,sessions,shell-snapshots,cache,todos,statsig}
   print -r -- '{}' > "$T_HOME/.claude/settings.json"
@@ -55,7 +56,68 @@ test_new_profile_has_only_shared_links_and_its_own_claude_json() {
   t_ccp -- add work
   assert_rc 0
   assert_eq "$(dir_entries "$T_HOME/.claude-profiles/work")" \
-    "$(print -rl -- .claude.json $WORKDIR $SHARED_ITEMS | sort)" "新档案目录的内容"
+    "$(print -rl -- .claude.json $WORKDIR settings.json $SHARED_ITEMS | sort)" "新档案目录的内容"
+}
+
+# ---------- settings.json 的初始值 ----------
+
+test_new_settings_json_is_own_regular_file_copied_verbatim() {
+  local src="$T_HOME/.claude/settings.json" content=$'{\n  "advisorModel": "fable",\n  "theme": "dark"\n}'
+  mkdir -p -- "$T_HOME/.claude"
+  print -r -- "$content" > $src
+  t_ccp -- add work
+  assert_rc 0
+  local out="$T_HOME/.claude-profiles/work/settings.json"
+  [[ -f $out && ! -L $out ]] || fail "新档案应有自己的 settings.json（普通文件）"
+  assert_eq "$(< $out)" "$content" "新档案的 settings.json"
+}
+
+test_settings_json_changes_do_not_propagate_between_profiles() {
+  local src="$T_HOME/.claude/settings.json" out="$T_HOME/.claude-profiles/work/settings.json"
+  mkdir -p -- "$T_HOME/.claude"
+  print -r -- '{"advisorModel":"fable"}' > $src
+  t_ccp -- add work
+  assert_rc 0
+  print -r -- '{"advisorModel":"opus"}' > $out
+  assert_eq "$(< $src)" '{"advisorModel":"fable"}' "改新档案不应影响默认档案"
+  print -r -- '{"theme":"light"}' > $src
+  assert_eq "$(< $out)" '{"advisorModel":"opus"}' "改默认档案不应影响新档案"
+}
+
+test_new_settings_json_copies_target_when_default_is_a_symlink() {
+  # 用 dotfiles 仓库管理设置的人，~/.claude/settings.json 本身是软链接：复制内容，不复制链接
+  mkdir -p -- "$T_HOME/.claude" "$T_HOME/dotfiles"
+  print -r -- '{"theme":"dark"}' > "$T_HOME/dotfiles/settings.json"
+  ln -s -- "$T_HOME/dotfiles/settings.json" "$T_HOME/.claude/settings.json"
+  t_ccp -- add work
+  assert_rc 0
+  local out="$T_HOME/.claude-profiles/work/settings.json"
+  [[ -f $out && ! -L $out ]] || fail "新档案的 settings.json 应是普通文件"
+  assert_eq "$(< $out)" '{"theme":"dark"}' "新档案的 settings.json"
+}
+
+test_missing_default_settings_json_creates_profile_without_it_or_hint() {
+  default_claude_json '{"projects":{}}'
+  t_ccp -- add work
+  assert_rc 0
+  assert_stderr_empty
+  local out="$T_HOME/.claude-profiles/work/settings.json"
+  [[ ! -e $out && ! -L $out ]] || fail "默认档案没有 settings.json 时，新档案也不应有"
+}
+
+test_unreadable_default_settings_json_still_creates_profile_with_hint() {
+  local src="$T_HOME/.claude/settings.json" dir="$T_HOME/.claude-profiles/work"
+  mkdir -p -- "$T_HOME/.claude"
+  print -r -- '{}' > $src
+  chmod 000 $src
+  default_claude_json '{"projects":{}}'
+  t_ccp -- add work
+  chmod 644 $src
+  assert_rc 0
+  assert_contains "$T_ERR" "settings.json" "应提示没有复制设置"
+  assert_eq "$(dir_entries $dir)" "$(print -rl -- .claude.json $WORKDIR $SHARED_ITEMS | sort)" \
+    "档案目录里不应留下 settings.json 或临时文件"
+  assert_claude_calls 1
 }
 
 # ---------- .claude.json 的初始值 ----------
@@ -104,7 +166,7 @@ assert_created_without_initial_values() {  # 档案名
   local dir="$T_HOME/.claude-profiles/$1"
   assert_rc 0
   [[ -d $dir ]] || fail "仍应创建档案目录"
-  [[ -L $dir/settings.json ]] || fail "仍应建立共享资源的软链接"
+  [[ -L $dir/skills ]] || fail "仍应建立共享资源的软链接"
   [[ ! -e $dir/.claude.json && ! -L $dir/.claude.json ]] || fail "不应写入 .claude.json"
   assert_eq "$(dir_entries $dir)" "$(print -rl -- $WORKDIR $SHARED_ITEMS | sort)" "档案目录里不应留下临时文件"
   assert_contains "$T_ERR" ".claude.json" "应提示没有复制初始值"
@@ -166,7 +228,7 @@ test_paths_have_no_double_or_trailing_slash_when_home_ends_with_slash() {
 test_profile_is_kept_when_claude_exits_with_error() {
   t_ccp FAKE_CLAUDE_EXIT=3 -- add work
   assert_rc 3
-  [[ -L $T_HOME/.claude-profiles/work/settings.json ]] || fail "档案应保留"
+  [[ -L $T_HOME/.claude-profiles/work/skills ]] || fail "档案应保留"
 }
 
 # ---------- Claude Code 的工作目录（ticket 21） ----------

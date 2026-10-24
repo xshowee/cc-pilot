@@ -35,6 +35,9 @@ _ccp_cmd_add() {
     /bin/rm -rf -- "$dir"
     return 1
   fi
+  if ! _ccp_seed_settings_json "$dir"; then
+    print -u2 -r -- "ccp add: 无法复制默认档案的 $(_ccp_default_config_dir)/settings.json，新档案从 Claude Code 的默认设置开始。"
+  fi
   if ! _ccp_seed_claude_json "$dir"; then
     print -u2 -r -- "ccp add: 没有读到默认档案的 $(_ccp_default_claude_json)（不存在或无法解析），新档案不带 MCP 服务器和项目列表的初始值。"
   fi
@@ -85,16 +88,33 @@ EOF
   return 1
 }
 
+# ---------- settings.json 的初始值 ----------
+
+# 把默认档案的 settings.json 复制为新档案自己的 settings.json（普通文件），作为一次性的初始值；
+# 之后各档案各改各的（ADR 0003）。默认档案的是软链接时复制它指向的内容。只读默认档案，不修改它。
+# 默认档案没有 settings.json 时什么都不写（Claude Code 第一次写设置时会自己创建），返回 0；
+# 有但复制失败时不留下文件，返回 1。参数：新档案目录
+_ccp_seed_settings_json() {
+  emulate -L zsh
+  local src dst="$1/settings.json" tmp="$1/settings.json.ccp-tmp"
+  src=$(_ccp_default_config_dir)/settings.json
+  [[ -e $src ]] || return 0
+  if /bin/cp -- "$src" "$tmp" 2>/dev/null; then
+    /bin/mv -f -- "$tmp" "$dst" && return 0
+  fi
+  /bin/rm -f -- "$tmp"
+  return 1
+}
+
 # ---------- 共享资源 ----------
 # 共享资源的清单和建立方式只在这里定义。目前对每一项建软链接，指向默认档案中的同名项；
 # 默认档案里还不存在的项也照样建（悬空链接），等默认档案里有了这一项，新档案立即可见。
-# 单个文件（settings.json、CLAUDE.md）用软链接是否可靠尚待实测（ticket 05），
-# 若改为单向复制，只需替换下面两个函数。
+# settings.json 不在其中：每个档案一份，见上面的 _ccp_seed_settings_json。
 
 # 输出共享资源清单，每行一项（目录也不带结尾的 /）
 _ccp_shared_resources() {
   emulate -L zsh
-  print -rl -- settings.json CLAUDE.md skills agents commands plugins projects
+  print -rl -- CLAUDE.md skills agents commands plugins projects
 }
 
 # 在新档案目录里建立全部共享资源。参数：档案目录（应为刚创建的空目录）

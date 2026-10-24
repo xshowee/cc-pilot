@@ -17,7 +17,7 @@ cc-pilot gives each account its own **profile**:
 - **Profiles don't affect each other's sign-in.** Each profile keeps its own login, so switching never requires signing in again.
 - **Switching only affects sessions started afterwards.** A running Claude Code keeps the profile it started with, so different terminals can use different accounts at the same time.
 - **Use another profile in one terminal, once**: `CLAUDE_PROFILE=work claude`, without changing the current profile.
-- **One shared working environment.** Settings, `CLAUDE.md`, skills, subagents, custom commands, plugins and project session history are shared by all profiles. Prompt history (what ↑ recalls) is kept per profile.
+- **One shared working environment.** `CLAUDE.md`, skills, subagents, custom commands, plugins and project session history are shared by all profiles. Settings (`settings.json`) and prompt history (what ↑ recalls) are kept per profile.
 - **Your existing setup is the default profile.** Your `~/.claude` stays exactly as it is, under the name `default`. Nothing is migrated.
 - **No automatic switching, ever.** You always switch by hand.
 
@@ -62,7 +62,7 @@ When you choose to install an update, Sparkle downloads the new DMG from this re
 | `~/.zshrc` | With your consent, appends **one line** at the end (see "Install" below). Running it again never adds a second line; uninstalling removes only that line. Nothing else in the file is touched. |
 | `~/.cc-pilot/` | Where the `ccp` command and the `claude` wrapper function are installed. The app installs and updates it. |
 | `~/.claude-profiles/` | Every profile other than the default one, one directory each (`~/.claude-profiles/<name>/`), plus the file recording the current profile, `~/.claude-profiles/active`. |
-| `~/.claude/`, `~/.claude.json` (default profile) | **Read only.** When a profile is created, its MCP servers and project trust settings are copied from `~/.claude.json`; the new profile's shared resources are symlinks into `~/.claude/`; the app reads account info (email, organization, tier) from `.claude.json` to display it. |
+| `~/.claude/`, `~/.claude.json` (default profile) | **Read only.** When a profile is created, its MCP servers and project trust settings are copied from `~/.claude.json` and its settings from `~/.claude/settings.json`; the new profile's shared resources are symlinks into `~/.claude/`; the app reads account info (email, organization, tier) from `.claude.json` to display it. |
 | Keychain | **Read only**, see "Network and privacy" above. |
 | Terminal | When you add or delete a profile in the app, it opens a new Terminal window to run `ccp add` / `ccp rm`. macOS asks once whether CC Pilot may control Terminal; if you'd rather not allow it, the app gives you the command to copy and run yourself. |
 
@@ -73,7 +73,7 @@ cc-pilot does **not**:
 - interfere with other Claude Code wrapper functions or aliases already in your `~/.zshrc`;
 - change anything about `claude` while you only have the default profile, or while the default profile is current: it then behaves exactly as before.
 
-Note that shared resources are symlinks. When Claude Code changes a setting in any profile (for example with `/model`), or you install a skill or plugin, it changes the copy in `~/.claude/`, which all profiles see.
+Note that shared resources are symlinks. When you install a skill or plugin in any profile, it changes the copy in `~/.claude/`, which all profiles see. Settings aren't a shared resource: when Claude Code changes a setting in a profile (for example with `/model` or `/advisor`), only that profile is affected.
 
 ## Requirements
 
@@ -140,6 +140,13 @@ Profile names may contain only letters, digits, `.`, `_` and `-`, and must start
   - Claude Desktop;
   - shells other than zsh (bash, fish, …).
 - **MCP servers and project trust settings are copied once, at creation.** `ccp add` copies only `mcpServers` (user-level MCP servers) and `projects` (project trust settings) from the default profile's `~/.claude.json` as the new profile's starting point. After that each profile changes on its own; they are not kept in sync. An MCP server added to the default profile later won't appear in profiles that already exist, and vice versa. Connectors configured in your claude.ai account follow the account and aren't part of the copy.
+- **Settings are copied once, at creation.** `ccp add` copies the default profile's `~/.claude/settings.json` as the new profile's starting settings. After that each profile changes on its own: a theme, status line or hook changed in one profile doesn't reach the others. This lets profiles on different subscription tiers use different models and advisors. Plugins are shared, but whether a plugin is enabled is part of each profile's settings: a plugin installed and enabled in one profile has to be enabled again with `/plugin` in the others.
+- **Profiles created by 0.1.0 still share settings.** Back then `settings.json` was a symlink to `~/.claude/settings.json`, and cc-pilot doesn't migrate it. To give an existing profile its own settings, run (remove the symlink, then copy):
+
+  ```sh
+  rm ~/.claude-profiles/<name>/settings.json && cp ~/.claude/settings.json ~/.claude-profiles/<name>/settings.json
+  ```
+
 - **Profiles can't be renamed.** The keychain item holding a profile's credentials is named after the profile directory's path, so renaming would lose the sign-in. To change a name: `ccp add` a profile with the new name and sign in, then `ccp rm` the old one (which walks you through signing out first).
 - **It depends on Claude Code internals.** How keychain items are named, the structure of account info in `.claude.json`, and the usage API's address and fields are undocumented; cc-pilot follows the actual behavior of Claude Code 2.1.309. If a Claude Code update breaks compatibility, the app says "Incompatible with the current Claude Code version" or "The usage API may have changed. Please update cc-pilot." instead of showing a guessed number.
 - Usage isn't available when signed in with an API key or a long-lived token from `setup-token`.
