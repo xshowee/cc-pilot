@@ -46,6 +46,19 @@ struct LedgerMessage: Equatable, Sendable {
     var attributionSessionID: String { parentSessionID ?? sessionID }
 }
 
+/// 超过保留期的明细合并成的一行汇总：某账号、某模型、某个本地日期
+struct LedgerDailyUsage: Equatable, Sendable {
+    /// 本地日期，yyyy-MM-dd
+    let day: String
+    /// 这一天本地 0 点（合并时的时区）
+    let dayStart: Date
+    /// 归属的账号；nil 表示未归属
+    let account: String?
+    /// 原始模型 ID
+    let model: String
+    let tokens: TokenCounts
+}
+
 final class TokenLedger {
     private let db: SQLiteDatabase
 
@@ -231,6 +244,108 @@ final class TokenLedger {
                                               account: statement.text(11))))
         }
         return result
+    }
+
+    /// 全部汇总，按日期排列（同一天里已归属的账号在前、未归属在后）
+    func dailyUsage() throws -> [LedgerDailyUsage] {
+        let statement = try db.prepare("""
+            SELECT day, day_start, account, model, input, output, cache_write, cache_read
+            FROM daily ORDER BY day, account = '', account, model
+            """)
+        var result: [LedgerDailyUsage] = []
+        while try statement.step() {
+            let account = statement.text(2) ?? ""
+            result.append(LedgerDailyUsage(
+                day: statement.text(0) ?? "", dayStart: Date(timeIntervalSince1970: statement.double(1)),
+                account: account.isEmpty ? nil : account, model: statement.text(3) ?? "",
+                tokens: TokenCounts(input: statement.int(4), output: statement.int(5),
+                                    cacheWrite: statement.int(6), cacheRead: statement.int(7))))
+        }
+        return result
+    }
+
+    // MARK: - 归属（ticket 02）
+
+    /// 还有待归属明细的会话，用归属用的会话 ID（子代理取父会话）表示，按字节序排列
+    func pendingSessionIDs() throws -> [String] {
+        let statement = try db.prepare("""
+            SELECT DISTINCT coalesce(parent_session_id, session_id) FROM messages WHERE attribution = ?1
+            """)
+        try statement.bind([.int(Self.pendingState)])
+        var ids: [String] = []
+        while try statement.step() { ids.append(statement.text(0) ?? "") }
+        return ids.sorted { $0.utf8.lexicographicallyPrecedes($1.utf8) }
+    }
+
+    /// 给一个会话（含它的子代理）的待归属明细定下归属。已经归属过的明细不改：档案之后换登录，旧记录仍算原账号。
+    func attribute(sessionID: String, as attribution: LedgerAttribution) throws {
+        let values: [SQLiteValue]
+        switch attribution {
+        case .pending: return
+        case .attributed(let profile, let account):
+            values = [.int(Self.attributedState), .text(profile), .text(account)]
+        case .unattributed:
+            values = [.int(Self.unattributedState), .null, .null]
+        }
+        try db.run("""
+            UPDATE messages SET attribution = ?1, profile = ?2, account = ?3
+            WHERE attribution = ?4 AND coalesce(parent_session_id, session_id) = ?5
+            """, values + [.int(Self.pendingState), .text(sessionID)])
+    }
+
+    // MARK: - 汇总
+
+    /// 把保留期之前（本地日期 now − retentionDays 那天的 0 点之前）的明细合并进"每账号、每模型、每天"汇总，
+    /// 删掉这些明细。只合并已经确定归属的（未归属的合进 account 为空的汇总）；待归属的留着，归属后下次再合并。
+    /// 按整天合并，日期按 calendar（App 里是系统当前的日历和时区）计算。
+    func rollUp(now: Date, retentionDays: Int, calendar: Calendar) throws {
+        guard let back = calendar.date(byAdding: .day, value: -retentionDays, to: now) else { return }
+        let cutoff = calendar.startOfDay(for: back)
+        try db.transaction {
+            let select = try db.prepare("""
+                SELECT id, message_id, ts, model, input, output, cache_write, cache_read, account
+                FROM messages WHERE ts < ?1 AND attribution != ?2
+                """)
+            try select.bind([.real(cutoff.timeIntervalSince1970), .int(Self.pendingState)])
+            struct Key: Hashable { let day: String; let account: String; let model: String }
+            var totals: [Key: (dayStart: Date, tokens: TokenCounts)] = [:]
+            var rowIDs: [Int] = []
+            var messageIDs: [String] = []
+            while try select.step() {
+                rowIDs.append(select.int(0))
+                if let id = select.text(1) { messageIDs.append(id) }
+                let ts = Date(timeIntervalSince1970: select.double(2))
+                let day = calendar.dateComponents([.year, .month, .day], from: ts)
+                let key = Key(day: String(format: "%04d-%02d-%02d", day.year ?? 0, day.month ?? 0, day.day ?? 0),
+                              account: select.text(8) ?? "", model: select.text(3) ?? "")
+                let tokens = TokenCounts(input: select.int(4), output: select.int(5),
+                                         cacheWrite: select.int(6), cacheRead: select.int(7))
+                totals[key, default: (calendar.startOfDay(for: ts), .zero)].tokens += tokens
+            }
+            let upsert = try db.prepare("""
+                INSERT INTO daily (day, day_start, account, model, input, output, cache_write, cache_read)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                ON CONFLICT (day, account, model) DO UPDATE SET
+                    input = input + excluded.input, output = output + excluded.output,
+                    cache_write = cache_write + excluded.cache_write, cache_read = cache_read + excluded.cache_read
+                """)
+            for (key, value) in totals {
+                try upsert.bind([.text(key.day), .real(value.dayStart.timeIntervalSince1970), .text(key.account),
+                                 .text(key.model), .int(value.tokens.input), .int(value.tokens.output),
+                                 .int(value.tokens.cacheWrite), .int(value.tokens.cacheRead)])
+                while try upsert.step() {}
+            }
+            let remember = try db.prepare("INSERT OR IGNORE INTO rolled_message_ids (message_id) VALUES (?1)")
+            for id in messageIDs {
+                try remember.bind([.text(id)])
+                while try remember.step() {}
+            }
+            let delete = try db.prepare("DELETE FROM messages WHERE id = ?1")
+            for id in rowIDs {
+                try delete.bind([.int(id)])
+                while try delete.step() {}
+            }
+        }
     }
 
     // MARK: - 归属状态的存储形式
