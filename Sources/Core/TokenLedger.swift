@@ -321,18 +321,8 @@ final class TokenLedger {
 
     // MARK: - 归属（ticket 02）
 
-    /// 还有待归属明细的会话，用归属用的会话 ID（子代理取父会话）表示，按字节序排列
-    func pendingSessionIDs() throws -> [String] {
-        let statement = try db.prepare("""
-            SELECT DISTINCT coalesce(parent_session_id, session_id) FROM messages WHERE attribution = ?1
-            """)
-        try statement.bind([.int(Self.pendingState)])
-        var ids: [String] = []
-        while try statement.step() { ids.append(statement.text(0) ?? "") }
-        return ids.sorted { $0.utf8.lexicographicallyPrecedes($1.utf8) }
-    }
-
-    /// 还有待归属明细的会话（同 pendingSessionIDs），附带其中最新一条待归属明细的时间
+    /// 还有待归属明细的会话，用归属用的会话 ID（子代理取父会话）表示，按字节序排列；
+    /// 附带其中最新一条待归属明细的时间
     func pendingSessions() throws -> [(sessionID: String, latest: Date)] {
         let statement = try db.prepare("""
             SELECT coalesce(parent_session_id, session_id), max(ts) FROM messages WHERE attribution = ?1

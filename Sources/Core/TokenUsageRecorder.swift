@@ -102,11 +102,6 @@ final class TokenUsageRecorder: @unchecked Sendable {
         }
     }
 
-    /// 在后台安排一次同步（例如 history.jsonl 变了、归属可能有新进展时）
-    func scheduleSync() {
-        queue.async { [self] in sync() }
-    }
-
     /// 在账本所在的队列上读取账本（等之前安排的同步做完）
     func read<T>(_ body: (TokenLedger) throws -> T) throws -> T {
         var result: Result<T, Error>!

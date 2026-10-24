@@ -34,11 +34,11 @@ final class TokenLedgerRollupChecks: CheckSuite {
         ])
         try env.transcript("p/s-2.jsonl", [TranscriptFixture.assistant(id: "m3", session: "s-2", at: t, output: 3)])
         try env.ledger.ingest(projectsRoot: env.projects)
-        try expectEqual(try env.ledger.pendingSessionIDs(), ["s-1", "s-2"])
+        try expectEqual(try env.ledger.pendingSessions().map(\.sessionID), ["s-1", "s-2"])
 
         try env.ledger.attribute(sessionID: "s-1", as: .attributed(profile: "work", account: "account:u-1"))
         try env.ledger.attribute(sessionID: "s-2", as: .unattributed)
-        try expectEqual(try env.ledger.pendingSessionIDs(), [])
+        try expectEqual(try env.ledger.pendingSessions().map(\.sessionID), [])
         let byID = Dictionary(uniqueKeysWithValues: try env.ledger.messages().map { ($0.messageID!, $0.attribution) })
         try expectEqual(byID["m1"], .attributed(profile: "work", account: "account:u-1"))
         try expectEqual(byID["m2"], .attributed(profile: "work", account: "account:u-1"), "子代理随父会话归属")
@@ -47,7 +47,7 @@ final class TokenLedgerRollupChecks: CheckSuite {
         // 档案之后换了登录：同一会话的新消息另行归属，旧记录不改
         try env.append("p/s-1.jsonl", [TranscriptFixture.assistant(id: "m4", session: "s-1", at: t, output: 4)])
         try env.ledger.ingest(projectsRoot: env.projects)
-        try expectEqual(try env.ledger.pendingSessionIDs(), ["s-1"])
+        try expectEqual(try env.ledger.pendingSessions().map(\.sessionID), ["s-1"])
         try env.ledger.attribute(sessionID: "s-1", as: .attributed(profile: "work", account: "account:u-2"))
         let after = Dictionary(uniqueKeysWithValues: try env.ledger.messages().map { ($0.messageID!, $0.attribution) })
         try expectEqual(after["m1"], .attributed(profile: "work", account: "account:u-1"))
