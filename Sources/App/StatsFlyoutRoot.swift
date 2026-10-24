@@ -40,8 +40,8 @@ struct StatsFlyoutRoot: View {
                             onClear: { stats.clear(target.account) })
                 .onAppear { stats.show(request.account, resets: request.resets) }
                 .onChange(of: request) { stats.show($0.account, resets: $0.resets) }
-                // 滚动窗口随时间移动：界面时钟走一格就重读
-                .onChange(of: usage.now) { _ in stats.reload() }
+                // 滚动窗口随时间移动：定时器走一格就重读（不看 now：每次并入实时额度它都会变）
+                .onChange(of: usage.tick) { _ in stats.reload() }
                 .onDisappear { stats.hide() }
         }
     }

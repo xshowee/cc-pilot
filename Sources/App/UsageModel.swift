@@ -9,7 +9,7 @@
 // 文件重新并入。这条路径只读本地文件，不发请求，也不碰刷新的状态（UsageBoard.recordLive）。
 //
 // now 是界面用的时钟：每 15 秒前进一次，只用来重算"N 分钟前"、变灰、已重置、还要等多久，
-// 让菜单栏和面板随时间更新；它不触发任何请求。
+// 让菜单栏和面板随时间更新；它不触发任何请求。拿到新数据时 now 也会拨到此刻；只随定时器走的是 tick。
 
 import Combine
 import Foundation
@@ -22,6 +22,9 @@ final class UsageModel: ObservableObject {
     @Published private(set) var refreshing: Set<UsageAccount> = []
     /// 界面时钟（见文件头）
     @Published private(set) var now = Date()
+    /// 只随定时器前进的时钟：并入新数据时 now 也会被拨到此刻，要按"时间走了一格"做事的（统计面板重读滚动窗口）
+    /// 看这个
+    @Published private(set) var tick = Date()
 
     private let refresher: UsageRefresher
     private let queue = DispatchQueue(label: "com.ccpilot.usage-refresh", qos: .userInitiated)
@@ -41,7 +44,10 @@ final class UsageModel: ObservableObject {
         liveFiles = LiveQuotaFiles(environment: environment)
         clock = Timer.publish(every: 15, tolerance: 5, on: .main, in: .common)
             .autoconnect()
-            .sink { [weak self] date in self?.now = date }
+            .sink { [weak self] date in
+                self?.now = date
+                self?.tick = date
+            }
         changes.subscribeLiveQuota { [weak self] in self?.reloadLiveQuota() }
         // 文件监听只报告之后的变化，App 启动前写下的文件要先读一次
         reloadLiveQuota()
@@ -73,10 +79,14 @@ final class UsageModel: ObservableObject {
         }
     }
 
-    /// 并入实时额度（同一批文件重复并入不改变结果）
+    /// 并入实时额度（同一批文件重复并入不改变结果）。还没有文件时也调用：board 要记下各档案此刻的账号，
+    /// 之后才认得出换登录。board 没变时不发布（状态栏每次重绘都会重写文件），免得界面和统计面板白白重算。
     private func applyLiveQuota() {
-        guard !liveQuotas.isEmpty, !profiles.isEmpty else { return }
-        board.recordLive(liveQuotas, profiles: profiles)
+        guard !profiles.isEmpty else { return }
+        var updated = board
+        updated.recordLive(liveQuotas, profiles: profiles, now: Date())
+        guard updated != board else { return }
+        board = updated
         now = Date()
     }
 
