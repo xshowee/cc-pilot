@@ -9,6 +9,7 @@ final class TokenUsageRecorderChecks: CheckSuite {
             Check("启动时回填现有会话记录；之后追加的消息自动读入", backfillsThenFollowsChanges),
             Check("projects/ 启动时还不存在，之后创建也能读入", picksUpProjectsCreatedLater),
             Check("读入之后、汇总之前先调用归属钩子；汇总只合并已归属的明细", runsAttributionBeforeRollup),
+            Check("默认按 history.jsonl 归属；history.jsonl 后写出来也会自动归属", attributesWhenHistoryAppears),
         ]
     }
 
@@ -19,7 +20,7 @@ final class TokenUsageRecorderChecks: CheckSuite {
     }()
 
     static func makeRecorder(_ env: LedgerEnv, now: Date = Date(),
-                             attribute: @escaping (TokenLedger) throws -> Void = { _ in },
+                             attribute: ((TokenLedger) throws -> Void)? = { _ in },
                              onUpdate: @escaping () -> Void) -> TokenUsageRecorder {
         TokenUsageRecorder(environment: env.home.environment, ledgerURL: env.ledgerURL, latency: 0.05,
                            calendar: calendar, now: { now }, attribute: attribute, onUpdate: onUpdate)
@@ -77,6 +78,34 @@ final class TokenUsageRecorderChecks: CheckSuite {
         defer { recorder.stop() }
         try expectEqual(try recorder.read { try $0.messages().compactMap(\.messageID) }, ["b1"])
         try expectEqual(try recorder.read { try $0.dailyUsage().map(\.tokens.output) }, [10])
+    }
+
+    static func attributesWhenHistoryAppears() throws {
+        let env = try LedgerEnv()
+        defer { env.remove() }
+        let stamp = "2026-10-20T01:00:00Z"
+        try env.home.makeProfile("work", config: claudeConfig(uuid: "u-1", email: "one@example.com"))
+        try env.transcript("p/s-1.jsonl", [TranscriptFixture.assistant(id: "m1", session: "s-1", at: stamp, output: 1)])
+        let updates = ProfileWatcherChecks.Counter()
+        // 消息刚写出来，还在等待期内：history.jsonl 里没有这个会话也不判为未归属
+        let recorder = makeRecorder(env, now: TranscriptLine.parseTimestamp(stamp)!.addingTimeInterval(30),
+                                    attribute: nil) { updates.increment() }
+        recorder.start()
+        defer { recorder.stop() }
+        try expect(updates.wait(beyond: 0), "启动后 5 秒内没有回填")
+        try expectEqual(try recorder.read { try $0.messages().map(\.attribution) }, [.pending])
+
+        // 只写 history.jsonl，会话记录不变：靠监听 history.jsonl 触发同步
+        updates.settle()
+        try env.history("work", [HistoryFixture.prompt(session: "s-1", at: stamp)])
+        let expected = LedgerAttribution.attributed(profile: "work", account: "account:u-1")
+        let deadline = Date().addingTimeInterval(5)
+        while Date() < deadline,
+              (try? recorder.read { try $0.messages().map(\.attribution) }) != [expected] {
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        try expectEqual(try recorder.read { try $0.messages().map(\.attribution) }, [expected],
+                        "history.jsonl 写出来 5 秒内没有归属")
     }
 
     /// 等到账本里有 count 条明细

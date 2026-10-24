@@ -9,6 +9,7 @@ final class ProfileWatcherChecks: CheckSuite {
             Check("档案目录、当前档案记录、.claude.json 变化时都会通知", notifiesOnRelevantChanges),
             Check("档案里的运行时文件变化不通知；stop 之后不再通知", ignoresRuntimeChurnAndStops),
             Check("指向别处的软链接档案：登录、登出也会通知（含启动后才建立的软链接）", followsSymlinkedProfiles),
+            Check("history.jsonl 模式：默认档案、普通档案、软链接档案的 history.jsonl 变化时通知", watchesHistoryFiles),
             Check("实时额度文件变化单独通知、合并短时间内的多次写入，不算档案变化", notifiesLiveQuotaSeparately),
         ]
     }
@@ -182,5 +183,51 @@ final class ProfileWatcherChecks: CheckSuite {
         try Data("{}\n".utf8).write(to: lab.appendingPathComponent("history.jsonl"))
         Thread.sleep(forTimeInterval: 1)
         try expectEqual(counter.count, before, "软链接档案里的运行时文件变化不应通知")
+    }
+
+    static func watchesHistoryFiles() throws {
+        let home = try TempHome()
+        defer { home.remove() }
+        let fm = FileManager.default
+        try home.makeProfileDir("work")
+        let lab = home.root.appendingPathComponent("elsewhere/lab")
+        try fm.createDirectory(at: lab, withIntermediateDirectories: true)
+        try fm.createSymbolicLink(at: home.profilesRoot.appendingPathComponent("lab"), withDestinationURL: lab)
+        let counter = Counter()
+        // 启动时 ~/.claude 还不存在
+        let watcher = ProfileWatcher(environment: home.environment, latency: 0.05, watching: .history) {
+            counter.increment()
+        }
+        watcher.start()
+        defer { watcher.stop() }
+
+        try expectNotified(counter, "默认档案第一次写 ~/.claude/history.jsonl") {
+            try home.write(".claude/history.jsonl", "{}\n")
+        }
+        try expectNotified(counter, "默认档案追加 history.jsonl") { try appendLine(home.url, ".claude/history.jsonl") }
+        try expectNotified(counter, "普通档案写 history.jsonl") {
+            try home.write(".claude-profiles/work/history.jsonl", "{}\n")
+        }
+        try expectNotified(counter, "软链接档案写 history.jsonl") {
+            try Data("{}\n".utf8).write(to: lab.appendingPathComponent("history.jsonl"))
+        }
+
+        // 会话记录、档案里别的运行时文件、.claude.json 都不通知
+        counter.settle()
+        let before = counter.count
+        try home.write(".claude/projects/p/s-1.jsonl", "{}\n")
+        try home.write(".claude/settings.json", "{}")
+        try home.write(".claude-profiles/work/sessions/x.json", "{}")
+        try home.writeJSON(".claude-profiles/work/.claude.json", claudeConfig(uuid: "u", email: "a@b.c"))
+        try Data("{}".utf8).write(to: lab.appendingPathComponent(".claude.json"))
+        Thread.sleep(forTimeInterval: 1)
+        try expectEqual(counter.count, before, "history.jsonl 以外的文件变化不应通知")
+    }
+
+    private static func appendLine(_ home: URL, _ relative: String) throws {
+        let handle = try FileHandle(forWritingTo: home.appendingPathComponent(relative))
+        defer { try? handle.close() }
+        try handle.seekToEnd()
+        try handle.write(contentsOf: Data("{}\n".utf8))
     }
 }

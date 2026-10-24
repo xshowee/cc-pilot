@@ -10,6 +10,8 @@ final class TokenLedgerRollupChecks: CheckSuite {
             Check("超过保留期、已归属的明细按账号、模型、本地日期合并成汇总", rollsUpAttributedOldMessages),
             Check("还没归属的明细超过保留期也不汇总，归属后下次再汇总并累加", keepsPendingUntilAttributed),
             Check("已汇总的消息又出现在 resume 出来的会话记录里，不再记一次", rolledMessagesStayCounted),
+            Check("已汇总的 message.id 只记两个保留期；更早的消息再出现也不重记", forgetsVeryOldRolledIDs),
+            Check("旧版账本（user_version 1）升级后，已汇总的 message.id 仍然有效", migratesVersion1Ledger),
         ]
     }
 
@@ -129,5 +131,75 @@ final class TokenLedgerRollupChecks: CheckSuite {
         try env.ledger.ingest(projectsRoot: env.projects)
         try expectEqual(try env.ledger.messages().compactMap(\.messageID), ["r1"])
         try expectEqual(try env.ledger.dailyUsage().map(\.tokens.output), [10])
+    }
+
+    static func forgetsVeryOldRolledIDs() throws {
+        let env = try LedgerEnv()
+        defer { env.remove() }
+        let old = TranscriptFixture.assistant(id: "a1", session: "s-a", at: "2026-09-01T02:00:00Z", output: 10)
+        try env.transcript("p/s-a.jsonl", [old])
+        try env.ledger.ingest(projectsRoot: env.projects)
+        try env.ledger.attribute(sessionID: "s-a", as: .attributed(profile: "work", account: "account:u-1"))
+        try env.ledger.rollUp(now: now, retentionDays: 35, calendar: calendar)
+        try expectEqual(try env.ledger.rolledMessageIDCount(), 1)
+
+        // 本地 9 月 1 日离"两个保留期之前"（11 月 5 日往前 70 天 = 8 月 27 日）还远：记着
+        let later = TranscriptLine.parseTimestamp("2026-11-05T04:00:00Z")!
+        try env.ledger.rollUp(now: later, retentionDays: 35, calendar: calendar)
+        try expectEqual(try env.ledger.rolledMessageIDCount(), 1)
+        // 11 月 15 日往前 70 天 = 9 月 6 日：9 月 1 日的 message.id 忘掉
+        let muchLater = TranscriptLine.parseTimestamp("2026-11-15T04:00:00Z")!
+        try env.ledger.rollUp(now: muchLater, retentionDays: 35, calendar: calendar)
+        try expectEqual(try env.ledger.rolledMessageIDCount(), 0)
+
+        // 一条消息在 resume 链里一直传下来：忘掉 id 之后再出现，也不能重新记一次
+        try env.transcript("p/s-r.jsonl", [
+            old, TranscriptFixture.assistant(id: nil, session: "s-r", at: "2026-09-01T03:00:00Z", output: 4),
+            TranscriptFixture.assistant(id: "r1", session: "s-r", at: "2026-11-15T01:00:00Z", output: 2),
+        ])
+        try env.ledger.ingest(projectsRoot: env.projects)
+        try expectEqual(try env.ledger.messages().compactMap(\.messageID), ["r1"])
+        try expectEqual(try env.ledger.messages().count, 1, "早于已忘掉的日期的行都不再记")
+        try expectEqual(try env.ledger.dailyUsage().map(\.tokens.output), [10])
+    }
+
+    static func migratesVersion1Ledger() throws {
+        let env = try LedgerEnv()
+        defer { env.remove() }
+        // 手工建一个 ticket 01 时的账本：只有 rolled_message_ids(message_id)
+        let url = env.home.url.appendingPathComponent("v1.sqlite")
+        do {
+            let db = try SQLiteDatabase(path: url.path)
+            try db.execute("""
+                CREATE TABLE messages (
+                    id INTEGER PRIMARY KEY, message_id TEXT UNIQUE, ts REAL NOT NULL, session_id TEXT NOT NULL,
+                    parent_session_id TEXT, model TEXT NOT NULL,
+                    input INTEGER NOT NULL, output INTEGER NOT NULL,
+                    cache_write INTEGER NOT NULL, cache_read INTEGER NOT NULL,
+                    attribution INTEGER NOT NULL DEFAULT 0, profile TEXT, account TEXT
+                );
+                CREATE TABLE daily (
+                    day TEXT NOT NULL, day_start REAL NOT NULL, account TEXT NOT NULL, model TEXT NOT NULL,
+                    input INTEGER NOT NULL, output INTEGER NOT NULL,
+                    cache_write INTEGER NOT NULL, cache_read INTEGER NOT NULL,
+                    PRIMARY KEY (day, account, model)
+                ) WITHOUT ROWID;
+                CREATE TABLE rolled_message_ids (message_id TEXT PRIMARY KEY) WITHOUT ROWID;
+                CREATE TABLE files (path TEXT PRIMARY KEY, offset INTEGER NOT NULL, inode INTEGER NOT NULL)
+                    WITHOUT ROWID;
+                INSERT INTO rolled_message_ids VALUES ('a1');
+                PRAGMA user_version = 1;
+                """)
+        }
+        let ledger = try TokenLedger(at: url)
+        try env.transcript("p/s-r.jsonl", [
+            TranscriptFixture.assistant(id: "a1", session: "s-r", at: "2026-09-01T02:00:00Z", output: 10),
+            TranscriptFixture.assistant(id: "r1", session: "s-r", at: "2026-10-20T01:00:00Z", output: 2),
+        ])
+        try ledger.ingest(projectsRoot: env.projects)
+        try expectEqual(try ledger.messages().compactMap(\.messageID), ["r1"])
+        // 升级时不知道这些消息的时间，按升级时刻算，至少再记两个保留期
+        try ledger.rollUp(now: Date().addingTimeInterval(60 * 86400), retentionDays: 35, calendar: calendar)
+        try expectEqual(try ledger.rolledMessageIDCount(), 1)
     }
 }

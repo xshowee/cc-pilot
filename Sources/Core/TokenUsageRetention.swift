@@ -12,7 +12,7 @@ enum TokenUsageRetention {
     static func days(environment: CoreEnvironment) -> Int {
         let paths = ProfilePaths(environment: environment)
         let dirs = ProfileStore(environment: environment).listProfiles()
-            .map { $0.configDir ?? paths.homePath + "/.claude" }
+            .map(paths.runtimeDir(of:))
         let longest = dirs.compactMap { cleanupPeriodDays(in: $0 + "/settings.json") }.max() ?? 0
         return max(minimumDays, longest + marginDays)
     }

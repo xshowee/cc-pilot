@@ -1,12 +1,15 @@
 // cc-pilot 自己的 Token 用量账本（spec 决策 11）：~/Library/Application Support/cc-pilot/token-usage.sqlite。
 // 只读 Claude Code 的会话记录，从不改动它们；会话记录被删除不影响账本。
 //
-// 数据（SQLite，PRAGMA user_version = 1）：
+// 数据（SQLite，PRAGMA user_version = 2）：
 //   messages  逐条明细：每条 assistant 消息一行，message.id 唯一（没有 id 的行各占一行）。
 //             attribution 是归属状态（见 LedgerAttribution），由 ticket 02 填写；读入时一律是"待归属"。
 //   daily     超过保留期的明细合并成的"每账号、每模型、每天"汇总；account 为空串表示未归属。
-//   rolled_message_ids  已合并进汇总的 message.id。resume/fork 出来的会话记录会原样带上旧消息，
-//             这些旧消息的明细已经删掉了，靠它防止再记一次。
+//   rolled_message_ids  已合并进汇总的 message.id 及消息时间。resume/fork 出来的会话记录会原样带上旧消息，
+//             这些旧消息的明细已经删掉了，靠它防止再记一次。只记两个保留期：更早的忘掉，
+//             忘掉的分界记在 meta 的 forgotten_before，读入时早于它的行一律跳过（它们所在的日子早已汇总，
+//             能出现只可能是 resume 链一路带下来的旧消息），这样表不会无限增长，也不会重记。
+//   meta      键值：forgotten_before（见上）。
 //   files     每份会话记录读到的位置（字节偏移）和 inode。与明细在同一个事务里写入，
 //             中途退出也不会重复计入或漏记。
 //
@@ -81,7 +84,21 @@ final class TokenLedger {
     private func migrate() throws {
         let version = try db.prepare("PRAGMA user_version")
         let current = try version.step() ? version.int(0) : 0
-        guard current < 1 else { return }
+        if current < 1 { try createVersion1() }
+        if current < 2 {
+            // 旧的 message.id 不知道消息时间，按升级时刻算：至少再记两个保留期
+            try db.transaction {
+                try db.execute("""
+                    ALTER TABLE rolled_message_ids ADD COLUMN ts REAL NOT NULL DEFAULT 0;
+                    CREATE TABLE meta (key TEXT PRIMARY KEY, value REAL NOT NULL) WITHOUT ROWID;
+                    """)
+                try db.run("UPDATE rolled_message_ids SET ts = ?1", [.real(Date().timeIntervalSince1970)])
+                try db.execute("PRAGMA user_version = 2")
+            }
+        }
+    }
+
+    private func createVersion1() throws {
         try db.transaction {
             try db.execute("""
                 CREATE TABLE messages (
@@ -204,7 +221,8 @@ final class TokenLedger {
                 INSERT OR IGNORE INTO messages
                     (message_id, ts, session_id, parent_session_id, model, input, output, cache_write, cache_read)
                 SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9
-                WHERE ?1 IS NULL OR NOT EXISTS (SELECT 1 FROM rolled_message_ids WHERE message_id = ?1)
+                WHERE (?1 IS NULL OR NOT EXISTS (SELECT 1 FROM rolled_message_ids WHERE message_id = ?1))
+                  AND ?2 >= coalesce((SELECT value FROM meta WHERE key = 'forgotten_before'), 0)
                 """)
             var added = 0
             for line in complete.split(separator: 0x0A) {
@@ -277,6 +295,20 @@ final class TokenLedger {
         return ids.sorted { $0.utf8.lexicographicallyPrecedes($1.utf8) }
     }
 
+    /// 还有待归属明细的会话（同 pendingSessionIDs），附带其中最新一条待归属明细的时间
+    func pendingSessions() throws -> [(sessionID: String, latest: Date)] {
+        let statement = try db.prepare("""
+            SELECT coalesce(parent_session_id, session_id), max(ts) FROM messages WHERE attribution = ?1
+            GROUP BY 1
+            """)
+        try statement.bind([.int(Self.pendingState)])
+        var sessions: [(sessionID: String, latest: Date)] = []
+        while try statement.step() {
+            sessions.append((statement.text(0) ?? "", Date(timeIntervalSince1970: statement.double(1))))
+        }
+        return sessions.sorted { $0.sessionID.utf8.lexicographicallyPrecedes($1.sessionID.utf8) }
+    }
+
     /// 给一个会话（含它的子代理）的待归属明细定下归属。已经归属过的明细不改：档案之后换登录，旧记录仍算原账号。
     func attribute(sessionID: String, as attribution: LedgerAttribution) throws {
         let values: [SQLiteValue]
@@ -298,9 +330,13 @@ final class TokenLedger {
     /// 把保留期之前（本地日期 now − retentionDays 那天的 0 点之前）的明细合并进"每账号、每模型、每天"汇总，
     /// 删掉这些明细。只合并已经确定归属的（未归属的合进 account 为空的汇总）；待归属的留着，归属后下次再合并。
     /// 按整天合并，日期按 calendar（App 里是系统当前的日历和时区）计算。
+    /// 同时忘掉两个保留期之前（本地日期 now − 2 × retentionDays 那天的 0 点之前）的已汇总 message.id。
     func rollUp(now: Date, retentionDays: Int, calendar: Calendar) throws {
-        guard let back = calendar.date(byAdding: .day, value: -retentionDays, to: now) else { return }
+        guard let back = calendar.date(byAdding: .day, value: -retentionDays, to: now),
+              let farBack = calendar.date(byAdding: .day, value: -2 * retentionDays, to: now)
+        else { return }
         let cutoff = calendar.startOfDay(for: back)
+        let forgetBefore = calendar.startOfDay(for: farBack)
         try db.transaction {
             let select = try db.prepare("""
                 SELECT id, message_id, ts, model, input, output, cache_write, cache_read, account
@@ -310,10 +346,10 @@ final class TokenLedger {
             struct Key: Hashable { let day: String; let account: String; let model: String }
             var totals: [Key: (dayStart: Date, tokens: TokenCounts)] = [:]
             var rowIDs: [Int] = []
-            var messageIDs: [String] = []
+            var messageIDs: [(id: String, ts: Double)] = []
             while try select.step() {
                 rowIDs.append(select.int(0))
-                if let id = select.text(1) { messageIDs.append(id) }
+                if let id = select.text(1) { messageIDs.append((id, select.double(2))) }
                 let ts = Date(timeIntervalSince1970: select.double(2))
                 let day = calendar.dateComponents([.year, .month, .day], from: ts)
                 let key = Key(day: String(format: "%04d-%02d-%02d", day.year ?? 0, day.month ?? 0, day.day ?? 0),
@@ -335,9 +371,9 @@ final class TokenLedger {
                                  .int(value.tokens.cacheWrite), .int(value.tokens.cacheRead)])
                 while try upsert.step() {}
             }
-            let remember = try db.prepare("INSERT OR IGNORE INTO rolled_message_ids (message_id) VALUES (?1)")
-            for id in messageIDs {
-                try remember.bind([.text(id)])
+            let remember = try db.prepare("INSERT OR IGNORE INTO rolled_message_ids (message_id, ts) VALUES (?1, ?2)")
+            for message in messageIDs {
+                try remember.bind([.text(message.id), .real(message.ts)])
                 while try remember.step() {}
             }
             let delete = try db.prepare("DELETE FROM messages WHERE id = ?1")
@@ -345,7 +381,22 @@ final class TokenLedger {
                 try delete.bind([.int(id)])
                 while try delete.step() {}
             }
+            // 分界只往后移（保留期变短时也不会把已忘掉的又当成没见过）
+            try db.run("""
+                INSERT INTO meta (key, value) VALUES ('forgotten_before', ?1)
+                ON CONFLICT (key) DO UPDATE SET value = max(value, excluded.value)
+                """, [.real(forgetBefore.timeIntervalSince1970)])
+            try db.run("""
+                DELETE FROM rolled_message_ids
+                WHERE ts < (SELECT value FROM meta WHERE key = 'forgotten_before')
+                """)
         }
+    }
+
+    /// 记着的已汇总 message.id 个数
+    func rolledMessageIDCount() throws -> Int {
+        let statement = try db.prepare("SELECT count(*) FROM rolled_message_ids")
+        return try statement.step() ? statement.int(0) : 0
     }
 
     // MARK: - 归属状态的存储形式

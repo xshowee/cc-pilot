@@ -1,8 +1,10 @@
 // 让 Token 用量账本跟上会话记录：启动时回填现有的全部会话记录，之后监听 ~/.claude/projects 的变化
 // （FSEvents，不轮询），合并短时间内的多次通知后增量读入。
 //
-// 每次同步依次：读入新追加的会话记录 → 归属钩子（ticket 02 在这里给待归属的明细定归属）→
-// 把超过保留期的已归属明细合并成按天汇总。同步完成后调用 onUpdate。
+// 每次同步依次：读入新追加的会话记录 → 归属钩子（默认是 SessionAttribution，按各档案的 history.jsonl
+// 给待归属的明细定归属）→ 把超过保留期的已归属明细合并成按天汇总。同步完成后调用 onUpdate。
+// 除了 projects/ 的变化，各档案的 history.jsonl 变化（ProfileWatcher 的 history.jsonl 模式）也触发一次同步：
+// 消息可能先于 history.jsonl 的条目写出来，条目出现时要再归属一次。
 // 汇总按整天进行，只在启动后第一次同步和本地日期变了之后做（算保留期要读每个档案的设置，
 // 会话进行中每隔一两秒就同步一次，没必要每次都做）。
 // 不按 FSEvents 报告的路径过滤：任何事件（含需要重新扫描的标志）都做一次完整的增量同步，
@@ -26,6 +28,7 @@ final class TokenUsageRecorder {
     private let now: () -> Date
     private let attribute: (TokenLedger) throws -> Void
     private let onUpdate: () -> Void
+    private var historyWatcher: ProfileWatcher?
 
     // 以下只在 queue 上访问
     private var ledger: TokenLedger?
@@ -36,11 +39,11 @@ final class TokenUsageRecorder {
     /// - ledgerURL: 账本文件，默认是 TokenLedger.defaultURL
     /// - latency: FSEvents 合并事件的时间窗口（秒）
     /// - calendar: 按天汇总用的日历和时区
-    /// - attribute: 归属钩子（ticket 02），每次读入之后、汇总之前调用
+    /// - attribute: 归属钩子，每次读入之后、汇总之前调用；nil（默认）是按 history.jsonl 归属的 SessionAttribution
     init(environment: CoreEnvironment, ledgerURL: URL? = nil, latency: TimeInterval = 2,
          queue: DispatchQueue = DispatchQueue(label: "com.ccpilot.token-usage", qos: .utility),
          calendar: Calendar = .autoupdatingCurrent, now: @escaping () -> Date = Date.init,
-         attribute: @escaping (TokenLedger) throws -> Void = { _ in },
+         attribute: ((TokenLedger) throws -> Void)? = nil,
          onUpdate: @escaping () -> Void = {}) {
         self.environment = environment
         self.ledgerURL = ledgerURL ?? TokenLedger.defaultURL(environment: environment)
@@ -51,9 +54,12 @@ final class TokenUsageRecorder {
         self.queue = queue
         self.calendar = calendar
         self.now = now
-        self.attribute = attribute
+        self.attribute = attribute ?? SessionAttribution(environment: environment, now: now).attribute
         self.onUpdate = onUpdate
         queue.setSpecific(key: queueKey, value: true)
+        historyWatcher = ProfileWatcher(environment: environment, latency: latency, watching: .history) {
+            [weak self] in self?.syncIfRunning()
+        }
     }
 
     deinit { stop() }
@@ -63,6 +69,7 @@ final class TokenUsageRecorder {
         queue.async { [self] in
             guard stream == nil else { return }
             stream = makeStream()
+            historyWatcher?.start()
             sync()
         }
     }
@@ -70,6 +77,7 @@ final class TokenUsageRecorder {
     /// 停止监听；返回后不会再有新的同步。账本仍可通过 `read` 读取
     func stop() {
         onQueue {
+            historyWatcher?.stop()
             if let s = stream {
                 FSEventStreamStop(s)
                 FSEventStreamInvalidate(s)
@@ -102,6 +110,14 @@ final class TokenUsageRecorder {
         let opened = try TokenLedger(at: ledgerURL)
         ledger = opened
         return opened
+    }
+
+    /// history.jsonl 变化时用：和 projects/ 的流一样，stop 之后不再同步（回调可能恰好在 stop 时排进队列）
+    private func syncIfRunning() {
+        queue.async { [self] in
+            guard stream != nil else { return }
+            sync()
+        }
     }
 
     private func sync() {

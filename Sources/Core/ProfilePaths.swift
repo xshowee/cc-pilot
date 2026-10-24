@@ -28,6 +28,13 @@ struct ProfilePaths {
     /// 非默认档案的配置目录字符串（即 CLAUDE_CONFIG_DIR 的值）
     func configDir(for name: String) -> String { profilesRootPath + "/" + name }
 
+    /// 档案放 Claude Code 运行时文件（settings.json、history.jsonl 等）的目录：
+    /// 默认档案是 $HOME/.claude，其他档案是它的 configDir
+    func runtimeDir(of profile: Profile) -> String { profile.configDir ?? homePath + "/.claude" }
+    func runtimeDir(forProfileNamed name: String) -> String {
+        name == ProfileName.defaultName ? homePath + "/.claude" : configDir(for: name)
+    }
+
     func claudeJSON(for name: String) -> URL {
         URL(fileURLWithPath: configDir(for: name) + "/.claude.json")
     }

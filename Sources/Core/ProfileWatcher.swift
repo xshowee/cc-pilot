@@ -11,10 +11,15 @@
 // 实时额度文件、开关）只调用 onLiveQuotaChange，每批事件至多一次，所以短时间内的多次写入按 latency 合并。
 // 事件丢失或需要重新扫描时（FSEvents 的 MustScanSubDirs 等标志），一律通知。
 //
+// history.jsonl 模式（`watching: .history`，token-usage ticket 02 用来归属会话）：把上面的 .claude.json
+// 换成各档案的 history.jsonl——默认档案的 ~/.claude/history.jsonl、~/.claude-profiles/<名字>/history.jsonl；
+// 档案目录增删、当前档案记录照样通知（档案列表变了，要读的 history.jsonl 也就变了）。
+// 只监听 ~/.claude/history.jsonl 这一个文件，不监听 ~/.claude/ 下的其他内容（会话记录等）。
+//
 // 软链接档案：ProfileStore 和 ccp ls 都把"指向目录的软链接"当作档案，但 FSEvents 不跟随软链接，
 // 目标目录里的变化按真实路径上报，不在 ~/.claude-profiles 之下。所以对每个指向档案根目录之外的
 // 软链接档案，另开一个流监听它的目标目录（只看目标目录本身和其中的 .claude.json）；
-// 档案根目录的条目一变化就重新扫描软链接，增删对应的流。
+// 档案根目录的条目一变化就重新扫描软链接，增删对应的流。（history.jsonl 模式下看目标目录里的 history.jsonl。）
 //
 // 通知只说"可能变了"，不说变了什么：收到后重新调用 ProfileStore.listProfiles 即可。
 // 回调在 `queue` 上执行（默认是一个后台串行队列），界面需要自己切回主线程。
@@ -24,11 +29,38 @@ import CoreServices
 import Foundation
 
 final class ProfileWatcher {
+    /// 档案里要看的文件
+    enum Watched {
+        /// 各档案的 .claude.json（登录、登出）
+        case accountConfigs
+        /// 各档案的 history.jsonl（用户在会话里提交输入）
+        case history
+
+        /// 档案目录里的文件名
+        var fileName: String {
+            switch self {
+            case .accountConfigs: return ".claude.json"
+            case .history: return "history.jsonl"
+            }
+        }
+
+        /// 默认档案的这个文件
+        func defaultProfileFile(_ paths: ProfilePaths) -> String {
+            switch self {
+            case .accountConfigs: return paths.defaultClaudeJSON.path
+            case .history: return paths.homePath + "/.claude/history.jsonl"
+            }
+        }
+    }
+
     private let latency: TimeInterval
     private let queue: DispatchQueue
     private let queueKey = DispatchSpecificKey<Bool>()
     private let onChange: () -> Void
     private let onLiveQuotaChange: (() -> Void)?
+    /// 档案目录里要看的文件名
+    private let fileName: String
+    /// 默认档案要看的文件
     private let homeConfig: String
     private let profilesRoot: String
     private let liveQuotaDir: String
@@ -39,9 +71,11 @@ final class ProfileWatcher {
     private var linkStreams: [String: FSEventStreamRef] = [:]
 
     /// - latency: FSEvents 合并事件的时间窗口（秒），短时间内的多次变化合并成一次通知
+    /// - watching: 档案里看哪个文件，默认是 .claude.json
     /// - onLiveQuotaChange: 实时额度目录里有变化时调用（可选；与 onChange 在同一个队列上）
     init(environment: CoreEnvironment, latency: TimeInterval = 0.3,
          queue: DispatchQueue = DispatchQueue(label: "com.ccpilot.profile-watcher"),
+         watching: Watched = .accountConfigs,
          onLiveQuotaChange: (() -> Void)? = nil,
          onChange: @escaping () -> Void) {
         self.latency = latency
@@ -50,7 +84,8 @@ final class ProfileWatcher {
         self.onLiveQuotaChange = onLiveQuotaChange
         // FSEvents 报告的是解析过软链接的真实路径（例如 /var → /private/var），比较前先解析 HOME
         let paths = ProfilePaths(environment: CoreEnvironment(home: Self.realPath(environment.home)))
-        homeConfig = paths.defaultClaudeJSON.path
+        fileName = watching.fileName
+        homeConfig = watching.defaultProfileFile(paths)
         profilesRoot = paths.profilesRootPath
         liveQuotaDir = profilesRoot + "/" + LiveQuotaFiles.directoryName
         queue.setSpecific(key: queueKey, value: true)
@@ -106,7 +141,7 @@ final class ProfileWatcher {
         if path == homeConfig || path == profilesRoot { return true }
         guard path.hasPrefix(profilesRoot + "/"), !isUnderLiveQuota(path) else { return false }
         let parts = path.dropFirst(profilesRoot.count + 1).split(separator: "/", omittingEmptySubsequences: true)
-        return parts.count == 1 || (parts.count == 2 && parts[1] == ".claude.json")
+        return parts.count == 1 || (parts.count == 2 && parts[1] == fileName)
     }
 
     /// 按档案根目录里现有的软链接档案，增删监听目标目录的流
@@ -117,7 +152,7 @@ final class ProfileWatcher {
             linkStreams[target] = nil
         }
         for target in targets where linkStreams[target] == nil {
-            let config = target + "/.claude.json"
+            let config = target + "/" + fileName
             linkStreams[target] = makeStream([target]) { [weak self] paths, flags in
                 guard let self, self.linkStreams[target] != nil else { return }
                 let rescan = flags.contains { $0 & Self.rescanFlags != 0 }
