@@ -1,0 +1,36 @@
+<?xml version="1.0" standalone="yes"?><!-- sparkle-sign-warning:
+IMPORTANT: This file was signed by Sparkle. Any modifications to this file requires re-signing this file with generate_appcast or sign_update! The signed signature will be embedded at the end of this file.
+--><rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>CC Pilot</title>
+        <item>
+            <title>0.1.0</title>
+            <pubDate>Sat, 24 Oct 2026 10:41:09 +0800</pubDate>
+            <link>https://github.com/xshowee/cc-pilot</link>
+            <sparkle:fullReleaseNotesLink>https://github.com/xshowee/cc-pilot/releases</sparkle:fullReleaseNotesLink>
+            <sparkle:version>1</sparkle:version>
+            <sparkle:shortVersionString>0.1.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <description sparkle:format="markdown"><![CDATA[First release of CC Pilot: switch between your own Claude Code subscription accounts on one Mac, and see each account's remaining usage in the menu bar.
+
+- **Profiles**: each account keeps its own sign-in, so switching never asks you to sign in again. Switching only affects sessions started afterwards, so different terminals can use different accounts at the same time.
+- **`ccp` command line tool**: `ccp init`, `ccp add`, `ccp use`, `ccp rm`, and `CLAUDE_PROFILE=<name> claude` for a one-off session.
+- **Menu bar app**: shows the current account's plan and remaining 5-hour usage; the panel lists every profile with its remaining 5-hour and weekly usage, fetched only when you click refresh.
+- Supports Apple Silicon and Intel Macs, macOS 13 or later. English and Simplified Chinese.
+
+---
+
+CC Pilot 首个版本：在一台 Mac 上切换你自己的多个 Claude Code 订阅账号，并在菜单栏查看每个账号的剩余额度。
+
+- **账号**：每个账号各自保持登录，切换时不用重新登录。切换只影响之后新开的会话，不同终端可以同时用不同账号。
+- **`ccp` 命令行工具**：`ccp init`、`ccp add`、`ccp use`、`ccp rm`；临时用另一个账号开一次会话：`CLAUDE_PROFILE=<名字> claude`。
+- **菜单栏 App**：显示当前账号的套餐和 5 小时窗口剩余额度；面板列出所有账号的 5 小时与每周剩余额度，只在你点刷新时获取。
+- 支持 Apple 芯片和 Intel 芯片的 Mac，macOS 13 及以上。界面支持英文和简体中文。
+]]></description>
+            <enclosure url="https://github.com/xshowee/cc-pilot/releases/download/v0.1.0/CCPilot-0.1.0.dmg" length="2281546" type="application/octet-stream" sparkle:edSignature="O2asqwLxWhb/9W0tdg0Xvl5FjK44IVb1kT6YjWcAaCgeRNp01Y1pU5O+PhMKd+6IQRKwyuIxLUNUuTIFXRiPBg=="></enclosure>
+        </item>
+    </channel>
+</rss><!-- sparkle-signatures:
+edSignature: u2v6btKaJfYkTWEC+xksQMtpVVRF0OlA0wzDcqLa5fGMkv7gi7O4XpUM5KyAx2UEYn4jiTH1oCA1CVT0dpR6Dw==
+length: 2831
+-->
