@@ -17,7 +17,8 @@
 // history.jsonl 增量读取：记住每个文件读到的位置和 inode，只读新追加的完整行；文件变短或换了
 // inode 时从头读。索引只在内存里，App 启动后第一次归属时读全量。
 // 会话进行中每隔一两秒就同步一次，所以只读找到了会话的那几个档案的 .claude.json（它可能有几 MB），
-// 没有待归属的明细时什么也不读。
+// 没有待归属的明细时什么也不读；读出的账号按档案缓存，.claude.json 的 inode、大小、修改时间都没变时
+// 不再重读（读不出账号时不缓存，下次再读）。
 // 只在一个线程（或串行队列）上使用；TokenUsageRecorder 在它的队列上调用 `attribute`。
 
 import Foundation
@@ -31,6 +32,8 @@ final class SessionAttribution {
     private let now: () -> Date
     /// history.jsonl 路径 → 读取状态
     private var histories: [String: HistoryIndex] = [:]
+    /// 档案名 → 读出的账号，及读时 .claude.json 的状态
+    private var accounts: [String: (file: FileStamp, account: UsageAccount)] = [:]
 
     init(environment: CoreEnvironment, grace: TimeInterval = SessionAttribution.defaultGrace,
          now: @escaping () -> Date = Date.init) {
@@ -56,11 +59,22 @@ final class SessionAttribution {
             return index
         }
 
-        var accounts: [String: UsageAccount?] = [:]
+        // 已经不是档案的不再缓存
+        accounts = accounts.filter { names.contains($0.key) }
+        // 这一次里读不出账号的档案（不跨次缓存，但同一次里不重复读）
+        var unreadable: Set<String> = []
         func account(of name: String) -> UsageAccount? {
-            if let cached = accounts[name] { return cached }
+            if unreadable.contains(name) { return nil }
+            let path = name == ProfileName.defaultName ? paths.defaultClaudeJSON : paths.claudeJSON(for: name)
+            let stamp = FileStamp(path: path.path)
+            if let stamp, let cached = accounts[name], cached.file == stamp { return cached.account }
             let account = store.profile(named: name).usageAccount
-            accounts[name] = account
+            if let stamp, let account {
+                accounts[name] = (stamp, account)
+            } else {
+                accounts[name] = nil
+                unreadable.insert(name)
+            }
             return account
         }
         let deadline = now().addingTimeInterval(-grace)
@@ -75,6 +89,24 @@ final class SessionAttribution {
             } else if session.latest < deadline {
                 try ledger.attribute(sessionID: session.sessionID, as: .unattributed)
             }
+        }
+    }
+
+    /// 一个文件的 inode、大小、修改时间（纳秒）；变了就要重读
+    private struct FileStamp: Equatable {
+        let inode: UInt64
+        let size: Int64
+        let modified: timespec
+
+        init?(path: String) {
+            var info = stat()
+            guard stat(path, &info) == 0 else { return nil }
+            (inode, size, modified) = (UInt64(info.st_ino), Int64(info.st_size), info.st_mtimespec)
+        }
+
+        static func == (a: FileStamp, b: FileStamp) -> Bool {
+            a.inode == b.inode && a.size == b.size
+                && a.modified.tv_sec == b.modified.tv_sec && a.modified.tv_nsec == b.modified.tv_nsec
         }
     }
 
