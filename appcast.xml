@@ -1,13 +1,11 @@
-<?xml version="1.0" standalone="yes"?>
-<!-- sparkle-sign-warning:
+<?xml version="1.0" standalone="yes"?><!-- sparkle-sign-warning:
 IMPORTANT: This file was signed by Sparkle. Any modifications to this file requires re-signing this file with generate_appcast or sign_update! The signed signature will be embedded at the end of this file.
--->
-<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+--><rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
     <channel>
         <title>CC Pilot</title>
         <item>
             <title>0.2.0</title>
-            <pubDate>Sat, 24 Oct 2026 14:44:28 +0800</pubDate>
+            <pubDate>Sat, 24 Oct 2026 14:44:26 +0800</pubDate>
             <link>https://github.com/xshowee/cc-pilot</link>
             <sparkle:fullReleaseNotesLink>https://github.com/xshowee/cc-pilot/releases</sparkle:fullReleaseNotesLink>
             <sparkle:version>2</sparkle:version>
@@ -51,37 +49,10 @@ CC Pilot 0.2.0：新建的账号使用自己的一份设置，不再与默认账
 
 App 下次启动时会自动更新 `~/.cc-pilot/` 里的 `ccp`。只用命令行、没装 App 的话，把新版的 `shell/` 目录重新复制为 `~/.cc-pilot/`。
 ]]></description>
-            <enclosure url="https://github.com/xshowee/cc-pilot/releases/download/v0.2.0/CCPilot-0.2.0.dmg" length="2281752" type="application/octet-stream" sparkle:edSignature="ttpMfmo2SE8zaPxMJ2679f4p2WG6CR1eOzzNL3RZxawi4sZuNW2E+pQIekcTiX1XlLV1qgPn4S0Gh3YMXHnrBg=="/>
-        </item>
-        <item>
-            <title>0.1.0</title>
-            <pubDate>Sat, 24 Oct 2026 10:41:09 +0800</pubDate>
-            <link>https://github.com/xshowee/cc-pilot</link>
-            <sparkle:fullReleaseNotesLink>https://github.com/xshowee/cc-pilot/releases</sparkle:fullReleaseNotesLink>
-            <sparkle:version>1</sparkle:version>
-            <sparkle:shortVersionString>0.1.0</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
-            <description sparkle:format="markdown"><![CDATA[First release of CC Pilot: switch between your own Claude Code subscription accounts on one Mac, and see each account's remaining usage in the menu bar.
-
-- **Profiles**: each account keeps its own sign-in, so switching never asks you to sign in again. Switching only affects sessions started afterwards, so different terminals can use different accounts at the same time.
-- **`ccp` command line tool**: `ccp init`, `ccp add`, `ccp use`, `ccp rm`, and `CLAUDE_PROFILE=<name> claude` for a one-off session.
-- **Menu bar app**: shows the current account's plan and remaining 5-hour usage; the panel lists every profile with its remaining 5-hour and weekly usage, fetched only when you click refresh.
-- Supports Apple Silicon and Intel Macs, macOS 13 or later. English and Simplified Chinese.
-
----
-
-CC Pilot 首个版本：在一台 Mac 上切换你自己的多个 Claude Code 订阅账号，并在菜单栏查看每个账号的剩余额度。
-
-- **账号**：每个账号各自保持登录，切换时不用重新登录。切换只影响之后新开的会话，不同终端可以同时用不同账号。
-- **`ccp` 命令行工具**：`ccp init`、`ccp add`、`ccp use`、`ccp rm`；临时用另一个账号开一次会话：`CLAUDE_PROFILE=<名字> claude`。
-- **菜单栏 App**：显示当前账号的套餐和 5 小时窗口剩余额度；面板列出所有账号的 5 小时与每周剩余额度，只在你点刷新时获取。
-- 支持 Apple 芯片和 Intel 芯片的 Mac，macOS 13 及以上。界面支持英文和简体中文。
-]]></description>
-            <enclosure url="https://github.com/xshowee/cc-pilot/releases/download/v0.1.0/CCPilot-0.1.0.dmg" length="2281546" type="application/octet-stream" sparkle:edSignature="O2asqwLxWhb/9W0tdg0Xvl5FjK44IVb1kT6YjWcAaCgeRNp01Y1pU5O+PhMKd+6IQRKwyuIxLUNUuTIFXRiPBg=="/>
+            <enclosure url="https://github.com/xshowee/cc-pilot/releases/download/v0.2.0/CCPilot-0.2.0.dmg" length="2281752" type="application/octet-stream" sparkle:edSignature="ttpMfmo2SE8zaPxMJ2679f4p2WG6CR1eOzzNL3RZxawi4sZuNW2E+pQIekcTiX1XlLV1qgPn4S0Gh3YMXHnrBg=="></enclosure>
         </item>
     </channel>
-</rss>
-<!-- sparkle-signatures:
-edSignature: Tkt0Ie+qIrAsf1qhw2YD4HWy+gqMyGTrDbH2n/cQrzVOTYrUEbkV2fn/8YDzB02MNYoZRJDrGbz2mcnucE5VAw==
-length: 6272
+</rss><!-- sparkle-signatures:
+edSignature: fSQTfY9twsF9YjsqY6n2NxQ51wTZ1bU1LADYRkSqZFy3zBeRgDWXn0CFNy0EtUrKipm7Fzh58FYW3X1Oh1O9Cw==
+length: 3889
 -->
