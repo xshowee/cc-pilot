@@ -130,6 +130,9 @@ final class TokenUsageCumulativeChecks: CheckSuite {
         }
         try expectEqual(try env.ledger.cumulativeUsage(account: nil),
                         TokenUsageCumulative(origin: now, usage: .empty), "未归属也一起清空")
+        let u1 = try env.ledger.accountUsage("account:u-1", resets: KnownResets(), now: now, calendar: calendar)
+        try expectEqual(u1.fiveHour.usage.tokens.output, 8 + 16, "窗口里未归属、待归属的消息不算进账号")
+        try expectEqual(u1.hourly.map(\.tokens.output).reduce(0, +), 8 + 16, "历史数据同样不算")
 
         // 清空之前的消息之后才归属到一个新账号：不算进累计（窗口照算）
         try env.ledger.attribute(sessionID: "s-late", as: .attributed(profile: "new", account: "account:u-3"))
