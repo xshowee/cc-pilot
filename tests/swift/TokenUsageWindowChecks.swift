@@ -12,7 +12,7 @@ final class TokenUsageWindowChecks: CheckSuite {
             Check("过了 resets_at、重置后还没有消息：5 小时窗口没开始，用量为 0", fiveHourNotStarted),
             Check("从没拿到过 resets_at：滚动窗口（现在往前 5 小时 / 7 天），两个窗口各自判断", rollsWithoutResetsAt),
             Check("历史数据：最近 24 小时每小时、最近 30 天每天（本地日期），四类分开，含按天汇总", buildsHistory),
-            Check("已知的 resets_at 可以取自刷新得到的额度", resetsFromSnapshot),
+            Check("已知的 resets_at 取自合并了实时额度的主窗口", resetsFromAccountUsage),
         ]
     }
 
@@ -177,11 +177,16 @@ final class TokenUsageWindowChecks: CheckSuite {
         try expectEqual(usage.daily.map(\.tokens.total).reduce(0, +), 128 + 1 + 10 + 8 + 48)
     }
 
-    static func resetsFromSnapshot() throws {
+    static func resetsFromAccountUsage() throws {
         let snapshot = UsageSnapshot(fiveHour: UsageWindow(utilization: 10, resetsAt: at("2026-10-20T10:00:00Z")),
                                      sevenDay: UsageWindow(utilization: 20, resetsAt: nil),
                                      fetchedAt: at("2026-10-20T08:00:00Z"))
-        try expectEqual(KnownResets(snapshot: snapshot), KnownResets(fiveHour: at("2026-10-20T10:00:00Z"), sevenDay: nil))
-        try expectEqual(KnownResets(snapshot: nil), KnownResets())
+        var usage = AccountUsage(snapshot: snapshot)
+        try expectEqual(KnownResets(usage: usage), KnownResets(fiveHour: at("2026-10-20T10:00:00Z"), sevenDay: nil))
+        usage.merge(live: LiveQuota(profile: "default", receivedAt: at("2026-10-20T11:00:00Z"),
+                                    fiveHour: UsageWindow(utilization: 1, resetsAt: at("2026-10-20T15:00:00Z")),
+                                    sevenDay: nil))
+        try expectEqual(KnownResets(usage: usage), KnownResets(fiveHour: at("2026-10-20T15:00:00Z"), sevenDay: nil))
+        try expectEqual(KnownResets(usage: nil), KnownResets())
     }
 }

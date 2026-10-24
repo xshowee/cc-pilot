@@ -1,6 +1,7 @@
 // 档案行里的一项额度信息（ticket 19 起由 ProfileRow 按 App 核心的 ProfileRowPart.order 逐项显示）：
 // 5 小时窗口和"全部模型"周窗口的剩余百分比（明确标注"剩余"）与重置时间（本地时区），
-// 这次数据是几分钟前获取的，以及最近一次刷新失败的原因（ticket 12）；展开后的详情交给 UsageDetailsView。
+// 最近一次拿到数据（刷新或实时额度，ticket 05）是几分钟前，以及最近一次刷新失败的原因（ticket 12）；
+// 展开后的详情交给 UsageDetailsView。
 // 没有数字的窗口（utilization 为 null）不显示；怎么显示每个窗口由 App 核心的 UsageReading 决定。
 
 import SwiftUI
@@ -17,17 +18,17 @@ struct UsageSummaryView: View {
         case .mainWindows:
             if let reading = usage.fiveHour(now: now) {
                 UsageWindowLine(title: String(localized: "5-hour"), reading: reading,
-                                resetsAt: usage.snapshot?.fiveHour?.resetsAt, now: now)
+                                resetsAt: usage.fiveHourWindow?.window.resetsAt, now: now)
             }
             if let reading = usage.sevenDay(now: now) {
                 UsageWindowLine(title: String(localized: "Weekly (all models)"), reading: reading,
-                                resetsAt: usage.snapshot?.sevenDay?.resetsAt, now: now)
+                                resetsAt: usage.sevenDayWindow?.window.resetsAt, now: now)
             }
         case .modelWeekly, .extraUsage:
             UsageDetailsView(usage: usage, part: part, now: now)
         case .fetchedAt:
-            if let snapshot = usage.snapshot {
-                Text(verbatim: fetchedText(snapshot.fetchedAt))
+            if let updatedAt = usage.updatedAt {
+                Text(verbatim: fetchedText(updatedAt))
                     .foregroundColor(.secondary)
             }
         case .problem:
@@ -66,7 +67,7 @@ struct UsageSummaryView: View {
         case .httpStatus(let code):
             return String(localized: "The server returned an error (HTTP \(code)).")
         case .networkFailure:
-            return usage.snapshot == nil
+            return usage.updatedAt == nil
                 ? String(localized: "Couldn’t reach the server.")
                 : String(localized: "Couldn’t reach the server. Showing the last data fetched.")
         case .unrecognizedFormat:

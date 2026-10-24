@@ -12,17 +12,21 @@ import SwiftUI
 struct CCPilotApp: App {
     @StateObject private var profiles: ProfileListModel
     @StateObject private var current: CurrentProfileModel
-    @StateObject private var usage = UsageModel()
+    @StateObject private var usage: UsageModel
     @StateObject private var actions = ProfileActionsModel()
     @AppStorage(MenuBarPreferences.iconOnlyKey) private var menuBarIconOnly = false
     // Sparkle、"登录时启动"与 ccp 的安装（见 AppDelegate.swift）
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     init() {
-        // 档案列表和当前档案共用一个文件监听
+        // 档案列表、当前档案和实时额度共用一个文件监听
         let changes = ProfileChangeFeed()
-        _profiles = StateObject(wrappedValue: ProfileListModel(changes: changes))
+        let profiles = ProfileListModel(changes: changes)
+        let usage = UsageModel(changes: changes)
+        usage.follow(profiles: profiles.$profiles)
+        _profiles = StateObject(wrappedValue: profiles)
         _current = StateObject(wrappedValue: CurrentProfileModel(changes: changes))
+        _usage = StateObject(wrappedValue: usage)
     }
 
     var body: some Scene {

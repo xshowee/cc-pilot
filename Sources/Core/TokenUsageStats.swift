@@ -21,9 +21,9 @@ struct KnownResets: Equatable, Sendable {
 }
 
 extension KnownResets {
-    /// 取自刷新得到的额度（还没合并实时额度）
-    init(snapshot: UsageSnapshot?) {
-        self.init(fiveHour: snapshot?.fiveHour?.resetsAt, sevenDay: snapshot?.sevenDay?.resetsAt)
+    /// 取自合并了刷新结果和实时额度的两个主窗口（合并时 resets_at 更晚的优先）
+    init(usage: AccountUsage?) {
+        self.init(fiveHour: usage?.fiveHourWindow?.window.resetsAt, sevenDay: usage?.sevenDayWindow?.window.resetsAt)
     }
 }
 
