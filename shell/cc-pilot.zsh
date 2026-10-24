@@ -20,6 +20,8 @@
 # 解析出默认档案时不设置 CLAUDE_CONFIG_DIR；其他档案只为这一次调用设置
 # CLAUDE_CONFIG_DIR=$HOME/.claude-profiles/<名字>，不 export 到用户的 shell。
 # 档案不存在时报错并返回非零，不回退到默认档案。
+# 实时额度开启时（默认），还在用户参数前面加 --settings 覆盖，把状态栏换成 ccp statusline <档案名>
+# （默认档案也加；用户自己传了 --settings 时不加），见 _ccp_statusline_override 和 ADR 0004。
 # 用 `command claude` 调用 PATH 里真正的 Claude Code，不会递归调用本函数。
 # 用 `function claude {` 的写法定义，避免用户已有的同名 alias 在定义时被展开。
 function claude {
@@ -30,9 +32,13 @@ function claude {
   fi
   local _ccp_dir
   _ccp_dir=$(_ccp_resolve_config_dir) || return
+  # ccp 与本文件在同一个安装目录里（安装后是 ~/.cc-pilot/bin/ccp）
+  local -a reply
+  _ccp_statusline_override "${${_ccp_dir:t}:-default}" \
+    "${${functions_source[claude]:-$HOME/.cc-pilot/cc-pilot.zsh}:a:h}/bin/ccp" "$@"
   if [[ -z $_ccp_dir ]]; then
-    command claude "$@"
+    command claude "${reply[@]}" "$@"
   else
-    CLAUDE_CONFIG_DIR=$_ccp_dir command claude "$@"
+    CLAUDE_CONFIG_DIR=$_ccp_dir command claude "${reply[@]}" "$@"
   fi
 }

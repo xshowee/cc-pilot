@@ -10,7 +10,7 @@ test_no_active_record_runs_default_profile_with_args_untouched() {
   assert_stderr_empty
   assert_claude_calls 1
   assert_claude_config_dir_unset
-  assert_claude_args "a b" "" --x -p
+  assert_wrapper_args "a b" "" --x -p
 }
 
 test_active_default_runs_default_profile() {
@@ -21,7 +21,7 @@ test_active_default_runs_default_profile() {
   assert_stderr_empty
   assert_claude_calls 1
   assert_claude_config_dir_unset
-  assert_claude_args hello
+  assert_wrapper_args hello
 }
 
 test_empty_active_record_runs_default_profile() {
@@ -31,7 +31,7 @@ test_empty_active_record_runs_default_profile() {
   assert_rc 0
   assert_stderr_empty
   assert_claude_config_dir_unset
-  assert_claude_args
+  assert_wrapper_args
 }
 
 test_active_profile_sets_absolute_config_dir() {
@@ -42,7 +42,7 @@ test_active_profile_sets_absolute_config_dir() {
   assert_stderr_empty
   assert_claude_calls 1
   assert_claude_config_dir "$T_HOME/.claude-profiles/work"
-  assert_claude_args --resume "x y"
+  assert_wrapper_args --resume "x y"
 }
 
 test_config_dir_has_no_trailing_slash_even_if_home_ends_with_slash() {
@@ -102,7 +102,7 @@ test_claude_profile_overrides_active_record() {
   assert_rc 0
   assert_stderr_empty
   assert_claude_config_dir "$T_HOME/.claude-profiles/personal"
-  assert_claude_args a
+  assert_wrapper_args a
 }
 
 test_claude_profile_overrides_missing_active_profile() {
@@ -223,7 +223,7 @@ test_wrapper_works_under_unusual_user_options() {
   assert_rc 0
   assert_stderr_empty
   assert_claude_config_dir "$T_HOME/.claude-profiles/work"
-  assert_claude_args "a b" c
+  assert_wrapper_args "a b" c
 }
 
 # ---------- 入口文件 cc-pilot.zsh ----------

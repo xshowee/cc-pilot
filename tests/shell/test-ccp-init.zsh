@@ -139,7 +139,7 @@ test_new_shell_after_init_uses_wrapper_and_ccp() {
   assert_eq "$T_OUT" "claude: function
 $T_HOME/.cc-pilot/bin/ccp" "新 shell 里的 claude 和 ccp"
   assert_claude_config_dir "$T_HOME/.claude-profiles/work"
-  assert_claude_args hi
+  assert_wrapper_args hi
 }
 
 test_init_refuses_when_cc_pilot_is_not_installed() {

@@ -33,7 +33,8 @@ _ccp_usage() {
 }
 
 case ${1-} in
-  (ls|current|use|add|rm|init|uninstall)
+  # statusline 是 claude 包装函数挂到状态栏上的转发命令，不列在用法说明里（见 lib/cmd-statusline.zsh）
+  (ls|current|use|add|rm|init|uninstall|statusline)
     source $_ccp_lib/cmd-$1.zsh || exit 1
     _ccp_cmd_$1 "${@:2}"
     exit

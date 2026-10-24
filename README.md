@@ -61,7 +61,7 @@ When you choose to install an update, Sparkle downloads the new DMG from this re
 | --- | --- |
 | `~/.zshrc` | With your consent, appends **one line** at the end (see "Install" below). Running it again never adds a second line; uninstalling removes only that line. Nothing else in the file is touched. |
 | `~/.cc-pilot/` | Where the `ccp` command and the `claude` wrapper function are installed. The app installs and updates it. |
-| `~/.claude-profiles/` | Every profile other than the default one, one directory each (`~/.claude-profiles/<name>/`), plus the file recording the current profile, `~/.claude-profiles/active`. |
+| `~/.claude-profiles/` | Every profile other than the default one, one directory each (`~/.claude-profiles/<name>/`), plus the file recording the current profile, `~/.claude-profiles/active`, and `~/.claude-profiles/.live-quota/`, where the status line hand-off leaves the latest live quota of each profile. |
 | `~/.claude/`, `~/.claude.json` (default profile) | **Read only.** When a profile is created, its MCP servers and project trust settings are copied from `~/.claude.json` and its settings from `~/.claude/settings.json`; the new profile's shared resources are symlinks into `~/.claude/`; the app reads account info (email, organization, tier) from `.claude.json` to display it. |
 | Keychain | **Read only**, see "Network and privacy" above. |
 | Terminal | When you add or delete a profile in the app, it opens a new Terminal window to run `ccp add` / `ccp rm`. macOS asks once whether CC Pilot may control Terminal; if you'd rather not allow it, the app gives you the command to copy and run yourself. |
@@ -71,7 +71,7 @@ cc-pilot does **not**:
 - modify or replace the Claude Code executable. The wrapper calls the real Claude Code with `command claude`, and Claude Code's auto-update keeps working;
 - change anything in the default profile, or migrate it;
 - interfere with other Claude Code wrapper functions or aliases already in your `~/.zshrc`;
-- change anything about `claude` while you only have the default profile, or while the default profile is current: it then behaves exactly as before.
+- change anything about `claude` while you only have the default profile, or while the default profile is current, other than the live quota hand-off: the wrapper adds a `--settings` override that points Claude Code's status line at `ccp statusline`, which passes your own status line through unchanged. It changes no `settings.json`; turn it off in the app's settings and `claude` behaves exactly as before.
 
 Note that shared resources are symlinks. When you install a skill or plugin in any profile, it changes the copy in `~/.claude/`, which all profiles see. Settings aren't a shared resource: when Claude Code changes a setting in a profile (for example with `/model` or `/advisor`), only that profile is affected.
 

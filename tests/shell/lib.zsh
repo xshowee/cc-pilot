@@ -221,6 +221,20 @@ assert_claude_args() {  # 期望的参数...（最后一次调用）
   done
 }
 
+# 经包装函数启动、实时额度开启（默认）时，包装函数在用户参数前面加了状态栏覆盖
+# （--settings 和一段 JSON，见 test-statusline.zsh）。断言最后一次调用带着它，之后是期望的用户参数。
+assert_wrapper_args() {  # 期望的用户参数...
+  local -a reply
+  claude_args
+  assert_eq "${reply[1]-}" --settings "第 1 个参数应是状态栏覆盖的 --settings"
+  assert_contains "${reply[2]-}" '{"statusLine":' "第 2 个参数应是状态栏覆盖"
+  assert_eq "$(claude_field argc)" "$(( $# + 2 ))" "假 claude 收到的参数个数（含状态栏覆盖）"
+  local i
+  for (( i = 1; i <= $#; i++ )); do
+    assert_eq "${reply[i+2]}" "${@[i]}" "第 $i 个用户参数"
+  done
+}
+
 # ---------- ccp add / rm 启动 Claude Code 的工作目录（ticket 21） ----------
 
 # 断言最后一次 claude 是在档案 $1 目录里的某个子目录中启动的，且不是调用者所在的目录 $2；

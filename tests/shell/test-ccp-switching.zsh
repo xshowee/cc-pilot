@@ -130,7 +130,7 @@ test_use_writes_name_and_newline_and_new_shell_uses_it() {
   t_claude -- hi
   assert_rc 0
   assert_claude_config_dir "$T_HOME/.claude-profiles/work"
-  assert_claude_args hi
+  assert_wrapper_args hi
 }
 
 test_use_creates_profiles_root_when_missing() {

@@ -13,7 +13,7 @@
     ├── keychain.zsh    共享库：钥匙串 service 名计算 _ccp_service_name
     ├── zshrc.zsh       共享库（只给 ccp 用）：~/.zshrc 的接入行与读写辅助
     ├── launch.zsh      共享库（只给 ccp 用）：以某个档案启动 Claude Code（ccp add / rm）
-    └── cmd-<命令>.zsh  ccp 每个子命令一个文件，定义 _ccp_cmd_<命令>
+    └── cmd-<命令>.zsh  ccp 每个子命令一个文件，定义 _ccp_cmd_<命令>（cmd-statusline.zsh 是状态栏转发，见下文）
 ```
 
 - 安装根目录固定为 `~/.cc-pilot/`，不能放在 `~/.claude-profiles/` 下（那里的每个目录都会被当成档案）。
@@ -68,6 +68,35 @@ source "$HOME/.cc-pilot/cc-pilot.zsh"  # cc-pilot
 3. 否则用当前档案记录 `~/.claude-profiles/active`（只取第一行，去掉首尾空白）。记录不存在、为空或为 `default` 时是默认档案。
 
 解析出默认档案时不设置 `CLAUDE_CONFIG_DIR`；其他档案只对这一次调用设置 `CLAUDE_CONFIG_DIR=$HOME/.claude-profiles/<名字>`（绝对路径，不含 `~`，结尾不带 `/`）。名字不符合 `^[A-Za-z0-9][A-Za-z0-9._-]*$`，或者档案目录不存在时，报错并给出修复建议，返回非零，不回退到默认档案。
+
+## 状态栏转发（实时额度，ADR 0004）
+
+解析出档案之后（默认档案也一样），包装函数在用户参数**前面**加一个覆盖（`_ccp_statusline_override`）：
+
+```
+--settings '{"statusLine":{"type":"command","command":"<安装目录>/bin/ccp statusline <档案名>"}}'
+```
+
+ccp 的路径先按 sh 引用（只在需要时加引号），再按 JSON 字符串转义。不改任何 `settings.json`。以下情况不加：
+
+- 环境里已有 `CLAUDE_CONFIG_DIR`（与档案规则 1 一致，原样调用）；
+- 用户自己传了 `--settings`（参数恰好是 `--settings` 或以 `--settings=` 开头）；
+- 开关关闭：`~/.claude-profiles/.live-quota/disabled` 存在（App 设置菜单写它；不存在即开启）。
+
+实测（Claude Code 2.1.310，用临时 `CLAUDE_CONFIG_DIR`，以 `env` 设置为探针）：
+
+- `--settings` 与各级 `settings.json` **逐字段深合并**（Claude Code 内部是 lodash `mergeWith`）：只换掉 `statusLine.type` 和 `statusLine.command`，用户的 `padding` 等字段照常生效。优先级是 user < project < local < `--settings` < 托管设置。
+- 传两个 `--settings` 时**只有最后一个生效**，前一个整个被丢弃，不合并。所以用户传了 `--settings` 时包装函数不加覆盖，用户的设置优先，这次会话没有实时额度。
+- 前面加了 `--settings` 后，`claude --version`、`claude mcp list`、`claude update --help`、`claude doctor --help` 都照常工作；未登录时 `claude -p` 的输出与不加完全相同（`-p` 本来就不运行状态栏）。所以子命令不需要特殊处理。
+- 用户没有配置状态栏时，覆盖会让 Claude Code 运行一个什么都不输出的状态栏命令。
+
+`ccp statusline <档案名>`（`lib/cmd-statusline.zsh`，不列在用法说明里）由 Claude Code 在每次刷新状态栏时运行（`sh -c`，工作目录是会话的当前目录，状态栏 JSON 从标准输入给出）：
+
+1. 把标准输入原样（不在 shell 里解析）写进 `~/.claude-profiles/.live-quota/<档案名>.json`，默认档案是 `default.json`。内容是一行：`{"profile":"<档案名>","received_at":<Unix 秒，三位小数>,"status":<原始状态栏 JSON>}`。先写同目录的 `.<档案名>.json.<pid>`，再 rename 原子替换；读的时候忽略以 `.` 开头的文件。标准输入不以 `{` 开头（例如为空）时不写。档案名不合规时什么都不做。
+2. 找出原本生效的状态栏命令：依次查 `<project_dir>/.claude/settings.local.json`、`<project_dir>/.claude/settings.json`、档案自己的 `settings.json`（默认档案是 `~/.claude/settings.json`），`project_dir` 取状态栏 JSON 的 `workspace.project_dir`，取第一个有非空 `statusLine.command` 的。字段用 `/usr/bin/plutil -extract … raw` 读，不依赖 jq。每次运行都重新读，所以在会话里用 `/statusline` 改过的设置照常生效。
+3. 把标准输入逐字节交给它（`/bin/sh -c`，`~` 等写法照常展开），原样输出它的标准输出，退出码也用它的；都没配置时什么都不输出。
+
+不能拖慢状态栏：写文件只用 zsh 内建（`zsh/files`、`zsh/datetime`），失败静默忽略，不联网。原状态栏命令运行时环境里有 `_CCP_STATUSLINE_FORWARDING=1`，嵌套运行的 `ccp statusline` 见到它就什么都不做，避免状态栏命令指回自己时无限递归。
 
 ## ccp add 建立的档案
 

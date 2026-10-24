@@ -157,3 +157,37 @@ _ccp_print_fix_hint() {
     print -u2 -r -- "  修复：执行 \`ccp use default\` 切回默认档案，或用 \`ccp ls\` 查看已有档案、\`ccp add <名字>\` 新建档案。"
   fi
 }
+
+# ---------- 实时额度：状态栏转发（token-usage ticket 04，ADR 0004） ----------
+#
+#   实时额度目录  ~/.claude-profiles/.live-quota/（以 . 开头，不会被当成档案）
+#     <档案名>.json   ccp statusline 写出的最近一次状态栏数据（默认档案是 default.json）
+#     disabled        存在即关闭：包装函数不加状态栏覆盖（App 设置菜单里的开关写它）；不存在时默认开启
+
+# 输出实时额度目录：$HOME/.claude-profiles/.live-quota
+_ccp_live_quota_dir() {
+  emulate -L zsh
+  print -r -- "$(_ccp_profiles_root)/.live-quota"
+}
+
+# 包装函数要加在用户参数前面的状态栏覆盖，放进数组 reply（不加时为空）。
+# 参数：档案名（default 或档案名）、ccp 的路径、用户传给 claude 的参数。
+# 覆盖是 --settings '{"statusLine":{"type":"command","command":"<ccp> statusline <档案名>"}}'。
+# 实测（Claude Code 2.1.310，见 shell/README.md）：--settings 与各级 settings.json 逐字段深合并，
+# 所以只换掉 type 和 command，用户的 padding 等字段照常生效；两个 --settings 只有最后一个生效，
+# 所以用户自己传了 --settings 时不加（否则会吃掉用户的那一个或被它吃掉）。开关关闭时也不加。
+_ccp_statusline_override() {
+  emulate -L zsh
+  local name=$1 ccp=$2 arg cmd
+  shift 2
+  reply=()
+  [[ -e $(_ccp_live_quota_dir)/disabled ]] && return 0
+  for arg in "$@"; do
+    [[ $arg == (--settings|--settings=*) ]] && return 0
+  done
+  # 先按 sh 引用（Claude Code 用 sh -c 运行状态栏命令），再按 JSON 字符串转义
+  cmd="${(q+)ccp} statusline $name"
+  cmd=${cmd//\\/\\\\}
+  cmd=${cmd//\"/\\\"}
+  reply=(--settings "{\"statusLine\":{\"type\":\"command\",\"command\":\"$cmd\"}}")
+}

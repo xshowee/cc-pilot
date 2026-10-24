@@ -61,7 +61,7 @@ CC Pilot 只访问下面两个地址：
 | --- | --- |
 | `~/.zshrc` | 征得你的同意后，在末尾加**一行**（见下面"安装"）。执行多次也只有一行；卸载时只删除这一行。其余内容一个字节都不动。 |
 | `~/.cc-pilot/` | `ccp` 命令和 `claude` 包装函数的安装位置，由 App 安装和更新。 |
-| `~/.claude-profiles/` | 除默认账号以外的账号，每个账号一个目录：`~/.claude-profiles/<名字>/`；以及记录当前账号的文件 `~/.claude-profiles/active`。 |
+| `~/.claude-profiles/` | 除默认账号以外的账号，每个账号一个目录：`~/.claude-profiles/<名字>/`；以及记录当前账号的文件 `~/.claude-profiles/active`，和存放各账号最新实时额度的 `~/.claude-profiles/.live-quota/`。 |
 | `~/.claude/`、`~/.claude.json`（默认账号） | **只读**。新建账号时，从 `~/.claude.json` 复制 MCP 服务器和项目信任设置、从 `~/.claude/settings.json` 复制设置；新账号里的共享资源是指向 `~/.claude/` 的软链接；App 从 `.claude.json` 读取账号资料（邮箱、组织、订阅等级）用于显示。 |
 | 钥匙串 | **只读**，见上面"联网与隐私"。 |
 | "终端" | 在 App 里添加或删除账号时，App 打开一个新的终端窗口执行 `ccp add` / `ccp rm`。第一次会由 macOS 询问是否允许 CC Pilot 控制"终端"；不允许也没关系，App 会给出命令让你自己复制执行。 |
@@ -71,7 +71,7 @@ cc-pilot **不会**：
 - 修改或替换 Claude Code 的可执行文件。包装函数用 `command claude` 调用真正的 Claude Code，Claude Code 的自动更新照常进行。
 - 修改默认账号的任何内容，或者迁移它。
 - 影响 `~/.zshrc` 里你已有的其他 Claude Code 包装函数或别名。
-- 在只有默认账号、或者当前账号就是默认账号时改变 `claude` 的任何行为：这时它和接入之前完全一样。
+- 在只有默认账号、或者当前账号就是默认账号时改变 `claude` 的行为，只有实时额度例外：包装函数加一个 `--settings` 覆盖，把 Claude Code 的状态栏交给 `ccp statusline`，它把你自己的状态栏原样转出。不修改任何 `settings.json`；在 App 的设置里关掉后，`claude` 和接入之前完全一样。
 
 注意，共享资源是软链接，所以在任何一个账号里安装技能或插件，改的都是 `~/.claude/` 里的那一份，所有账号同时生效。设置不是共享资源：在某个账号里由 Claude Code 修改设置（比如执行 `/model`、`/advisor`），只影响这个账号。
 

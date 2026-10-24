@@ -29,9 +29,10 @@ test_both_readmes_exist_and_link_to_each_other() {
 
 test_command_tables_match_the_ccp_subcommands() {
   local -a files
-  files=($ROOT/shell/lib/cmd-*.zsh)
+  # statusline 是 claude 包装函数挂到状态栏上的内部命令（token-usage ticket 04），不给用户用，不进命令表
+  files=($ROOT/shell/lib/cmd-^statusline.zsh)
   local expected=${(F)${(o)${files:t:r}#cmd-}}
-  # 与 spec 一致：共七个子命令
+  # 与 spec 一致：给用户用的共七个子命令
   assert_eq "${#files}" 7 "shell/lib/cmd-*.zsh 的个数"
   local readme
   for readme in $READMES; do
