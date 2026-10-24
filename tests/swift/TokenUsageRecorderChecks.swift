@@ -11,6 +11,7 @@ final class TokenUsageRecorderChecks: CheckSuite {
             Check("读入之后、汇总之前先调用归属钩子；汇总只合并已归属的明细", runsAttributionBeforeRollup),
             Check("默认按 history.jsonl 归属；history.jsonl 后写出来也会自动归属", attributesWhenHistoryAppears),
             Check("projects/ 的监听建立失败：仍算在运行，history.jsonl 变化照常触发同步", keepsRunningWithoutProjectsStream),
+            Check("同步没有新明细、归属也没变时不通知；归属变了才通知", notifiesOnlyOnChange),
         ]
     }
 
@@ -134,6 +135,47 @@ final class TokenUsageRecorderChecks: CheckSuite {
         }
         try expectEqual(try recorder.read { try $0.messages().map(\.attribution) }, [expected],
                         "history.jsonl 写出来 5 秒内没有归属")
+    }
+
+    static func notifiesOnlyOnChange() throws {
+        let env = try LedgerEnv()
+        defer { env.remove() }
+        let stamp = "2026-10-20T01:00:00Z"
+        try env.transcript("p/s-1.jsonl", [TranscriptFixture.assistant(id: "m1", session: "s-1", at: stamp, output: 1)])
+        // 归属钩子兼作同步计数：确认同步确实做过，再看有没有通知
+        let syncs = ProfileWatcherChecks.Counter(), updates = ProfileWatcherChecks.Counter()
+        let attributeNow = Flag()
+        let recorder = makeRecorder(env, attribute: { ledger in
+            if attributeNow.isSet {
+                try ledger.attribute(sessionID: "s-1", as: .attributed(profile: "work", account: "account:u-1"))
+            }
+            syncs.increment()
+        }) { updates.increment() }
+        recorder.start()
+        defer { recorder.stop() }
+        try expect(updates.wait(beyond: 0), "启动后 5 秒内没有回填")
+        syncs.settle()
+        updates.settle()
+
+        // 只追加用户消息：会同步，但账本没有变化
+        var before = (syncs: syncs.count, updates: updates.count)
+        try env.append("p/s-1.jsonl", [TranscriptFixture.user(session: "s-1", at: stamp)])
+        try expect(syncs.wait(beyond: before.syncs), "追加之后 5 秒内没有同步")
+        syncs.settle()
+        try expectEqual(updates.count, before.updates, "没有变化时不通知")
+
+        // 同样没有新明细，但这次归属有了进展
+        attributeNow.set()
+        before = (syncs.count, updates.count)
+        try env.append("p/s-1.jsonl", [TranscriptFixture.user(session: "s-1", at: stamp)])
+        try expect(updates.wait(beyond: before.updates), "归属变了应通知")
+    }
+
+    final class Flag {
+        private let lock = NSLock()
+        private var value = false
+        func set() { lock.lock(); value = true; lock.unlock() }
+        var isSet: Bool { lock.lock(); defer { lock.unlock() }; return value }
     }
 
     /// 等到账本里有 count 条明细

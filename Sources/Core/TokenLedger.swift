@@ -72,6 +72,10 @@ struct LedgerDailyUsage: Equatable, Sendable {
 final class TokenLedger {
     private let db: SQLiteDatabase
 
+    /// 明细、归属或汇总每变化一次就加一（只在内存里，从 0 开始）；读取位置、起算点的变化不算。
+    /// TokenUsageRecorder 据此判断一次同步有没有带来变化。
+    private(set) var revision = 0
+
     /// 真实位置：<HOME>/Library/Application Support/cc-pilot/token-usage.sqlite。
     /// 从 environment.home 算出（不用 FileManager 的 applicationSupportDirectory，它不看 HOME，检查时会写到真实目录）。
     static func defaultURL(environment: CoreEnvironment) -> URL {
@@ -158,7 +162,10 @@ final class TokenLedger {
         var added = 0
         let positions = try readPositions()
         for file in files {
-            added += try ingest(file, from: positions[file.path])
+            // 每个文件单独提交：后面的文件出错时，前面已记入的也算变化
+            let count = try ingest(file, from: positions[file.path])
+            if count > 0 { revision += 1 }
+            added += count
         }
         // 已经不存在的文件忘掉读取位置（账本里的明细不动）
         let present = Set(files.map(\.path))
@@ -348,6 +355,7 @@ final class TokenLedger {
             UPDATE messages SET attribution = ?1, profile = ?2, account = ?3
             WHERE attribution = ?4 AND coalesce(parent_session_id, session_id) = ?5
             """, values + [.int(Self.pendingState), .text(sessionID)])
+        if db.changes > 0 { revision += 1 }
     }
 
     // MARK: - 汇总
@@ -415,6 +423,7 @@ final class TokenLedger {
                 DELETE FROM rolled_message_ids
                 WHERE ts < (SELECT value FROM meta WHERE key = 'forgotten_before')
                 """)
+            if !rowIDs.isEmpty { revision += 1 }
         }
     }
 

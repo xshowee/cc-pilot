@@ -2,7 +2,8 @@
 // （FSEvents，不轮询），合并短时间内的多次通知后增量读入。
 //
 // 每次同步依次：读入新追加的会话记录 → 归属钩子（默认是 SessionAttribution，按各档案的 history.jsonl
-// 给待归属的明细定归属）→ 把超过保留期的已归属明细合并成按天汇总。同步完成后调用 onUpdate。
+// 给待归属的明细定归属）→ 把超过保留期的已归属明细合并成按天汇总。账本有变化（新明细、归属、汇总，
+// 见 TokenLedger.revision）时，同步完成后调用 onUpdate；只追加了用户消息之类的不通知。
 // 除了 projects/ 的变化，各档案的 history.jsonl 变化（ProfileWatcher 的 history.jsonl 模式）也触发一次同步：
 // 消息可能先于 history.jsonl 的条目写出来，条目出现时要再归属一次。
 // 汇总按整天进行，只在启动后第一次同步和本地日期变了之后做（算保留期要读每个档案的设置，
@@ -153,6 +154,7 @@ final class TokenUsageRecorder: @unchecked Sendable {
 
     private func sync() {
         guard let ledger = try? openLedger() else { return }
+        let revision = ledger.revision
         _ = try? ledger.ingest(projectsRoot: projectsRoot)
         try? attribute(ledger)
         let current = now()
@@ -162,7 +164,7 @@ final class TokenUsageRecorder: @unchecked Sendable {
                                calendar: calendar)) != nil {
             rolledUpDay = day
         }
-        onUpdate()
+        if ledger.revision != revision { onUpdate() }
     }
 
     private func makeStream() -> FSEventStreamRef? {
