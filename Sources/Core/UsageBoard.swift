@@ -16,6 +16,10 @@
 // 实时额度（token-usage ticket 05）：recordLive(_:profiles:) 按档案找到账号，把状态栏转发来的 5 小时窗口和
 // "全部模型"周窗口并入；按模型细分的周窗口、超额付费只来自刷新。实时额度不发请求，也不碰失败原因和频率限制。
 // 两个主窗口的合并规则见 ObservedWindow.merging(_:)。
+// 实时额度文件里没有账号，只有档案名：档案换登录后，换之前写的那份文件属于旧账号，不能并入新账号
+// （否则旧账号的数字会因 resets_at 更晚压过新账号的刷新结果）。所以记住每个档案上次并入时的账号，
+// 发现换了账号时记下这个时刻，之后只并入在这之后写的文件（received_at 更晚）。第一次见到档案时不设限
+// （App 没运行时换的登录无从得知，按档案当前的账号算）。
 
 import Foundation
 
@@ -191,6 +195,13 @@ struct AccountUsage: Equatable {
 
 struct UsageBoard: Equatable {
     private var accounts: [UsageAccount: AccountUsage] = [:]
+    /// 实时额度：每个档案上次并入时的账号，以及只并入这个时刻之后写的文件（见文件头）
+    private var liveOwners: [String: LiveOwner] = [:]
+
+    private struct LiveOwner: Equatable {
+        let account: UsageAccount
+        let since: Date?
+    }
 
     init() {}
 
@@ -221,11 +232,21 @@ struct UsageBoard: Equatable {
     }
 
     /// 并入实时额度（LiveQuotaFiles.readAll() 的结果）：按档案名在 profiles 里找到账号，并入它的两个主窗口。
-    /// 找不到档案、或档案未登录的跳过。不改失败原因和频率限制等待时间，不发请求。
+    /// 找不到档案、或档案未登录的跳过；档案换了登录时，换之前写的文件跳过（见文件头，now 是发现换登录的时刻）。
+    /// 不改失败原因和频率限制等待时间，不发请求。
     /// 同一份文件重复并入不改变结果（合并规则对重复数据是幂等的），所以每次文件变化时把全部文件重新并入即可。
-    mutating func recordLive(_ quotas: [LiveQuota], profiles: [Profile]) {
+    mutating func recordLive(_ quotas: [LiveQuota], profiles: [Profile], now: Date = Date()) {
+        for profile in profiles {
+            guard let account = profile.usageAccount else { continue }
+            if let owner = liveOwners[profile.name] {
+                if owner.account != account { liveOwners[profile.name] = LiveOwner(account: account, since: now) }
+            } else {
+                liveOwners[profile.name] = LiveOwner(account: account, since: nil)
+            }
+        }
         for quota in quotas {
             guard let account = profiles.first(where: { $0.name == quota.profile })?.usageAccount else { continue }
+            if let since = liveOwners[quota.profile]?.since, quota.receivedAt <= since { continue }
             var usage = accounts[account] ?? AccountUsage()
             usage.merge(live: quota)
             accounts[account] = usage

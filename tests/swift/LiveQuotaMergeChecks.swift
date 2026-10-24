@@ -29,6 +29,7 @@ final class LiveQuotaMergeChecks: CheckSuite {
             Check("接收实时额度不发请求，不改失败原因、频率限制和可刷新的账号", liveLeavesRefreshStateAlone),
             Check("格式无法识别：丢掉来自刷新的数字，实时额度照常显示", unrecognizedKeepsLive),
             Check("同一批文件重复并入，结果不变", idempotent),
+            Check("档案换登录：换之前写的文件不并入新账号，之后写的才算新账号的", switchedAccountIgnoresOldFile),
         ]
     }
 
@@ -304,5 +305,31 @@ final class LiveQuotaMergeChecks: CheckSuite {
         board.recordLive(quotas, profiles: [solo])
         board.recordLive(quotas, profiles: [solo])
         try expect(board == once, "重复并入后不变")
+    }
+
+    static func switchedAccountIgnoresOldFile() throws {
+        let other = profile("solo", uuid: "u-other")
+        let otherAccount = other.usageAccount!
+        // 旧账号快到 5 小时窗口末尾、已用很多；新账号的窗口重置得更早
+        let old = [live(fiveHour: used(90, resetsInMinutes: 200), at: at(minutes: 0))]
+        var board = UsageBoard()
+        board.recordLive(old, profiles: [solo], now: at(minutes: 1))
+        try expectEqual(board.usage(for: soloAccount)?.fiveHour(now: at(minutes: 2)), .remaining(10, tint: .red),
+                        "换登录之前：属于旧账号")
+
+        // 档案换登录到另一个账号，实时额度文件还是换之前写的那份
+        board.record(UsageRefreshOutcome(account: otherAccount, result: .success(
+            UsageSnapshot(fiveHour: used(20, resetsInMinutes: 100), sevenDay: nil, fetchedAt: at(minutes: 3)))))
+        board.recordLive(old, profiles: [other], now: at(minutes: 4))
+        try expectEqual(board.usage(for: otherAccount)?.fiveHour(now: at(minutes: 5)), .remaining(80, tint: .green),
+                        "换之前写的文件不并入新账号，也不压过它的刷新结果")
+        try expectEqual(board.usage(for: soloAccount)?.fiveHour(now: at(minutes: 5)), .remaining(10, tint: .red),
+                        "旧账号的数据不变")
+
+        // 新账号的会话写出新文件
+        board.recordLive([live(fiveHour: used(30, resetsInMinutes: 100), at: at(minutes: 6))], profiles: [other],
+                         now: at(minutes: 7))
+        try expectEqual(board.usage(for: otherAccount)?.fiveHour(now: at(minutes: 8)), .remaining(70, tint: .green),
+                        "换登录之后写的文件并入新账号")
     }
 }
