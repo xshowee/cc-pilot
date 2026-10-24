@@ -243,8 +243,8 @@ Finder 和 Dock 会缓存图标。换了图标后如果看到的还是旧的，�
 
 | 键 | 值 | 含义 |
 | --- | --- | --- |
-| `CFBundleShortVersionString` | `0.1.0` | 显示给用户的版本号；也决定 DMG 名和 Release tag |
-| `CFBundleVersion` | `1` | 整数构建号，Sparkle 按它比较新旧，每次发布必须递增 |
+| `CFBundleShortVersionString` | `0.2.0` | 显示给用户的版本号；也决定 DMG 名和 Release tag |
+| `CFBundleVersion` | `2` | 整数构建号，Sparkle 按它比较新旧，每次发布必须递增 |
 | `SUFeedURL` | `https://raw.githubusercontent.com/xshowee/cc-pilot/main/appcast.xml` | appcast 地址，App 访问的两个网络地址之一 |
 | `SUPublicEDKey` | `C1jTICc74ojwE8JFp+JRM88pOXjaZKC7zUcnZLpdzqI=` | cc-pilot 的 Sparkle EdDSA 公钥（钥匙串 `cc-pilot` 账户里私钥对应的公钥）；若换回占位值 `AAAA…A=`，release.sh 拒绝发布，App 不启动 Sparkle |
 | `SUEnableAutomaticChecks` | `true` | 自动检查更新默认开启，并且不弹窗询问 |
