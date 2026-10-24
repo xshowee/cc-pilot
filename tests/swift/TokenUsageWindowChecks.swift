@@ -1,5 +1,6 @@
 // token-usage ticket 03：窗口 Token 用量（纯计算 TokenUsageStats）。
-// 窗口与额度的同名窗口对齐（spec 决策 4）；只计这个账号已归属的明细。
+// 窗口与额度的同名窗口对齐（spec 决策 4）。输入是一个账号已归属的明细；只计这个账号的明细由账本按账号
+// 查询保证（见 TokenUsageCumulativeChecks，经 TokenLedger.accountUsage）。
 
 import Foundation
 
@@ -11,7 +12,7 @@ final class TokenUsageWindowChecks: CheckSuite {
             Check("过了 resets_at 已经好几段：5 小时窗口顺着消息一段段往后推", chainsFiveHourWindows),
             Check("过了 resets_at、重置后还没有消息：5 小时窗口没开始，用量为 0", fiveHourNotStarted),
             Check("从没拿到过 resets_at：滚动窗口（现在往前 5 小时 / 7 天），两个窗口各自判断", rollsWithoutResetsAt),
-            Check("历史数据：最近 24 小时每小时、最近 30 天每天（本地日期），四类分开，含按天汇总", buildsHistory),
+            Check("历史数据：最近 24 小时每小时、最近 30 天每天（本地日期），四类分开", buildsHistory),
             Check("已知的 resets_at 取自合并了实时额度的主窗口", resetsFromAccountUsage),
         ]
     }
@@ -20,17 +21,17 @@ final class TokenUsageWindowChecks: CheckSuite {
 
     static func at(_ text: String) -> Date { TranscriptLine.parseTimestamp(text)! }
 
-    static func message(_ time: String, account: String? = "account:u-1", model: String = "claude-opus-5-5",
+    static func message(_ time: String, model: String = "claude-opus-5-5",
                         input: Int = 0, output: Int = 0, cacheWrite: Int = 0, cacheRead: Int = 0) -> LedgerMessage {
         LedgerMessage(messageID: UUID().uuidString, timestamp: at(time), sessionID: "s", parentSessionID: nil,
                       model: model,
                       tokens: TokenCounts(input: input, output: output, cacheWrite: cacheWrite, cacheRead: cacheRead),
-                      attribution: account.map { .attributed(profile: "work", account: $0) } ?? .unattributed)
+                      attribution: .attributed(profile: "work", account: "account:u-1"))
     }
 
-    static func stats(_ messages: [LedgerMessage], daily: [LedgerDailyUsage] = [], resets: KnownResets,
-                      now: String) -> AccountTokenUsage {
-        TokenUsageStats.account("account:u-1", messages: messages, daily: daily, resets: resets,
+    /// 明细按时间排好再传（与账本查出来的一样）
+    static func stats(_ messages: [LedgerMessage], resets: KnownResets, now: String) -> AccountTokenUsage {
+        TokenUsageStats.account(own: messages.sorted { $0.timestamp < $1.timestamp }, resets: resets,
                                 cumulative: TokenUsageCumulative(origin: nil, usage: .empty),
                                 now: at(now), calendar: calendar)
     }
@@ -40,8 +41,6 @@ final class TokenUsageWindowChecks: CheckSuite {
             message("2026-10-20T04:59:00Z", output: 1),          // 5 小时窗口开始前一分钟
             message("2026-10-20T05:00:00Z", input: 2, output: 20, cacheWrite: 200, cacheRead: 2000),
             message("2026-10-20T07:00:00Z", model: "claude-sonnet-4-5-20250929", output: 30),
-            message("2026-10-20T07:30:00Z", account: "account:u-2", output: 999),   // 别的账号
-            message("2026-10-20T07:40:00Z", account: nil, output: 999),             // 未归属
             message("2026-10-14T09:59:00Z", output: 4),          // 周窗口开始前一分钟
             message("2026-10-14T10:00:00Z", output: 5),
         ]
@@ -64,7 +63,6 @@ final class TokenUsageWindowChecks: CheckSuite {
     static func infersAfterReset() throws {
         let messages = [
             message("2026-10-20T09:00:00Z", output: 1),           // 上一个 5 小时窗口里
-            message("2026-10-20T11:30:00Z", account: "account:u-2", output: 999),  // 别的账号不算起点
             message("2026-10-20T12:00:00Z", output: 2),           // 重置后本账号第一条
             message("2026-10-20T16:30:00Z", output: 3),
             message("2026-10-21T09:00:00Z", output: 4),           // 上一个周窗口里
@@ -147,18 +145,10 @@ final class TokenUsageWindowChecks: CheckSuite {
             message("2026-10-19T15:59:00Z", output: 8),                    // 本地 10 月 19 日 23:59
             message("2026-10-20T04:00:00Z", output: 16),                   // 当前钟头
             message("2026-10-20T04:10:00Z", model: "claude-sonnet-4-5", output: 32),
-            message("2026-10-20T04:20:00Z", account: "account:u-2", output: 999),
+            message("2026-09-20T15:59:00Z", output: 64),                   // 30 天之前（本地 9 月 20 日）
+            message("2026-09-20T16:00:00Z", output: 128),                  // 第一天（本地 9 月 21 日 0 点）
         ]
-        func rollup(_ day: String, _ start: String, account: String? = "account:u-1", output: Int) -> LedgerDailyUsage {
-            LedgerDailyUsage(day: day, dayStart: at(start), account: account, model: "claude-opus-5-5",
-                             tokens: TokenCounts(input: 0, output: output, cacheWrite: 0, cacheRead: 0))
-        }
-        let daily = [
-            rollup("2026-09-20", "2026-09-19T16:00:00Z", output: 64),     // 30 天之前
-            rollup("2026-09-21", "2026-09-20T16:00:00Z", output: 128),    // 第一天
-            rollup("2026-09-21", "2026-09-20T16:00:00Z", account: nil, output: 999),
-        ]
-        let usage = stats(messages, daily: daily, resets: KnownResets(), now: now)
+        let usage = stats(messages, resets: KnownResets(), now: now)
 
         try expectEqual(usage.hourly.count, 24)
         try expectEqual(usage.hourly.first?.start, at("2026-10-19T05:00:00Z"))

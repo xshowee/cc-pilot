@@ -446,12 +446,10 @@ final class TokenLedger {
         // 历史数据最多往前 30 天；5 小时窗口过了 resets_at 时要从 resets_at 起找消息
         let since = min(now - Double(TokenUsageStats.historyDays + 1) * 86400, resets.fiveHour ?? now)
         let filter = Self.accountFilter(account)
-        let messages = try messages(where: "\(filter.messages) AND ts >= ?2",
-                                    [.text(filter.key), .real(since.timeIntervalSince1970)])
-        let daily = try dailyUsage(where: "account = ?1 AND day_start >= ?2",
-                                   [.text(filter.key), .real(since.timeIntervalSince1970)])
-        return TokenUsageStats.account(account, messages: messages, daily: daily, resets: resets,
-                                       cumulative: try cumulativeUsage(account: account),
+        // 只查明细：按天汇总的都在保留期（至少 35 天）之前，落不进历史数据的 30 天。查出来按时间排列
+        let own = try messages(where: "\(filter.messages) AND ts >= ?2",
+                               [.text(filter.key), .real(since.timeIntervalSince1970)])
+        return TokenUsageStats.account(own: own, resets: resets, cumulative: try cumulativeUsage(account: account),
                                        now: now, calendar: calendar)
     }
 

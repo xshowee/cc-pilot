@@ -1,4 +1,4 @@
-// 一个账号的窗口 Token 用量和历史数据（token-usage ticket 03），从账本的明细和按天汇总算出。纯计算，不读文件。
+// 一个账号的窗口 Token 用量和历史数据（token-usage ticket 03），从账本的明细算出。纯计算，不读文件。
 //
 // 窗口与额度的同名窗口对齐（spec 决策 4），输入是这个账号已知的 resets_at（KnownResets）：
 //   5 小时窗口  resets_at 还没到：从 resets_at − 5h 起。
@@ -6,8 +6,9 @@
 //               这一段也过了，就以之后的第一条消息为起点，依此类推。重置后还没有消息时窗口没有开始，用量为 0。
 //   周窗口      resets_at 还没到：从 resets_at − 7d 起；已经过了：取 resets_at + 7d（必要时再加，直到晚于现在）。
 //   从没拿到过  滚动窗口：现在往前 5 小时 / 7 天。
-// 只计这个账号已归属的明细；待归属、未归属的不计（spec 决策 12）。
-// 历史数据：最近 24 小时每小时、最近 30 天每天（本地日期），四类 token 分开。
+// 只计这个账号已归属的明细；待归属、未归属的不计（spec 决策 12）——由账本按账号查好再传进来。
+// 历史数据：最近 24 小时每小时、最近 30 天每天（本地日期），四类 token 分开。只用明细：按天汇总的都是
+// 保留期（至少 35 天）之前的日子，落不进最近 30 天。
 // 累计 Token 用量要按起算点查全部记录，由账本算好传进来（TokenLedger.cumulativeUsage）。
 // 界面通过 TokenUsageRecorder.accountUsage 取得结果，不直接调用这里。
 
@@ -92,13 +93,10 @@ enum TokenUsageStats {
     static let fiveHours: TimeInterval = 5 * 3600
     static let sevenDays: TimeInterval = 7 * 86400
 
-    /// - messages: 账本明细（可以含别的账号，这里只取 account 的）
-    /// - daily: 按天汇总（同上）
+    /// - own: 这个账号已归属的明细，按时间排列（TokenLedger.accountUsage 查出来就是这样）
     /// - cumulative: 累计 Token 用量（由账本按起算点算出）
-    static func account(_ account: String, messages: [LedgerMessage], daily: [LedgerDailyUsage],
-                        resets: KnownResets, cumulative: TokenUsageCumulative,
+    static func account(own: [LedgerMessage], resets: KnownResets, cumulative: TokenUsageCumulative,
                         now: Date, calendar: Calendar) -> AccountTokenUsage {
-        let own = messages.filter { $0.attribution.account == account }.sorted { $0.timestamp < $1.timestamp }
         func window(_ span: DateInterval?) -> TokenUsageWindow {
             guard let span else { return TokenUsageWindow(start: nil, end: nil, usage: .empty) }
             let inside = own.filter { $0.timestamp >= span.start && $0.timestamp < span.end }
@@ -109,16 +107,15 @@ enum TokenUsageStats {
             fiveHour: window(fiveHourWindow(resetsAt: resets.fiveHour, activity: own.map(\.timestamp), now: now)),
             sevenDay: window(sevenDayWindow(resetsAt: resets.sevenDay, now: now)),
             cumulative: cumulative,
-            hourly: buckets(.hour, count: historyHours, own: own, daily: [], now: now, calendar: calendar),
-            daily: buckets(.day, count: historyDays, own: own, daily: daily.filter { $0.account == account },
-                           now: now, calendar: calendar))
+            hourly: buckets(.hour, count: historyHours, own: own, now: now, calendar: calendar),
+            daily: buckets(.day, count: historyDays, own: own, now: now, calendar: calendar))
     }
 
     static let historyHours = 24, historyDays = 30
 
-    /// 截至现在的 count 格（unit 是 .hour 或 .day，按 calendar 对齐）；按天汇总按它那天的 0 点落格
+    /// 截至现在的 count 格（unit 是 .hour 或 .day，按 calendar 对齐）
     private static func buckets(_ unit: Calendar.Component, count: Int, own: [LedgerMessage],
-                                daily: [LedgerDailyUsage], now: Date, calendar: Calendar) -> [TokenUsageBucket] {
+                                now: Date, calendar: Calendar) -> [TokenUsageBucket] {
         guard let current = calendar.dateInterval(of: unit, for: now) else { return [] }
         let starts = (0..<count).compactMap { calendar.date(byAdding: unit, value: $0 - count + 1, to: current.start) }
         var totals = [TokenCounts](repeating: .zero, count: starts.count)
@@ -127,7 +124,6 @@ enum TokenUsageStats {
             totals[index] += tokens
         }
         for message in own { add(message.tokens, at: message.timestamp) }
-        for row in daily { add(row.tokens, at: row.dayStart) }
         return zip(starts, totals).map { TokenUsageBucket(start: $0, tokens: $1) }
     }
 
@@ -149,13 +145,5 @@ enum TokenUsageStats {
         guard var end = resetsAt else { return DateInterval(start: now - sevenDays, end: now) }
         if now >= end { end += (now.timeIntervalSince(end) / sevenDays).rounded(.down) * sevenDays + sevenDays }
         return DateInterval(start: end - sevenDays, end: end)
-    }
-}
-
-extension LedgerAttribution {
-    /// 已归属时的账号；待归属、未归属时为 nil
-    var account: String? {
-        if case .attributed(_, let account) = self { return account }
-        return nil
     }
 }
