@@ -88,6 +88,12 @@ final class StatsFlyoutController: ObservableObject {
         if !hovering { scheduleSettle() }
     }
 
+    /// 档案列表变了（rows 是有账号的档案名）：停着的行被删除或登出时收不到离开，在这里收起
+    func rowsChanged(_ rows: Set<String>) {
+        hover.rowsChanged(rows)
+        apply()
+    }
+
     /// 主面板关闭：立即收起
     func dismiss() {
         settleWork?.cancel()

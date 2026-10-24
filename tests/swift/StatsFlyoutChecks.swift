@@ -19,6 +19,7 @@ final class StatsFlyoutChecks: CheckSuite {
             Check("历史：24 小时取每小时、30 天取每天，柱高按最高的一格算，全为 0 时都不画", history),
             Check("哪一行显示哪个账号：同一账号的多个档案显示同一份；未登录的档案没有面板", targets),
             Check("鼠标停在行上弹出，移到另一行就换，移到面板上不收起，都离开后收起", hover),
+            Check("停着的行被删除或登出（收不到离开）：立即收起；别的行变化不影响", hoveredRowDisappears),
             Check("位置：贴着主面板左侧、顶边对齐；主面板往下掉或靠近屏幕边缘时不出界", placement),
         ]
     }
@@ -173,6 +174,32 @@ final class StatsFlyoutChecks: CheckSuite {
         try expectEqual(hover.profile, nil)
         hover.settle()
         try expectEqual(hover.profile, nil)
+    }
+
+    static func hoveredRowDisappears() throws {
+        var hover = StatsFlyoutHover()
+        hover.row("work", hovering: true)
+        hover.rowsChanged(["work", "side"])
+        try expectEqual(hover.profile, "work", "停着的行还在")
+        hover.rowsChanged(["work"])
+        try expectEqual(hover.profile, "work", "别的行没了不影响")
+
+        // 停着的行被删除（或登出，不再报进来）：收不到离开，也要收起，之后不会再弹出来
+        hover.rowsChanged(["side"])
+        try expectEqual(hover.profile, nil, "停着的行没了")
+        hover.settle()
+        try expectEqual(hover.profile, nil)
+
+        // 鼠标停在面板上时，面板显示的那一行没了：同样收起
+        hover.row("side", hovering: true)
+        hover.row("side", hovering: false)
+        hover.flyout(hovering: true)
+        hover.rowsChanged([])
+        try expectEqual(hover.profile, nil, "面板显示的那一行没了")
+        hover.row("work", hovering: true)
+        hover.row("work", hovering: false)
+        hover.settle()
+        try expectEqual(hover.profile, nil, "面板已收起，不再算停在面板上")
     }
 
     static func placement() throws {

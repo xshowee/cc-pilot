@@ -105,7 +105,10 @@ struct PanelView: View {
             flyout.dismiss()
             tokenStats.confirmingClearAll = false
         }
-        .onChange(of: profiles.profiles) { actions.update(with: $0) }
+        .onChange(of: profiles.profiles) { list in
+            actions.update(with: list)
+            flyout.rowsChanged(Set(list.filter { $0.usageAccount != nil }.map(\.name)))
+        }
     }
 
     private var refreshAllButton: some View {

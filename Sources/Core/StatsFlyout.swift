@@ -169,6 +169,13 @@ struct StatsFlyoutHover: Equatable {
         if overRow == nil && !overFlyout { profile = nil }
     }
 
+    /// 档案列表变了：rows 是此刻有账号的行。停着的行、或面板显示的那一行没了（删除、登出）时收不到离开，
+    /// 这里清掉；面板显示的那一行没了就立即收起
+    mutating func rowsChanged(_ rows: Set<String>) {
+        if let overRow, !rows.contains(overRow) { self.overRow = nil }
+        if let profile, !rows.contains(profile) { self = StatsFlyoutHover() }
+    }
+
     /// 主面板关闭：立即收起
     mutating func dismiss() {
         self = StatsFlyoutHover()
