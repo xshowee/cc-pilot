@@ -46,6 +46,7 @@ struct PanelView: View {
                         SwitchableProfileRow(
                             profile: profile,
                             isCurrent: profile.name == current.name,
+                            isViewing: profile.name == flyout.hover.profile,
                             usage: usage.usage(for: profile),
                             now: usage.now,
                             isRefreshing: usage.isRefreshing(profile),

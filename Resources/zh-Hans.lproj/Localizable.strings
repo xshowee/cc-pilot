@@ -156,6 +156,7 @@
 "30d ago" = "30 天前";
 "15d ago" = "15 天前";
 "Today" = "今天";
+"Total" = "合计";
 "Cumulative since %@" = "累计自 %@";
 "Clear Cumulative" = "清空累计";
 "Clear cumulative usage for %@?" = "清空 %@ 的累计？";

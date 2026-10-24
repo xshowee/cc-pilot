@@ -21,6 +21,7 @@ final class StatsFlyoutChecks: CheckSuite {
             Check("鼠标停在行上弹出，移到另一行就换，移到面板上不收起，都离开后收起", hover),
             Check("停着的行被删除或登出（收不到离开）：立即收起；别的行变化不影响", hoveredRowDisappears),
             Check("位置：贴着主面板左侧、顶边对齐；主面板往下掉或靠近屏幕边缘时不出界", placement),
+            Check("历史悬停：按横向位置吸附到最近的一格，图外夹到两端；提示框放竖线右边，放不下换左边，不出卡片", historyHover),
         ]
     }
 
@@ -232,5 +233,23 @@ final class StatsFlyoutChecks: CheckSuite {
         try expectEqual(place(CGRect(x: -500, y: 375, width: 340, height: 500),
                               CGRect(x: -1920, y: 0, width: 1920, height: 875)),
                         CGRect(x: -826, y: 275, width: 320, height: 600))
+    }
+
+    static func historyHover() throws {
+        // 24 格铺满 240pt 宽：每格 10pt
+        try expectEqual(HistoryHover.index(x: 0, width: 240, count: 24), 0)
+        try expectEqual(HistoryHover.index(x: 9.9, width: 240, count: 24), 0)
+        try expectEqual(HistoryHover.index(x: 10, width: 240, count: 24), 1)
+        try expectEqual(HistoryHover.index(x: 239, width: 240, count: 24), 23)
+        try expectEqual(HistoryHover.index(x: -5, width: 240, count: 24), 0, "图左外")
+        try expectEqual(HistoryHover.index(x: 300, width: 240, count: 24), 23, "图右外")
+        try expectEqual(HistoryHover.index(x: 10, width: 240, count: 0), nil, "没有格子")
+        try expectEqual(HistoryHover.index(x: 10, width: 0, count: 24), nil, "还没量出宽度")
+        // 竖线在格子正中
+        try expectEqual(HistoryHover.lineX(index: 1, width: 240, count: 24), 15)
+        // 提示框 100pt 宽，与竖线隔 6pt
+        try expectEqual(HistoryHover.tooltipX(lineX: 15, tooltipWidth: 100, width: 240, gap: 6), 21, "右边放得下")
+        try expectEqual(HistoryHover.tooltipX(lineX: 200, tooltipWidth: 100, width: 240, gap: 6), 94, "换到左边")
+        try expectEqual(HistoryHover.tooltipX(lineX: 120, tooltipWidth: 300, width: 240, gap: 6), 0, "比卡片还宽：贴左")
     }
 }

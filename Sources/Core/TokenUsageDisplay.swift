@@ -43,6 +43,23 @@ enum TokenUsageDisplay {
         return formatter.string(from: date)
     }
 
+    /// 历史柱状图悬停提示里的时间（本地时区）：24 小时写这一格的时段（"14:00–15:00"），
+    /// 30 天写日期和星期（zh_CN "10月24日 周六"，en_GB "Sat 24 Oct"）
+    static func historySlot(_ start: Date, range: HistoryRange, timeZone: TimeZone = .current,
+                            locale: Locale = .current) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.timeZone = timeZone
+        switch range {
+        case .hours:
+            formatter.dateFormat = "HH:mm"
+            return formatter.string(from: start) + "–" + formatter.string(from: start.addingTimeInterval(3600))
+        case .days:
+            formatter.setLocalizedDateFormatFromTemplate("MMMdEEE")
+            return formatter.string(from: start)
+        }
+    }
+
     /// 离 resetsAt 还有多久；已经到点（或过了）时为 nil
     static func countdown(to resetsAt: Date, now: Date) -> ResetCountdown? {
         let seconds = resetsAt.timeIntervalSince(now)

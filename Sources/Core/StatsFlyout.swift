@@ -124,6 +124,26 @@ struct HistoryBar: Equatable {
     }
 }
 
+/// 历史柱状图的鼠标悬停：鼠标停在哪一格、竖线画在哪、提示框放在哪（坐标都以图的左边为 0）。
+/// 按横向位置吸附到所在的那一格，空白处和很矮的柱子也能停；图外夹到两端。
+enum HistoryHover {
+    static func index(x: CGFloat, width: CGFloat, count: Int) -> Int? {
+        guard count > 0, width > 0 else { return nil }
+        return min(count - 1, max(0, Int(x / (width / CGFloat(count)))))
+    }
+
+    /// 竖线：格子正中
+    static func lineX(index: Int, width: CGFloat, count: Int) -> CGFloat {
+        (CGFloat(index) + 0.5) * width / CGFloat(count)
+    }
+
+    /// 提示框左边：优先放竖线右边，放不下换左边，都放不下时贴着卡片左边
+    static func tooltipX(lineX: CGFloat, tooltipWidth: CGFloat, width: CGFloat, gap: CGFloat) -> CGFloat {
+        if lineX + gap + tooltipWidth <= width { return lineX + gap }
+        return max(0, lineX - gap - tooltipWidth)
+    }
+}
+
 /// 统计面板显示的账号：鼠标停在哪个档案行上，就显示它所在账号的数据。同一账号的多个档案行得到同一个账号，
 /// 显示同一份数据（Token 用量和额度都属于账号）。未登录的档案没有面板。
 struct StatsFlyoutTarget: Equatable {

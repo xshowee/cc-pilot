@@ -9,6 +9,7 @@ final class TokenUsageDisplayChecks: CheckSuite {
             Check("占比：四舍五入到整数，大于 0 不足 1% 写 <1%，总数为 0 写 0%", shares),
             Check("重置倒计时：按整分钟向上取，只写最大的两个单位；已经到点时没有倒计时", countdown),
             Check("起算点：当天只写时刻，今年写月日，往年加上年份（本地时区）", originDate),
+            Check("历史悬停提示的时间：24 小时写这一格的时段，30 天写日期和星期（本地时区）", historySlot),
         ]
     }
 
@@ -59,5 +60,24 @@ final class TokenUsageDisplayChecks: CheckSuite {
         let lastYear = TranscriptLine.parseTimestamp("2026-09-24T10:00:00Z")!
         try expectEqual(TokenUsageDisplay.origin(lastYear, now: fixedNow, timeZone: shanghai, locale: zh),
                         "2026年9月24日")
+    }
+
+    static func historySlot() throws {
+        let shanghai = TimeZone(identifier: "Asia/Shanghai")!
+        let zh = Locale(identifier: "zh_CN"), gb = Locale(identifier: "en_GB")
+        // 2026-10-24 14:00（上海，周六）
+        let start = Date(timeIntervalSince1970: 1_792_821_600)
+        try expectEqual(TokenUsageDisplay.historySlot(start, range: .hours, timeZone: shanghai, locale: zh),
+                        "14:00–15:00")
+        try expectEqual(TokenUsageDisplay.historySlot(start, range: .hours, timeZone: shanghai, locale: gb),
+                        "14:00–15:00")
+        // 跨午夜的最后一格
+        let late = start.addingTimeInterval(10 * 3600)
+        try expectEqual(TokenUsageDisplay.historySlot(late, range: .hours, timeZone: shanghai, locale: zh),
+                        "00:00–01:00")
+        try expectEqual(TokenUsageDisplay.historySlot(start, range: .days, timeZone: shanghai, locale: zh),
+                        "10月24日 周六")
+        try expectEqual(TokenUsageDisplay.historySlot(start, range: .days, timeZone: shanghai, locale: gb),
+                        "Sat 24 Oct")
     }
 }

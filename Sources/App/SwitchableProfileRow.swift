@@ -1,5 +1,7 @@
 // 面板里可点击的档案卡片：在 ProfileRow 外面包一层，点击即切换为当前档案；
-// 当前档案用强调色的底色和描边、强调色头像和"当前"标记标出（标记在 ProfileRow 的档案名后面，ticket 18）。
+// 当前档案用强调色的淡底色、强调色头像和"当前"标记标出（标记在 ProfileRow 的档案名后面，ticket 18）。
+// 统计面板正在显示的那一行用强调色的粗描边标出（token-usage：参照 iStat），描边只留给它，所以当前档案不再描强调色边。
+// 强调色随系统外观（浅色 / 深色）和用户设置的强调色变化。
 // 卡片右上角是按钮（叠在切换按钮上面，点它们不会切换）：
 //   已登录的档案有刷新按钮，刷新这个档案所在账号的额度；频率限制的等待期内不可用（ticket 12）。
 //   有额度详情（按模型细分的周窗口、超额付费）时有展开按钮（ticket 13）；展开后详情显示在
@@ -12,6 +14,8 @@ import SwiftUI
 struct SwitchableProfileRow: View {
     let profile: Profile
     let isCurrent: Bool
+    /// 统计面板正在显示这一行
+    var isViewing = false
     var usage: AccountUsage? = nil
     /// 界面时钟（UsageModel.now）
     var now = Date()
@@ -53,7 +57,7 @@ struct SwitchableProfileRow: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
-                .strokeBorder(stroke, lineWidth: 1)
+                .strokeBorder(stroke, lineWidth: isViewing ? 2 : 1)
         )
         .onHover {
             hovering = $0
@@ -137,6 +141,6 @@ struct SwitchableProfileRow: View {
     }
 
     private var stroke: Color {
-        isCurrent ? Color.accentColor.opacity(0.55) : Color.primary.opacity(0.06)
+        isViewing ? Color.accentColor : Color.primary.opacity(0.06)
     }
 }
