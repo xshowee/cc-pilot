@@ -10,6 +10,7 @@ final class TranscriptLineChecks: CheckSuite {
             Check("用户消息、<synthetic> 模型、不是 JSON 的行都不算", ignoresNonUsageLines),
             Check("没有 message.id 的行照样读出", keepsLinesWithoutMessageID),
             Check("时间不带毫秒也能读", parsesTimestampWithoutFraction),
+            Check("解析前的预筛不漏掉 assistant 行（带空格、换了键的顺序也能读出）", prefilterKeepsAssistantLines),
         ]
     }
 
@@ -54,6 +55,18 @@ final class TranscriptLineChecks: CheckSuite {
         let line = TranscriptFixture.assistant(id: "m", session: "s", at: "2026-10-20T10:00:00Z")
         try expectEqual(try unwrap(TranscriptLine.parse(Data(line.utf8))).timestamp,
                         Date(timeIntervalSince1970: 1_792_490_400))
+    }
+
+    static func prefilterKeepsAssistantLines() throws {
+        let spaced = """
+            { "usage_note": 1, "timestamp": "2026-10-20T10:00:00Z", "sessionId": "s", "message": { "model": "m",
+              "usage": { "output_tokens": 9 }, "id": "x" }, "type" : "assistant" }
+            """
+        try expectEqual(try unwrap(TranscriptLine.parse(Data(spaced.utf8))).tokens.output, 9)
+        // 很长的用户消息（如 tool_result）里提到 assistant、usage 也不会被当成 assistant 行
+        let user = TranscriptFixture.user(session: "s", at: "2026-10-20T10:00:00Z",
+                                          text: String(repeating: "\"type\":\"assistant\" usage ", count: 1000))
+        try expect(TranscriptLine.parse(Data(user.utf8)) == nil, "用户消息不应读出用量")
     }
 }
 

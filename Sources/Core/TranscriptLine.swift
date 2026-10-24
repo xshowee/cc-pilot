@@ -45,7 +45,9 @@ struct TranscriptLine: Equatable, Sendable {
 
     /// 不是带用量的 assistant 消息（用户消息、摘要、半截行、<synthetic> 等）时返回 nil
     static func parse(_ line: Data) -> TranscriptLine? {
-        guard !line.isEmpty,
+        // 大部分行不是 assistant 消息（其中 tool_result 行可能很大）：不含这两个词的行一定不是，不必解析 JSON。
+        // 只查词本身、不查 "type":"assistant"，键值之间有空格也不会漏掉
+        guard !line.isEmpty, line.range(of: assistantMarker) != nil, line.range(of: usageMarker) != nil,
               let object = (try? JSONSerialization.jsonObject(with: line)) as? [String: Any],
               object["type"] as? String == "assistant",
               let message = object["message"] as? [String: Any],
@@ -63,6 +65,8 @@ struct TranscriptLine: Equatable, Sendable {
     }
 
     static let syntheticModel = "<synthetic>"
+    private static let assistantMarker = Data(#""assistant""#.utf8)
+    private static let usageMarker = Data(#""usage""#.utf8)
 
     /// ISO 8601，带或不带毫秒
     static func parseTimestamp(_ text: String) -> Date? {
