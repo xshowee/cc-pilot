@@ -63,7 +63,7 @@ enum ExtraUsage: Equatable {
     }
 }
 
-/// 超额付费此刻怎么显示：tint 只会是 plain（不着色，接口没有给它 severity）或 stale（变灰）
+/// 超额付费此刻怎么显示：tint 只会是 plain（不着色，没有剩余百分比可套阈值）或 stale（变灰）
 struct ExtraUsageReading: Equatable {
     let usage: ExtraUsage
     let tint: UsageTint

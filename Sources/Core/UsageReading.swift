@@ -1,22 +1,34 @@
 // 一个额度窗口此刻该怎么显示（spec "刷新与界面"、ticket 12）。列表、菜单栏、按模型细分的周窗口
 // （ticket 13）都用它，界面只按结果选文字和颜色，不自己判断过期、重置或阈值。
+// 颜色阈值是内置的（token-usage 决定 10），所有显示剩余额度的地方都用 UsageTint(remainingPercent:)。
 //
 // 规则（按顺序）：
 //   没有窗口（utilization 为 null、缺失等）    → unavailable，显示"—"
 //   已经过了 resets_at（恰好等于也算）         → resetPendingRefresh，"已重置，待刷新"，不再显示旧数字
-//   数据获取时间超过 30 分钟                   → 剩余百分比，变灰（优先于 severity 的颜色）
-//   其余                                       → 剩余百分比，颜色取自 severity；没有 severity 时不着色
+//   数据获取时间超过 30 分钟                   → 剩余百分比，变灰（优先于阈值颜色）
+//   其余                                       → 剩余百分比，剩余 ≤20 红、≤50 黄、其余绿
+//                                                （与 ~/.claude/statusline.sh 的已用 ≥80 / ≥50 一致）
 
 import Foundation
 
 /// 数字的颜色
 enum UsageTint: Equatable {
-    /// 不着色（服务端没给出严重程度）
+    /// 不着色（没有百分比可判断，如超额付费、菜单栏没有数字时）
     case plain
     /// 数据已过时：变灰
     case stale
-    /// 服务端给出的严重程度
-    case severity(UsageSeverity)
+    /// 按剩余百分比的内置阈值（见 init(remainingPercent:)）
+    case green, yellow, red
+
+    /// 剩余百分比对应的颜色：≤20 红、≤50 黄、其余绿。
+    /// 传入显示出来的整数（UsageWindow.remainingPercent），颜色与数字一致。
+    init(remainingPercent: Int) {
+        switch remainingPercent {
+        case ...20: self = .red
+        case ...50: self = .yellow
+        default: self = .green
+        }
+    }
 }
 
 enum UsageReading: Equatable {
@@ -38,7 +50,7 @@ enum UsageReading: Equatable {
         } else if Self.isStale(fetchedAt: fetchedAt, now: now) {
             self = .remaining(window.remainingPercent, tint: .stale)
         } else {
-            self = .remaining(window.remainingPercent, tint: window.severity.map(UsageTint.severity) ?? .plain)
+            self = .remaining(window.remainingPercent, tint: UsageTint(remainingPercent: window.remainingPercent))
         }
     }
 

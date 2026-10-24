@@ -1,15 +1,11 @@
 // 一次成功获取的额度（spec "额度接口" 的响应字段）。只用于显示，不含任何凭据。
 //
-// 取 5 小时窗口（five_hour）和覆盖全部模型的周窗口（seven_day），以及 limits[] 里它们的严重程度；
+// 取 5 小时窗口（five_hour）和覆盖全部模型的周窗口（seven_day）；limits[] 里的 severity 不用，
+// 颜色按内置阈值（token-usage 决定 10）。
 // 展开账号后显示的详情（ticket 13）：按模型细分的周窗口、超额付费（extra_usage）。
 // 窗口怎么显示（剩余、已重置、变灰、颜色）见 UsageReading。
 
 import Foundation
-
-/// 服务端给出的严重程度（limits[] 每一行的 severity）。颜色只来自它，App 不自己设定阈值。
-enum UsageSeverity: String, Equatable {
-    case normal, warning, critical
-}
 
 /// 一个额度窗口
 struct UsageWindow: Equatable {
@@ -17,8 +13,6 @@ struct UsageWindow: Equatable {
     let utilization: Double
     /// 重置时间；接口没给时为 nil
     let resetsAt: Date?
-    /// limits[] 中对应那一行的 severity；找不到对应的行（或取值认不出）时为 nil，不着色
-    var severity: UsageSeverity? = nil
 
     /// 剩余百分比 = 100 − 已用百分比，限制在 0–100。
     /// 有小数时向下取整：宁可少报一点剩余，也不多报（例如已用 0.3% 显示剩余 99%，而不是 100%）。
@@ -64,30 +58,28 @@ struct UsageSnapshot: Equatable {
         guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
               Self.knownTopLevelKeys.contains(where: { root[$0] != nil }) else { return nil }
         let limits = Self.limitRows(root["limits"])
-        self.init(fiveHour: Self.window(root["five_hour"], severity: Self.severity(of: "session", in: limits)),
-                  sevenDay: Self.window(root["seven_day"], severity: Self.severity(of: "weekly_all", in: limits)),
+        self.init(fiveHour: Self.window(root["five_hour"]),
+                  sevenDay: Self.window(root["seven_day"]),
                   modelWeekly: limits.isEmpty ? Self.topLevelModelWindows(root) : Self.modelWeeklyWindows(limits),
                   extraUsage: ExtraUsage(json: root["extra_usage"]),
                   fetchedAt: fetchedAt)
     }
 
-    /// 没有 limits[]（缺失、null、空数组）时的回退：顶层的 seven_day_sonnet、seven_day_opus（有数字才显示），
-    /// 没有对应的 severity，不着色
+    /// 没有 limits[]（缺失、null、空数组）时的回退：顶层的 seven_day_sonnet、seven_day_opus（有数字才显示）
     static func topLevelModelWindows(_ root: [String: Any]) -> [ModelWeeklyWindow] {
         [("Sonnet", "seven_day_sonnet"), ("Opus", "seven_day_opus")].compactMap { model, key in
-            window(root[key], severity: nil).map { ModelWeeklyWindow(model: model, window: $0) }
+            window(root[key]).map { ModelWeeklyWindow(model: model, window: $0) }
         }
     }
 
     /// 按模型细分的周窗口：limits[] 中 kind 为 weekly_scoped 的每一行各一个，按原顺序。
-    /// 剩余 = 100 − percent，颜色取这一行的 severity；percent 不是数字的行不显示。
+    /// 剩余 = 100 − percent；percent 不是数字的行不显示。
     static func modelWeeklyWindows(_ limits: [[String: Any]]) -> [ModelWeeklyWindow] {
         limits.compactMap { row in
             guard row["kind"] as? String == "weekly_scoped", let percent = number(row["percent"]) else { return nil }
             let model = ((row["scope"] as? [String: Any])?["model"] as? [String: Any])?["display_name"] as? String
             return ModelWeeklyWindow(model: model, window: UsageWindow(utilization: percent,
-                                                                        resetsAt: date(row["resets_at"]),
-                                                                        severity: severity(row)))
+                                                                        resetsAt: date(row["resets_at"])))
         }
     }
 
@@ -96,22 +88,11 @@ struct UsageSnapshot: Equatable {
         (value as? [Any])?.compactMap { $0 as? [String: Any] } ?? []
     }
 
-    /// limits[] 中第一个 kind 等于给定值的行的 severity。
-    /// 对应关系：5 小时窗口 ↔ session，"全部模型"周窗口 ↔ weekly_all。
-    static func severity(of kind: String, in rows: [[String: Any]]) -> UsageSeverity? {
-        rows.first { $0["kind"] as? String == kind }.flatMap(severity)
-    }
-
-    /// 一行的 severity；不是认得的字符串时为 nil
-    static func severity(_ row: [String: Any]) -> UsageSeverity? {
-        (row["severity"] as? String).flatMap(UsageSeverity.init(rawValue:))
-    }
-
     /// {utilization, resets_at}；utilization 不是数字（null、缺失、类型不对）时整个窗口不显示
-    private static func window(_ value: Any?, severity: UsageSeverity?) -> UsageWindow? {
+    private static func window(_ value: Any?) -> UsageWindow? {
         guard let object = value as? [String: Any],
               let utilization = number(object["utilization"]) else { return nil }
-        return UsageWindow(utilization: utilization, resetsAt: date(object["resets_at"]), severity: severity)
+        return UsageWindow(utilization: utilization, resetsAt: date(object["resets_at"]))
     }
 
     static func number(_ value: Any?) -> Double? {

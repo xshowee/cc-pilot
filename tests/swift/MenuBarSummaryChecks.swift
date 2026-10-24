@@ -7,7 +7,7 @@ final class MenuBarSummaryChecks: CheckSuite {
         [
             Check("还没有额度数据时第二行显示—，有数据时显示剩余百分比", quotaLine),
             Check("已过重置时间时第二行显示已重置，不显示旧数字（ticket 12）", resetLine),
-            Check("第二行的颜色与列表相同：severity、变灰；没有数字时不着色（ticket 12）", quotaTint),
+            Check("第二行的颜色与列表相同：阈值颜色、变灰；没有数字时不着色（ticket 12）", quotaTint),
             Check("档案名来自当前档案记录", nameLineFollowsRecord),
             Check("第一行显示订阅等级，不知道时是档案名", titleLine),
             Check("订阅等级取自当前档案的 displayTier", tierFollowsProfile),
@@ -16,9 +16,9 @@ final class MenuBarSummaryChecks: CheckSuite {
 
     static func quotaLine() throws {
         try expectEqual(MenuBarSummary(profileName: "work").quotaLine(resetText: "Reset"), "—")
-        try expectEqual(MenuBarSummary(profileName: "work", fiveHour: .remaining(42, tint: .plain))
+        try expectEqual(MenuBarSummary(profileName: "work", fiveHour: .remaining(42, tint: .yellow))
             .quotaLine(resetText: "Reset"), "42%")
-        try expectEqual(MenuBarSummary(profileName: "work", fiveHour: .remaining(0, tint: .severity(.critical)))
+        try expectEqual(MenuBarSummary(profileName: "work", fiveHour: .remaining(0, tint: .red))
             .quotaLine(resetText: "Reset"), "0%")
     }
 
@@ -28,10 +28,8 @@ final class MenuBarSummaryChecks: CheckSuite {
     }
 
     static func quotaTint() throws {
-        try expectEqual(MenuBarSummary(profileName: "w", fiveHour: .remaining(9, tint: .severity(.warning))).quotaTint,
-                        .severity(.warning))
+        try expectEqual(MenuBarSummary(profileName: "w", fiveHour: .remaining(9, tint: .red)).quotaTint, .red)
         try expectEqual(MenuBarSummary(profileName: "w", fiveHour: .remaining(9, tint: .stale)).quotaTint, .stale)
-        try expectEqual(MenuBarSummary(profileName: "w", fiveHour: .remaining(9, tint: .plain)).quotaTint, .plain)
         try expectEqual(MenuBarSummary(profileName: "w", fiveHour: .resetPendingRefresh).quotaTint, .plain)
         try expectEqual(MenuBarSummary(profileName: "w").quotaTint, .plain)
     }

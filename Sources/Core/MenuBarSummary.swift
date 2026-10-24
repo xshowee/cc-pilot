@@ -3,7 +3,7 @@
 //           不知道订阅等级（未登录、不在列表里等）时退回当前档案名
 //   下一行  当前档案所在账号的 5 小时窗口剩余百分比；从未刷新过（没有数据）时显示"—"，
 //           不能显示成 0，以免误以为额度用完了。已过重置时间时不显示旧数字（见 UsageReading）。
-//           颜色与列表相同：取自 severity，数据超过 30 分钟变灰（UsageReading.tint）。
+//           颜色与列表相同：按剩余百分比的内置阈值，数据超过 30 分钟变灰（见 UsageReading）。
 //
 // 带额度的摘要由 UsageBoard.menuBarSummary(currentProfile:profiles:now:) 生成。
 

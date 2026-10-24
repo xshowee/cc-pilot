@@ -33,7 +33,7 @@ There are two equal ways to use it:
 - Click a profile to make it the current profile, exactly like `ccp use`. To add or delete a profile, the app opens Terminal and runs `ccp add` / `ccp rm`, so the flow is identical to the command line. Changes made with `ccp` show up in the app right away.
 - Usage: click "Refresh All", or the refresh button next to one account, to get the **remaining** percentage and reset time of the 5-hour window and the weekly window for all models. Expand an account to see weekly windows per model and extra usage.
   - Every number is the percentage left, not the percentage used shown by Claude Code's `/usage`.
-  - Colors come only from the severity reported by the server; without one, nothing is colored.
+  - Colors follow the percentage left: red at 20% or less, amber at 50% or less, green otherwise.
   - Every number shows when it was fetched and turns gray after 30 minutes. Windows past their reset time show "Reset, refresh to update".
   - Profiles signed in to the same account are fetched only once.
   - A profile whose short-lived credential has expired shows **Needs renewal**: open that profile's `claude` once to restore it (the app sends no request and never renews anything itself). A profile whose credential can no longer be renewed shows **Needs to sign in again**.

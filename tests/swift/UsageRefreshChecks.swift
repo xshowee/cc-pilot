@@ -135,7 +135,7 @@ final class UsageRefreshChecks: CheckSuite {
             board.record(outcome)
         }
         try expectEqual(board.menuBarSummary(currentProfile: "work", profiles: profiles, now: fixedNow),
-                        MenuBarSummary(profileName: "work", fiveHour: .remaining(90, tint: .plain)))
+                        MenuBarSummary(profileName: "work", fiveHour: .remaining(90, tint: .green)))
         try expectEqual(board.menuBarSummary(currentProfile: "solo", profiles: profiles, now: fixedNow).quotaLine(resetText: "Reset"), "30%")
         try expectEqual(board.menuBarSummary(currentProfile: "fresh", profiles: profiles, now: fixedNow),
                         MenuBarSummary(profileName: "fresh"), "未登录的档案")

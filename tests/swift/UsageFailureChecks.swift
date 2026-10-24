@@ -139,10 +139,10 @@ final class UsageFailureChecks: CheckSuite {
         let usage = board.usage(for: solo)
         try expectEqual(usage?.problem, .networkFailure)
         try expectEqual(usage?.snapshot?.fetchedAt, fixedNow, "标明的是上次成功获取的时间")
-        try expectEqual(usage?.fiveHour(now: later), .remaining(70, tint: .plain))
+        try expectEqual(usage?.fiveHour(now: later), .remaining(70, tint: .green))
         try expect(usage?.isWaiting(now: later) == false, "网络失败不用等待")
         try expectEqual(board.menuBarSummary(currentProfile: "solo", profiles: profiles, now: later).fiveHour,
-                        .remaining(70, tint: .plain))
+                        .remaining(70, tint: .green))
 
         // 从没成功过就网络失败：没有数字
         var fresh = UsageBoard()
@@ -185,7 +185,7 @@ final class UsageFailureChecks: CheckSuite {
         try expectEqual(outcome.result, .httpStatus(500))
         board.record(outcome)
         try expectEqual(board.usage(for: solo)?.problem, .httpStatus(500))
-        try expectEqual(board.usage(for: solo)?.fiveHour(now: fixedNow), .remaining(70, tint: .plain))
+        try expectEqual(board.usage(for: solo)?.fiveHour(now: fixedNow), .remaining(70, tint: .green))
         try expect(board.usage(for: solo)?.isWaiting(now: fixedNow) == false, "500 不用等待")
     }
 
@@ -206,6 +206,6 @@ final class UsageFailureChecks: CheckSuite {
         try expectEqual(usage?.problem, nil)
         try expectEqual(usage?.retryAt, nil)
         try expectEqual(usage?.snapshot?.fetchedAt, later)
-        try expectEqual(usage?.fiveHour(now: later), .remaining(70, tint: .plain))
+        try expectEqual(usage?.fiveHour(now: later), .remaining(70, tint: .green))
     }
 }

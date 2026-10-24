@@ -1,4 +1,4 @@
-// 额度窗口下方的细进度条：长度是剩余比例，颜色与数字同色、略淡（severity / 变灰；不着色时用中性色）。
+// 额度窗口下方的细进度条：长度是剩余比例，颜色与数字同色、略淡（阈值颜色 / 变灰；不着色时用中性色）。
 // 只是数字的图形化，读屏跳过它，数字本身仍由 UsageReadingText 读出。
 
 import SwiftUI
@@ -6,7 +6,7 @@ import SwiftUI
 struct UsageMeter: View {
     /// 剩余比例（0–1）
     let fraction: Double
-    /// nil：服务端没给出严重程度，用中性色
+    /// nil：不着色（UsageTint.plain），用中性色
     let color: Color?
 
     var body: some View {

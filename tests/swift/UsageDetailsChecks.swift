@@ -1,5 +1,6 @@
 // ticket 13：展开账号后看到的额度详情——按模型细分的周窗口、超额付费（extra_usage）。
-// 期望值来自 spec "额度接口"一节和 ticket 13 的验收项；过期、已重置、着色沿用 ticket 12 的 UsageReading。
+// 期望值来自 spec "额度接口"一节和 ticket 13 的验收项；过期、已重置、着色沿用 ticket 12 的 UsageReading
+// （颜色按 token-usage ticket 06 的内置阈值，fixture 里的 severity 只是真实响应里会有的字段，不影响颜色）。
 
 import Foundation
 
@@ -9,7 +10,7 @@ final class UsageDetailsChecks: CheckSuite {
             Check("limits[] 中每一行 weekly_scoped 各是一个按模型的周窗口", scopedRowsAreModelWindows),
             Check("按模型周窗口的 resets_at：ISO 时间或秒时间戳", scopedResetTimes),
             Check("按模型周窗口遵守过期规则：超过 30 分钟变灰，过了重置时间显示已重置", scopedFollowStaleRules),
-            Check("没有 limits[] 时回退到顶层 seven_day_sonnet、seven_day_opus，不着色", fallbackToTopLevelModelWindows),
+            Check("没有 limits[] 时回退到顶层 seven_day_sonnet、seven_day_opus", fallbackToTopLevelModelWindows),
             Check("超额付费：开启时有月度上限（null 为不限）和已使用金额，没开启时为未开启", extraUsageStates),
             Check("超额付费金额按币种的最小单位换算并格式化", extraUsageAmounts),
             Check("超额付费遵守过期规则：超过 30 分钟变灰，格式无法识别时不显示", extraUsageFollowsStaleRules),
@@ -40,17 +41,16 @@ final class UsageDetailsChecks: CheckSuite {
         ]])
         let readings = u.modelWeekly(now: fixedNow)
         try expectEqual(readings.map(\.model), ["Opus", "Sonnet"], "标题取 scope.model.display_name，按 limits[] 顺序")
-        try expectEqual(readings.map(\.reading), [.remaining(20, tint: .severity(.critical)),
-                                                  .remaining(62, tint: .severity(.warning))],
-                        "剩余 = 100 − percent，颜色取这一行的 severity")
+        try expectEqual(readings.map(\.reading), [.remaining(20, tint: .red), .remaining(62, tint: .green)],
+                        "剩余 = 100 − percent，颜色按剩余百分比的阈值")
         try expectEqual(readings.first?.resetsAt, Date(timeIntervalSince1970: 1_800_437_400))
         try expectEqual(readings.last?.resetsAt, nil)
 
         let odd = usage(["limits": [scoped("Haiku", percent: 5, severity: "purple"),
                                     scoped("Opus", percent: NSNull()),
                                     scoped(nil, percent: 30)]]).modelWeekly(now: fixedNow)
-        try expectEqual(odd.map(\.reading), [.remaining(95, tint: .plain), .remaining(70, tint: .severity(.normal))],
-                        "severity 认不出时不着色；percent 不是数字的行不显示")
+        try expectEqual(odd.map(\.reading), [.remaining(95, tint: .green), .remaining(70, tint: .green)],
+                        "percent 不是数字的行不显示")
         try expectEqual(odd.map(\.model), ["Haiku", nil], "没有 display_name 时标题为 nil（界面用通用标题）")
     }
 
@@ -65,7 +65,7 @@ final class UsageDetailsChecks: CheckSuite {
                                                    Date(timeIntervalSince1970: 1_800_437_400),
                                                    Date(timeIntervalSince1970: 1_800_437_400.5),
                                                    nil])
-        try expectEqual(readings.last?.reading, .remaining(99, tint: .severity(.normal)), "resets_at 认不出时照常显示")
+        try expectEqual(readings.last?.reading, .remaining(99, tint: .green), "resets_at 认不出时照常显示")
     }
 
     static func scopedFollowStaleRules() throws {
@@ -75,7 +75,7 @@ final class UsageDetailsChecks: CheckSuite {
         func readings(_ minutes: Double) -> [UsageReading] {
             u.modelWeekly(now: fixedNow.addingTimeInterval(minutes * 60)).map(\.reading)
         }
-        try expectEqual(readings(30), [.remaining(60, tint: .severity(.warning)), .remaining(10, tint: .severity(.critical))])
+        try expectEqual(readings(30), [.remaining(60, tint: .green), .remaining(10, tint: .red)])
         try expectEqual(readings(31), [.remaining(60, tint: .stale), .remaining(10, tint: .stale)], "超过 30 分钟变灰")
         try expectEqual(readings(60), [.resetPendingRefresh, .remaining(10, tint: .stale)], "已过 resets_at")
         try expectEqual(readings(2 * 24 * 60), [.resetPendingRefresh, .resetPendingRefresh], "秒时间戳也按重置时间判断")
@@ -93,9 +93,9 @@ final class UsageDetailsChecks: CheckSuite {
             if let limits { extra["limits"] = limits }
             let readings = usage(extra).modelWeekly(now: fixedNow)
             try expectEqual(readings, [
-                ModelWeeklyReading(model: "Sonnet", reading: .remaining(70, tint: .plain),
+                ModelWeeklyReading(model: "Sonnet", reading: .remaining(70, tint: .green),
                                    resetsAt: Date(timeIntervalSince1970: 1_800_003_600)),
-                ModelWeeklyReading(model: "Opus", reading: .remaining(24, tint: .plain),
+                ModelWeeklyReading(model: "Opus", reading: .remaining(24, tint: .yellow),
                                    resetsAt: Date(timeIntervalSince1970: 1_800_437_400)),
             ], "limits = \(String(describing: limits))")
             try expectEqual(usage(extra).modelWeekly(now: fixedNow.addingTimeInterval(31 * 60)).map(\.reading),

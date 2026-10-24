@@ -1,5 +1,7 @@
-// 额度数字的颜色（UsageTint → 具体颜色）。规则在 App 核心（UsageReading）里，这里只选具体颜色；
-// 列表（SwiftUI）和菜单栏（AppKit 绘制）是同一套色相，plain 不着色（nil）。
+// 额度数字的颜色（UsageTint → 具体颜色）。规则在 App 核心（UsageTint(remainingPercent:)、UsageReading）里，
+// 这里只选具体颜色；列表（SwiftUI）和菜单栏（AppKit 绘制）是同一套色相，plain 不着色（nil）。
+// 中间一档（yellow，剩余 21–50%）用琥珀色（systemOrange / StatusColor.orange）：纯黄在浅色菜单栏和面板上
+// 几乎看不清，琥珀色仍读作"注意"，且与面板里其他提示的颜色一致。
 // 菜单栏用系统原色（systemGreen 等）。面板里不用：系统原色在浅灰的面板上对比度只有 1.9 左右，
 // 刺眼又不清楚，面板改为按明暗各取一个的柔和色（StatusColor）：浅色下压暗，深色下提亮并降低饱和度。
 // 对比度（背景估算同 tests/swift/StaleGrayChecks.swift）：浅色面板 4.1–5.5、深色面板 4.8–6.0。
@@ -17,9 +19,9 @@ extension UsageTint {
         switch self {
         case .plain: return nil
         case .stale: return Self.staleGray
-        case .severity(.normal): return .systemGreen
-        case .severity(.warning): return .systemOrange
-        case .severity(.critical): return .systemRed
+        case .green: return .systemGreen
+        case .yellow: return .systemOrange
+        case .red: return .systemRed
         }
     }
 
@@ -33,9 +35,9 @@ extension UsageTint {
         switch self {
         case .plain: return nil
         case .stale: return Color(nsColor: Self.staleGray)
-        case .severity(.normal): return StatusColor.green
-        case .severity(.warning): return StatusColor.orange
-        case .severity(.critical): return StatusColor.red
+        case .green: return StatusColor.green
+        case .yellow: return StatusColor.orange
+        case .red: return StatusColor.red
         }
     }
 }
