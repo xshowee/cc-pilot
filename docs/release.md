@@ -11,13 +11,13 @@
 签名、公证并 staple DMG → Gatekeeper 校验 → 用 Sparkle 的 `generate_appcast --account cc-pilot`
 把新版本加进仓库根目录的 `appcast.xml`（EdDSA 签名，更新说明嵌入其中）。
 
-上传 DMG、推送 appcast 不在脚本里，由你手动完成（见下面的"每次发布"）。
+上传 DMG、推送 appcast 不在脚本里，手动完成（见下面的"每次发布"）。
 
 相关文件：
 
 | 文件 | 作用 |
 | --- | --- |
-| `scripts/release.sh` | 正式发布（本文的主角） |
+| `scripts/release.sh` | 正式发布 |
 | `scripts/build-app.sh` | 编译并组装 `build/CC Pilot.app`；release.sh 调用它。单独运行时是本机架构、ad-hoc 签名的开发构建 |
 | `scripts/fetch-sparkle.sh` | 首次运行时下载 Sparkle 2.10.0 到 `build/deps/` 并校验 SHA-256，之后不联网 |
 | `Resources/Info.plist` | 版本号、Sparkle 配置（更新地址、公钥、每天检查一次、默认开启、不上报系统信息）的唯一来源 |
@@ -25,25 +25,26 @@
 | `Sources/App/Updater.swift` | 面板设置菜单里的"检查更新…"与"自动检查更新" |
 | `Sources/Core/LaunchAtLogin.swift`、`Sources/App/LaunchAtLoginModel.swift` | "登录时启动"（`SMAppService.mainApp`，默认关闭） |
 
-环境变量（都可省略）：
+环境变量（都可省略）。经常要设置的可以写进仓库根目录的 `.env`（被 git 忽略，从 `.env.example` 复制），
+release.sh 启动时读取其中 `NAME=值` 形式的行；命令行里设置的同名变量优先。Team ID 这类本机信息只写在 `.env` 里，
+不要写进仓库。
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
-| `CCP_TEAM_ID` | 无 | 签名所属团队 |
+| `CCP_TEAM_ID` | 钥匙串里 Developer ID Application 证书所属的团队 | 签名所属团队；钥匙串里有多个团队的证书时必须指定 |
 | `CCP_RELEASE_IDENTITY` | 该团队的 Developer ID Application 证书 | 签名身份（名称或 SHA-1）；`-` 为 ad-hoc，只能和 `CCP_SKIP_NOTARIZE=1` 一起用 |
 | `CCP_NOTARY_PROFILE` | `cc-pilot-notary` | notarytool 的钥匙串凭据名 |
 | `CCP_RELEASE_NOTES` | 无 | 本版更新说明（Markdown 文件），显示在 Sparkle 的更新窗口里 |
 | `CCP_SKIP_NOTARIZE=1` | 关 | 只在本机验证打包流程：跳过公证、Sparkle 私钥检查和 appcast 生成，产物不能分发 |
 | `CCP_SPARKLE_DIR` | 无 | 使用已解压好的同版本 Sparkle，不下载 |
 
-> **待确认：仓库地址。** 脚本和 `SUFeedURL` 假定仓库是 `https://github.com/xshowee/cc-pilot`，
-> appcast 地址是 `https://raw.githubusercontent.com/xshowee/cc-pilot/main/appcast.xml`。
-> 如果不是，改 `Resources/Info.plist` 的 `SUFeedURL` 和 `scripts/release.sh` 的 `REPO_URL`。
-> 这个仓库必须是公开的，否则已安装的 App 读不到 appcast。
+仓库地址写在 `Resources/Info.plist` 的 `SUFeedURL`（appcast 地址
+`https://raw.githubusercontent.com/xshowee/cc-pilot/main/appcast.xml`）和 `scripts/release.sh` 的 `REPO_URL` 里。
+仓库必须是公开的，否则已安装的 App 读不到 appcast。
 
 ## 一次性准备（按顺序执行）
 
-以下步骤会写入钥匙串或访问 Apple 的服务，需要你亲自执行。在仓库根目录下运行。
+每台用来发布的机器执行一次。以下步骤会写入钥匙串或访问 Apple 的服务，在仓库根目录下运行。
 
 ### 1. 确认 Developer ID 证书
 
@@ -51,47 +52,33 @@
 security find-identity -v -p codesigning | grep "Developer ID Application"
 ```
 
-应能看到形如 `Developer ID Application: <名字> (<Team ID>)` 的证书。
+应能看到形如 `Developer ID Application: <名字> (<Team ID>)` 的证书。release.sh 自动使用它；
+钥匙串里有多个团队的证书时，用 `CCP_TEAM_ID` 指定。
 
 ### 2. 保存公证凭据
 
-二选一：
-
 ```zsh
-# a) 为 cc-pilot 单独保存一份（脚本默认用这个名字）
 xcrun notarytool store-credentials cc-pilot-notary --apple-id <Apple ID> --team-id <Team ID>
 #    会提示输入 App 专用密码（appleid.apple.com 生成）
-
-# b) 或者复用同一开发者账号已保存的凭据：之后每次发布前
-export CCP_NOTARY_PROFILE=<凭据名>
 ```
 
-验证：`xcrun notarytool history --keychain-profile cc-pilot-notary`能列出记录、不报错。
+已经用别的名字保存过同一个开发者账号的凭据，也可以不再保存，发布前设置 `CCP_NOTARY_PROFILE=<凭据名>`。
 
-### 3. 生成 cc-pilot 专用的 Sparkle 密钥
+验证：`xcrun notarytool history --keychain-profile cc-pilot-notary` 能列出记录、不报错。
 
-cc-pilot 的 EdDSA 密钥单独新建，存放在钥匙串的 `cc-pilot` 账户下，不用默认账户。
+### 3. 导入 Sparkle 私钥
 
-> **已完成**（2026-10-23，提交 fbbe88c）：密钥已生成，公钥 `C1jTICc74ojwE8JFp+JRM88pOXjaZKC7zUcnZLpdzqI=`
-> 已填进 `Resources/Info.plist`。下面的步骤留作记录；换电脑时不要重新生成，只需按本节末尾导入私钥。
-> 重新生成会得到另一把密钥，已安装的用户将无法再收到更新。
+cc-pilot 的 EdDSA 密钥存放在钥匙串的 `cc-pilot` 账户下（不用默认账户），公钥写在 `Resources/Info.plist` 的
+`SUPublicEDKey` 里。已安装的 App 只接受这把密钥签名的更新，所以换电脑时导入备份的私钥，**不要重新生成**：
 
 ```zsh
 SPARKLE=$(./scripts/fetch-sparkle.sh)
-
-# 生成密钥：私钥存进登录钥匙串（通常不弹窗），终端打印公钥
-"$SPARKLE/bin/generate_keys" --account cc-pilot
-
-# 把打印出的公钥（base64，以 = 结尾）填进 Info.plist，替换占位值 AAAA…A=
-/usr/libexec/PlistBuddy -c "Set :SUPublicEDKey <公钥>" Resources/Info.plist
+"$SPARKLE/bin/generate_keys" --account cc-pilot -f <私钥文件>
 
 # 确认钥匙串里的公钥与 Info.plist 一致（两行应相同）
 "$SPARKLE/bin/generate_keys" -p --account cc-pilot
 /usr/libexec/PlistBuddy -c "Print :SUPublicEDKey" Resources/Info.plist
 ```
-
-然后提交 `Resources/Info.plist`（只改了 `SUPublicEDKey` 一行）。Info.plist 里不写注释，因为 PlistBuddy 写回时会删掉它们；
-各个键的含义见本文末尾的"Info.plist 中与发布有关的键"。
 
 **备份私钥**（丢了就无法再给已安装的用户推送更新）：
 
@@ -101,12 +88,15 @@ SPARKLE=$(./scripts/fetch-sparkle.sh)
 rm ~/Desktop/cc-pilot-sparkle-private-key
 ```
 
-换电脑时导入：`"$SPARKLE/bin/generate_keys" --account cc-pilot -f <私钥文件>`。私钥文件绝不放进仓库。
+私钥文件绝不放进仓库。
+
+fork 后自行发布时才需要新建密钥：`"$SPARKLE/bin/generate_keys" --account cc-pilot` 生成私钥并打印公钥，
+再用 `/usr/libexec/PlistBuddy -c "Set :SUPublicEDKey <公钥>" Resources/Info.plist` 填进去。
+Info.plist 里不写注释，因为 PlistBuddy 写回时会删掉它们；各个键的含义见本文末尾的"Info.plist 中与发布有关的键"。
 
 `SUPublicEDKey` 是占位值 `AAAA…A=` 时，`./scripts/release.sh` 会拒绝发布，构建出的 App 也不启动 Sparkle
 （"检查更新…"是灰的，不访问 appcast）；钥匙串里 `cc-pilot` 账户的公钥与 Info.plist 不一致时 release.sh 同样拒绝。
-现在 Info.plist 里已是真实公钥，所以**包括本地开发构建在内**，App 都会启动 Sparkle 并按计划访问 appcast 地址
-（仓库公开之前该地址返回 404，后台检查失败不弹窗；手动点"检查更新…"会提示失败）。
+Info.plist 里是真实公钥时，**包括本地开发构建在内**，App 都会启动 Sparkle 并按计划访问 appcast 地址。
 
 ### 4.（建议）先在本机试一遍签名
 

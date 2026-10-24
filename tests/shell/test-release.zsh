@@ -70,7 +70,7 @@ test_refuses_when_keychain_key_does_not_match_info_plist() {
 }
 
 test_looks_up_key_under_cc_pilot_account_only() {
-  # 用户决定：cc-pilot 的密钥单独存放在 --account cc-pilot 下，不用默认账户
+  # cc-pilot 的密钥单独存放在 --account cc-pilot 下，不用默认账户
   setup_repo
   set_public_key $REAL_LOOKING_KEY
   run_release FAKE_GENERATE_KEYS_PUBLIC=$OTHER_KEY
