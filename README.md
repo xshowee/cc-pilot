@@ -28,7 +28,7 @@ There are two equal ways to use it:
 
 ### The menu bar app
 
-- The menu bar shows two lines: the current profile's name, and the remaining 5-hour usage of that profile's account ("—" until you refresh). You can also make it show only an icon.
+- The menu bar shows two lines: the current profile's subscription tier (such as Max 5x or Pro; the profile name when the tier isn't known), and the remaining 5-hour usage of that profile's account ("—" until you refresh). You can also make it show only an icon.
 - The panel lists every profile, showing the signed-in account's email first and the profile name below it, together with the organization and subscription tier. Profiles that aren't signed in show "Not signed in"; when two profiles are signed in to the same account, the list says "Same account as …".
 - Click a profile to make it the current profile, exactly like `ccp use`. To add or delete a profile, the app opens Terminal and runs `ccp add` / `ccp rm`, so the flow is identical to the command line. Changes made with `ccp` show up in the app right away.
 - Usage: click "Refresh All", or the refresh button next to one account, to get the **remaining** percentage and reset time of the 5-hour window and the weekly window for all models. Expand an account to see weekly windows per model and extra usage.
@@ -48,7 +48,7 @@ CC Pilot only connects to these two addresses:
 | Usage API `https://api.anthropic.com/api/oauth/usage` | **Only when you click** "Refresh All" or an account's refresh button. Launching the app, opening the panel and switching profiles send no request. Requests honestly identify themselves with `User-Agent: cc-pilot/<version>` and do not pretend to be the official client. |
 | Update feed `https://raw.githubusercontent.com/xshowee/cc-pilot/main/appcast.xml` | Fetched by [Sparkle](https://sparkle-project.org): once a day while "Automatically Check for Updates" is on (the default), which can happen shortly after launch when the last check was more than a day ago; and immediately when you click "Check for Updates…". No system information is sent. |
 
-When you choose to install an update, Sparkle downloads the new DMG from this repository's GitHub Releases. To turn off automatic checks, uncheck "Automatically Check for Updates" in the gear menu at the bottom left of the panel.
+When you choose to install an update, Sparkle downloads the new DMG from this repository's GitHub Releases. To turn off automatic checks, uncheck "Automatically Check for Updates" in the gear menu at the bottom right of the panel.
 
 - **No usage data is collected.** No crash reports, no analytics or telemetry of any kind.
 - **Credentials are read-only.** The app reads the credentials Claude Code stores in the keychain through the system's own `/usr/bin/security`, keeps them in memory only for a single request, and never writes them to logs, cache files or error messages. cc-pilot **never writes, deletes or renews** credentials: renewal is always done by Claude Code itself, and signing out is done by you with `/logout` in Claude Code.
@@ -91,7 +91,7 @@ Note that shared resources are symlinks. When Claude Code changes a setting in a
    source "$HOME/.cc-pilot/cc-pilot.zsh"  # cc-pilot
    ```
 
-   "Not Now" changes no files; you can start again later from the gear menu at the bottom left of the panel › "Set Up zsh Integration…".
+   "Not Now" changes no files; you can start again later from the gear menu at the bottom right of the panel › "Set Up zsh Integration…".
 4. Open a new terminal window (or run `source ~/.zshrc` in an open one) and `ccp` is ready.
 
 Each time the app is updated, it updates `~/.cc-pilot/` to the new version without asking, and without touching `~/.zshrc` again.
@@ -147,7 +147,7 @@ Profile names may contain only letters, digits, `.`, `_` and `-`, and must start
 ## Uninstall
 
 1. (Optional) If you no longer need the other profiles, switch back with `ccp use default`, then delete each one with `ccp rm <name>` (the current profile can't be deleted). Each profile is signed out first, so no valid credentials are left in the keychain.
-2. Run `ccp uninstall` (or use the gear menu at the bottom left of the panel › "Remove zsh Integration…") to remove the line from `~/.zshrc`.
+2. Run `ccp uninstall` (or use the gear menu at the bottom right of the panel › "Remove zsh Integration…") to remove the line from `~/.zshrc`.
 3. Quit CC Pilot and delete it from **Applications**.
 
 The default profile (`~/.claude`, `~/.claude.json` and its sign-in) is never affected. After uninstalling, `claude` in a new terminal behaves exactly as it did before cc-pilot was installed.

@@ -178,7 +178,7 @@ git push
 
 ### 默认设置
 
-在一台没装过 CC Pilot 的机器（或先 `defaults delete com.ccpilot.app`）上首次打开，点面板左下角的齿轮：
+在一台没装过 CC Pilot 的机器（或先 `defaults delete com.ccpilot.app`）上首次打开，点面板右下角的齿轮：
 
 - "自动检查更新"已勾选，且没有弹出"是否自动检查更新"的询问；
 - "登录时启动"未勾选。勾选后"系统设置 › 通用 › 登录项"里出现 CC Pilot，注销再登录 App 会自动启动；
