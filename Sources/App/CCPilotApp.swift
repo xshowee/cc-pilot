@@ -35,6 +35,7 @@ struct CCPilotApp: App {
                 .environmentObject(appDelegate.updater)
                 .environmentObject(appDelegate.launchAtLogin)
                 .environmentObject(appDelegate.shellIntegration)
+                .environmentObject(appDelegate.tokenStats)
         } label: {
             MenuBarLabel(summary: usage.board.menuBarSummary(currentProfile: current.name, profiles: profiles.profiles,
                                                              now: usage.now),

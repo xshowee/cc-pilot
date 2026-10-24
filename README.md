@@ -38,6 +38,7 @@ There are two equal ways to use it:
   - While a `claude` session is running, the 5-hour and all-models weekly numbers of its account update live from the usage Claude Code itself receives (passed on by its status line), with no extra request. When live and refreshed numbers describe the same window, the higher usage wins; a window with a later reset time replaces an older one.
   - Profiles signed in to the same account are fetched only once.
   - A profile whose short-lived credential has expired shows **Needs renewal**: open that profile's `claude` once to restore it (the app sends no request and never renews anything itself). A profile whose credential can no longer be renewed shows **Needs to sign in again**.
+- Token usage: hover over an account in the panel to see, on its left, how many tokens this Mac has used on that account (input, output, cache write and cache read, read from Claude Code's local session transcripts) in the current 5-hour window, the current weekly window and since a starting point, broken down by model, with a 24-hour and 30-day history. Clearing moves the starting point to now, for one account or (from the settings menu) all of them; Claude Code's files are never touched. Token usage is not the same thing as usage limits and can't be converted into them.
 - The interface is in English or Simplified Chinese, following your system language. It lives only in the menu bar, with no Dock icon. "Launch at Login" is available and off by default.
 
 ## Network and privacy

@@ -5,6 +5,7 @@
 //   有额度详情（按模型细分的周窗口、超额付费）时有展开按钮（ticket 13）；展开后详情显示在
 //   卡片里主窗口之后、获取时间之前（ticket 19），点详情也会切换档案。
 //   鼠标移到卡片上时显示删除按钮（ticket 09，默认档案和当前档案不可用）；右键菜单里也有删除。
+// 鼠标进出卡片时通知 onHover（token-usage ticket 07：停在账号行上时左侧弹出统计面板）。
 
 import SwiftUI
 
@@ -19,6 +20,8 @@ struct SwitchableProfileRow: View {
     var onRefresh: (() -> Void)? = nil
     /// 删除入口：不能删除的原因（nil 表示可以删除）和删除动作；为 nil 时不显示删除入口
     var onDelete: (blocker: ProfileCommands.RemovalBlocker?, action: () -> Void)? = nil
+    /// 鼠标进出卡片（统计面板用）
+    var onHover: ((Bool) -> Void)? = nil
     let onSelect: () -> Void
 
     @State private var hovering = false
@@ -52,7 +55,10 @@ struct SwitchableProfileRow: View {
             RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
                 .strokeBorder(stroke, lineWidth: 1)
         )
-        .onHover { hovering = $0 }
+        .onHover {
+            hovering = $0
+            onHover?($0)
+        }
         .contextMenu {
             if let onDelete {
                 Button("Delete “\(profile.name)”…", action: onDelete.action)

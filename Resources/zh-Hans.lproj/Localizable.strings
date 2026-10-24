@@ -131,3 +131,34 @@
 "Not enabled" = "未开启";
 "%@ used · no limit" = "已使用 %1$@ · 上限不限";
 "%@ used · limit %@" = "已使用 %1$@ · 上限 %2$@";
+
+/* 侧边统计面板与清空累计（token-usage ticket 07） */
+"5 hours" = "5 小时";
+"Week" = "周";
+"Cumulative" = "累计";
+"Resets in %@" = "%@后重置";
+"%lldd %lldh" = "%1$lld 天 %2$lld 小时";
+"%lldh %lldm" = "%1$lld 小时 %2$lld 分";
+"%lldm" = "%lld 分";
+"Token Usage" = "Token 用量";
+"since %@" = "自 %@";
+"Input" = "输入";
+"Output" = "输出";
+"Cache write" = "缓存写入";
+"Cache read" = "缓存读取";
+"Models" = "模型";
+"History" = "历史";
+"24 hours" = "24 小时";
+"30 days" = "30 天";
+"24h ago" = "24 小时前";
+"12h ago" = "12 小时前";
+"Now" = "现在";
+"30d ago" = "30 天前";
+"15d ago" = "15 天前";
+"Today" = "今天";
+"Cumulative since %@" = "累计自 %@";
+"Clear Cumulative" = "清空累计";
+"Clear cumulative usage for %@?" = "清空 %@ 的累计？";
+"Clear" = "清空";
+"Clear Cumulative Usage for All Accounts…" = "清空全部账号的累计…";
+"Clear cumulative token usage for all accounts?" = "清空全部账号的累计 Token 用量？";

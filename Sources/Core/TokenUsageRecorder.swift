@@ -18,7 +18,8 @@
 import CoreServices
 import Foundation
 
-final class TokenUsageRecorder {
+/// 可变状态只在 queue 上访问（见文件头），所以可以跨线程传递（统计面板在自己的后台队列上调用）
+final class TokenUsageRecorder: @unchecked Sendable {
     private let environment: CoreEnvironment
     private let ledgerURL: URL
     private let projectsRoot: URL
