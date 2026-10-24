@@ -13,6 +13,7 @@
 // 账本只在 `queue`（默认是一个后台串行队列）上访问：同步、归属钩子、onUpdate 和 `read` 的 body
 // 都在它上面执行，界面需要自己切回主线程。start / stop / read 可以在任意线程调用。
 // 账本打不开、读入出错时跳过这一次，下次变化再试。
+// 统计面板（ticket 07）用 accountUsage 查询、clearCumulative / clearAllCumulative 清空，同样在 `queue` 上执行。
 
 import CoreServices
 import Foundation
@@ -97,6 +98,25 @@ final class TokenUsageRecorder {
         var result: Result<T, Error>!
         onQueue { result = Result { try body(try openLedger()) } }
         return try result.get()
+    }
+
+    // MARK: - Token 用量（ticket 03）
+
+    /// 一个账号（UsageAccount.id）此刻的 Token 用量；时钟和日历用 recorder 自己的
+    func accountUsage(_ account: String, resets: KnownResets) throws -> AccountTokenUsage {
+        try read { try $0.accountUsage(account, resets: resets, now: now(), calendar: calendar) }
+    }
+
+    /// 清空一个账号的累计 Token 用量（起算点移到此刻），之后调用 onUpdate
+    func clearCumulative(account: String) throws {
+        try read { try $0.clearCumulative(account: account, at: now()) }
+        onQueue(onUpdate)
+    }
+
+    /// 清空全部账号（连同未归属）的累计 Token 用量，之后调用 onUpdate
+    func clearAllCumulative() throws {
+        try read { try $0.clearAllCumulative(at: now()) }
+        onQueue(onUpdate)
     }
 
     // MARK: - 内部

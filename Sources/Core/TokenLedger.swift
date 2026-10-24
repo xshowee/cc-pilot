@@ -1,7 +1,7 @@
 // cc-pilot 自己的 Token 用量账本（spec 决策 11）：~/Library/Application Support/cc-pilot/token-usage.sqlite。
 // 只读 Claude Code 的会话记录，从不改动它们；会话记录被删除不影响账本。
 //
-// 数据（SQLite，PRAGMA user_version = 2）：
+// 数据（SQLite，PRAGMA user_version = 3）：
 //   messages  逐条明细：每条 assistant 消息一行，message.id 唯一（没有 id 的行各占一行）。
 //             attribution 是归属状态（见 LedgerAttribution），由 ticket 02 填写；读入时一律是"待归属"。
 //   daily     超过保留期的明细合并成的"每账号、每模型、每天"汇总；account 为空串表示未归属。
@@ -9,7 +9,8 @@
 //             这些旧消息的明细已经删掉了，靠它防止再记一次。只记两个保留期：更早的忘掉，
 //             忘掉的分界记在 meta 的 forgotten_before，读入时早于它的行一律跳过（它们所在的日子早已汇总，
 //             能出现只可能是 resume 链一路带下来的旧消息），这样表不会无限增长，也不会重记。
-//   meta      键值：forgotten_before（见上）。
+//   meta      键值：forgotten_before（见上）；origin_all（"清空全部账号"的时刻，见下）。
+//   origins   每个账号的起算点（ticket 03）：清空这个账号时的时刻；account 为空串表示未归属。
 //   files     每份会话记录读到的位置（字节偏移）和 inode。与明细在同一个事务里写入，
 //             中途退出也不会重复计入或漏记。
 //
@@ -17,6 +18,12 @@
 //   - 会话记录是 projects/<项目>/<会话>.jsonl 和 projects/<项目>/<父会话>/subagents/*.jsonl。
 //   - 只读新追加的部分，到最后一个换行为止；写到一半的最后一行留到下次。
 //   - 文件变短或换了 inode（被重写）时从头读；有 message.id 的行靠去重不会重复。
+//
+// 起算点（累计 Token 用量从哪一刻算起，ticket 03）：
+//   - 账号的起算点 = origins 里它的时刻和 origin_all 中较晚的那个；都没有时是它在账本里最早一条记录的时间。
+//   - "清空全部账号"只记 origin_all，不逐个写账号：清空之前的消息之后才归属到一个从没出现过的账号，也不会算进累计。
+//   - 起算点按消息时间比较；按天汇总只有日期，那天的 0 点不早于起算点才计入（起算点落在已汇总的那天中间时，
+//     那天整天不计）。
 //
 // 只在一个线程（或串行队列）上使用同一个 TokenLedger。
 
@@ -94,6 +101,14 @@ final class TokenLedger {
                     """)
                 try db.run("UPDATE rolled_message_ids SET ts = ?1", [.real(Date().timeIntervalSince1970)])
                 try db.execute("PRAGMA user_version = 2")
+            }
+        }
+        if current < 3 {
+            try db.transaction {
+                try db.execute("""
+                    CREATE TABLE origins (account TEXT PRIMARY KEY, ts REAL NOT NULL) WITHOUT ROWID;
+                    PRAGMA user_version = 3;
+                    """)
             }
         }
     }
@@ -246,11 +261,16 @@ final class TokenLedger {
 
     /// 全部逐条明细，按时间排列
     func messages() throws -> [LedgerMessage] {
+        try messages(where: "1", [])
+    }
+
+    private func messages(where condition: String, _ values: [SQLiteValue]) throws -> [LedgerMessage] {
         let statement = try db.prepare("""
             SELECT message_id, ts, session_id, parent_session_id, model,
                    input, output, cache_write, cache_read, attribution, profile, account
-            FROM messages ORDER BY ts, id
+            FROM messages WHERE \(condition) ORDER BY ts, id
             """)
+        try statement.bind(values)
         var result: [LedgerMessage] = []
         while try statement.step() {
             result.append(LedgerMessage(
@@ -266,10 +286,15 @@ final class TokenLedger {
 
     /// 全部汇总，按日期排列（同一天里已归属的账号在前、未归属在后）
     func dailyUsage() throws -> [LedgerDailyUsage] {
+        try dailyUsage(where: "1", [])
+    }
+
+    private func dailyUsage(where condition: String, _ values: [SQLiteValue]) throws -> [LedgerDailyUsage] {
         let statement = try db.prepare("""
             SELECT day, day_start, account, model, input, output, cache_write, cache_read
-            FROM daily ORDER BY day, account = '', account, model
+            FROM daily WHERE \(condition) ORDER BY day, account = '', account, model
             """)
+        try statement.bind(values)
         var result: [LedgerDailyUsage] = []
         while try statement.step() {
             let account = statement.text(2) ?? ""
@@ -397,6 +422,85 @@ final class TokenLedger {
     func rolledMessageIDCount() throws -> Int {
         let statement = try db.prepare("SELECT count(*) FROM rolled_message_ids")
         return try statement.step() ? statement.int(0) : 0
+    }
+
+    // MARK: - Token 用量（ticket 03）
+
+    /// 一个账号（UsageAccount.id）的窗口 Token 用量、累计 Token 用量和历史数据
+    func accountUsage(_ account: String, resets: KnownResets, now: Date, calendar: Calendar) throws
+        -> AccountTokenUsage {
+        // 历史数据最多往前 30 天；5 小时窗口过了 resets_at 时要从 resets_at 起找消息
+        let since = min(now - Double(TokenUsageStats.historyDays + 1) * 86400, resets.fiveHour ?? now)
+        let filter = Self.accountFilter(account)
+        let messages = try messages(where: "\(filter.messages) AND ts >= ?2",
+                                    [.text(filter.key), .real(since.timeIntervalSince1970)])
+        let daily = try dailyUsage(where: "account = ?1 AND day_start >= ?2",
+                                   [.text(filter.key), .real(since.timeIntervalSince1970)])
+        return TokenUsageStats.account(account, messages: messages, daily: daily, resets: resets,
+                                       cumulative: try cumulativeUsage(account: account),
+                                       now: now, calendar: calendar)
+    }
+
+    /// 累计 Token 用量：起算点到现在。account 为 nil 表示未归属（不显示，只用于检查）
+    func cumulativeUsage(account: String?) throws -> TokenUsageCumulative {
+        let filter = Self.accountFilter(account)
+        let stored = try storedOrigin(filter.key)
+        let from = SQLiteValue.real(stored?.timeIntervalSince1970 ?? -Double.infinity)
+        let statement = try db.prepare("""
+            SELECT model, sum(input), sum(output), sum(cache_write), sum(cache_read), min(ts) FROM (
+                SELECT model, input, output, cache_write, cache_read, ts FROM messages
+                WHERE \(filter.messages) AND ts >= ?2
+                UNION ALL
+                SELECT model, input, output, cache_write, cache_read, day_start FROM daily
+                WHERE account = ?1 AND day_start >= ?2
+            ) GROUP BY model
+            """)
+        try statement.bind([.text(filter.key), from])
+        var entries: [(model: String, tokens: TokenCounts)] = []
+        var earliest: Double?
+        while try statement.step() {
+            entries.append((statement.text(0) ?? "", TokenCounts(input: statement.int(1), output: statement.int(2),
+                                                                 cacheWrite: statement.int(3),
+                                                                 cacheRead: statement.int(4))))
+            earliest = min(earliest ?? .infinity, statement.double(5))
+        }
+        return TokenUsageCumulative(origin: stored ?? earliest.map(Date.init(timeIntervalSince1970:)),
+                                    usage: TokenUsageBreakdown(entries))
+    }
+
+    /// 清空一个账号的累计 Token 用量：把起算点移到 now。account 为 nil 表示未归属
+    func clearCumulative(account: String?, at now: Date) throws {
+        try db.run("""
+            INSERT INTO origins (account, ts) VALUES (?1, ?2)
+            ON CONFLICT (account) DO UPDATE SET ts = excluded.ts
+            """, [.text(Self.accountFilter(account).key), .real(now.timeIntervalSince1970)])
+    }
+
+    /// 清空全部账号（连同未归属）的累计 Token 用量
+    func clearAllCumulative(at now: Date) throws {
+        try db.run("""
+            INSERT INTO meta (key, value) VALUES ('origin_all', ?1)
+            ON CONFLICT (key) DO UPDATE SET value = excluded.value
+            """, [.real(now.timeIntervalSince1970)])
+    }
+
+    /// 记下的起算点（账号自己的和全部账号的取较晚者）；从没清空过时为 nil
+    private func storedOrigin(_ key: String) throws -> Date? {
+        let statement = try db.prepare("""
+            SELECT max(ts) FROM (
+                SELECT ts FROM origins WHERE account = ?1
+                UNION ALL SELECT value FROM meta WHERE key = 'origin_all'
+            )
+            """)
+        try statement.bind([.text(key)])
+        guard try statement.step(), statement.text(0) != nil else { return nil }
+        return Date(timeIntervalSince1970: statement.double(0))
+    }
+
+    /// 账号在各表里的写法：messages 的条件（?1 是账号）、daily 和 origins 的键（未归属是空串）
+    private static func accountFilter(_ account: String?) -> (messages: String, key: String) {
+        guard let account else { return ("attribution = \(unattributedState) AND ?1 = ''", "") }
+        return ("attribution = \(attributedState) AND account = ?1", account)
     }
 
     // MARK: - 归属状态的存储形式
