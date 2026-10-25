@@ -6,12 +6,13 @@
 // AppDelegate 只用 DispatchQueue.main.async 转成 tokenUsageDidUpdate 通知（不能 main.sync：主线程可能正同步等账本队列）。
 //
 // 什么时候读：开始显示某个账号、它已知的 resets_at 变了（实时额度或刷新）、账本有更新（会话进行中每隔一两秒一次）、
-// 清空之后（同样经 onUpdate）、界面时钟走了一格（滚动窗口随时间移动）。只读正在显示的那个账号；
+// 清空之后（同样经 onUpdate）、显示期间每 15 秒（滚动窗口随时间移动）。只读正在显示的那个账号；
 // 同一时刻只有一次读取在进行，期间又要读就在完成后再读一次（合并成一次）。
 // 读过的账号留着结果：在同一账号的几个档案行之间移动、或移回刚看过的账号时先显示它，读完再换成新的。
 //
 // "清空全部账号"从设置菜单进入，确认条显示在主面板里（confirmingClearAll），不弹系统对话框。
 
+import Combine
 import Foundation
 
 extension Notification.Name {
@@ -26,13 +27,21 @@ final class TokenStatsModel: ObservableObject {
     /// 主面板里是否显示"清空全部账号"的确认条
     @Published var confirmingClearAll = false
 
+    /// 要显示的账号和它已知的 resets_at
+    struct Request: Equatable {
+        let account: UsageAccount
+        let resets: KnownResets
+    }
+
     private let recorder: TokenUsageRecorder
     private let queue = DispatchQueue(label: "com.ccpilot.token-stats", qos: .userInitiated)
-    /// 正在显示的账号和它已知的 resets_at；没有显示时为 nil
-    private var shown: (account: UsageAccount, resets: KnownResets)?
+    /// 正在显示的；没有显示时为 nil
+    private var shown: Request?
     private var reading = false
     private var readAgain = false
     private var observer: NSObjectProtocol?
+    /// 显示期间每 15 秒重读一次（与 UsageModel 的界面时钟间隔相同，但不同步）
+    private var clock: AnyCancellable?
 
     init(recorder: TokenUsageRecorder) {
         self.recorder = recorder
@@ -43,15 +52,21 @@ final class TokenStatsModel: ObservableObject {
     }
 
     /// 开始（或继续）显示这个账号
-    func show(_ account: UsageAccount, resets: KnownResets) {
-        if let shown, shown.account == account, shown.resets == resets { return }
-        shown = (account, resets)
+    func show(_ request: Request) {
+        if shown == request { return }
+        shown = request
+        if clock == nil {
+            clock = Timer.publish(every: 15, tolerance: 5, on: .main, in: .common)
+                .autoconnect()
+                .sink { [weak self] _ in self?.reload() }
+        }
         reload()
     }
 
     /// 面板收起：不再读
     func hide() {
         shown = nil
+        clock = nil
     }
 
     /// 重读正在显示的账号

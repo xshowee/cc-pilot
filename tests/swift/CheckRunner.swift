@@ -38,6 +38,13 @@ func expect(_ condition: Bool, _ message: @autoclosure () -> String,
     if !condition { throw CheckFailure(description: "\(file):\(line): \(message())") }
 }
 
+/// 取出可选值，nil 时检查失败
+func unwrap<T>(_ value: T?, _ message: @autoclosure () -> String = "值为 nil",
+               file: StaticString = #fileID, line: UInt = #line) throws -> T {
+    guard let value else { throw CheckFailure(description: "\(file):\(line): \(message())") }
+    return value
+}
+
 func expectEqual<T: Equatable>(_ actual: T, _ expected: T, _ message: @autoclosure () -> String = "",
                                file: StaticString = #fileID, line: UInt = #line) throws {
     if actual != expected {

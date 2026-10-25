@@ -64,13 +64,7 @@ struct TokenUsageCard: View {
                         Circle().fill(kind.color).frame(width: 8, height: 8)
                         Text(verbatim: kind.title)
                     }
-                    Text(verbatim: part?.value ?? "—")
-                        .gridColumnAlignment(.trailing)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                    Text(verbatim: part?.share ?? "—")
-                        .foregroundColor(.secondary)
-                        .gridColumnAlignment(.trailing)
-                        .frame(minWidth: 34, alignment: .trailing)
+                    valueAndShareCells(value: part?.value ?? "—", share: part?.share ?? "—")
                 }
             }
         }
@@ -93,13 +87,7 @@ struct ModelsCard: View {
                                 Text(verbatim: model.name)
                                     .lineLimit(1)
                                     .truncationMode(.middle)
-                                Text(verbatim: model.value)
-                                    .gridColumnAlignment(.trailing)
-                                    .frame(maxWidth: .infinity, alignment: .trailing)
-                                Text(verbatim: model.share)
-                                    .foregroundColor(.secondary)
-                                    .gridColumnAlignment(.trailing)
-                                    .frame(minWidth: 34, alignment: .trailing)
+                                valueAndShareCells(value: model.value, share: model.share)
                             }
                         }
                     }
@@ -113,6 +101,17 @@ struct ModelsCard: View {
             }
         }
     }
+}
+
+/// 图例和模型卡一行右边的两格：数值（右对齐，占满剩下的宽度）、占比（次要颜色）
+@ViewBuilder private func valueAndShareCells(value: String, share: String) -> some View {
+    Text(verbatim: value)
+        .gridColumnAlignment(.trailing)
+        .frame(maxWidth: .infinity, alignment: .trailing)
+    Text(verbatim: share)
+        .foregroundColor(.secondary)
+        .gridColumnAlignment(.trailing)
+        .frame(minWidth: 34, alignment: .trailing)
 }
 
 extension TokenKind {

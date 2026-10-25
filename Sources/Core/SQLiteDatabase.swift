@@ -50,13 +50,9 @@ final class SQLiteDatabase {
         return SQLiteStatement(statement!, database: self)
     }
 
-    /// 执行一条带参数的语句，丢弃结果；返回受影响的行数
-    @discardableResult
-    func run(_ sql: String, _ values: [SQLiteValue] = []) throws -> Int {
-        let statement = try prepare(sql)
-        try statement.bind(values)
-        while try statement.step() {}
-        return changes
+    /// 执行一条带参数的语句，丢弃结果
+    func run(_ sql: String, _ values: [SQLiteValue] = []) throws {
+        try prepare(sql).run(values)
     }
 
     /// 上一条语句修改的行数
@@ -108,6 +104,12 @@ final class SQLiteStatement {
         }
     }
 
+    /// 绑定参数后执行到底，丢弃结果（语句可以反复用）
+    func run(_ values: [SQLiteValue]) throws {
+        try bind(values)
+        while try step() {}
+    }
+
     /// 前进一行；有结果行时返回 true，执行完毕返回 false
     func step() throws -> Bool {
         let code = sqlite3_step(statement)
@@ -120,6 +122,11 @@ final class SQLiteStatement {
     func text(_ column: Int32) -> String? {
         guard let p = sqlite3_column_text(statement, column) else { return nil }
         return String(cString: p)
+    }
+    /// 从 column 起连续四列：输入、输出、缓存写入、缓存读取
+    func tokenCounts(from column: Int32) -> TokenCounts {
+        TokenCounts(input: int(column), output: int(column + 1),
+                    cacheWrite: int(column + 2), cacheRead: int(column + 3))
     }
 
     /// 让 SQLite 自己复制绑定的字符串

@@ -15,9 +15,11 @@
 #   <project_dir>/.claude/settings.local.json、<project_dir>/.claude/settings.json、档案的 settings.json
 # （project_dir 取状态栏 JSON 的 workspace.project_dir），取第一个有非空 statusLine.command 的。
 # 每次运行都重新读，所以用户在会话里用 /statusline 改过的设置照常生效。
-# 参数：档案名、状态栏 JSON。找到时输出命令；没有时返回 1。
+# 状态栏刷新得很勤，少起子进程：命令放进 REPLY 而不是输出，不含 statusLine 的设置文件不交给 plutil。
+# 参数：档案名、状态栏 JSON。找到时把命令放进 REPLY；没有时返回 1。
 _ccp_statusline_original() {
   emulate -L zsh
+  zmodload zsh/mapfile 2>/dev/null
   local name=$1 input=$2 project config f cmd
   local -a files
   project=$(print -rn -- "$input" | /usr/bin/plutil -extract workspace.project_dir raw -o - - 2>/dev/null)
@@ -30,9 +32,11 @@ _ccp_statusline_original() {
   files+=("$config/settings.json")
   for f in $files; do
     [[ -f $f ]] || continue
+    # 加载不了 zsh/mapfile 时不预筛，一律交给 plutil
+    (( ${+mapfile} )) && [[ ${mapfile[$f]} != *statusLine* ]] && continue
     cmd=$(/usr/bin/plutil -extract statusLine.command raw -o - "$f" 2>/dev/null) || continue
     if [[ -n $cmd ]]; then
-      print -r -- "$cmd"
+      REPLY=$cmd
       return 0
     fi
   done
@@ -61,7 +65,7 @@ _ccp_statusline_write() {
 
 _ccp_cmd_statusline() {
   emulate -L zsh
-  local name=${1-} input= cmd
+  local name=${1-} input= REPLY
   # 读到 EOF，原样保留（含结尾的换行；$(cat) 会去掉它们）
   IFS= read -r -d '' input
   # 原状态栏命令又调用了转发命令（例如用户手动把它写进了设置）：什么都不做，避免无限递归
@@ -70,6 +74,6 @@ _ccp_cmd_statusline() {
     return 0
   fi
   _ccp_statusline_write "$name" "$input" 2>/dev/null
-  cmd=$(_ccp_statusline_original "$name" "$input") || return 0
-  print -rn -- "$input" | _CCP_STATUSLINE_FORWARDING=1 /bin/sh -c "$cmd"
+  _ccp_statusline_original "$name" "$input" || return 0
+  print -rn -- "$input" | _CCP_STATUSLINE_FORWARDING=1 /bin/sh -c "$REPLY"
 }

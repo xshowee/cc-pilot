@@ -127,8 +127,8 @@ final class StatsFlyoutChecks: CheckSuite {
         let work = LiveQuotaMergeChecks.profile("work", uuid: "u-1")
         let work2 = LiveQuotaMergeChecks.profile("work2", uuid: "u-1")
         let side = LiveQuotaMergeChecks.profile("side", uuid: "u-2")
-        let a = try expectSome(StatsFlyoutTarget(profile: work)), b = try expectSome(StatsFlyoutTarget(profile: work2))
-        let c = try expectSome(StatsFlyoutTarget(profile: side))
+        let a = try unwrap(StatsFlyoutTarget(profile: work)), b = try unwrap(StatsFlyoutTarget(profile: work2))
+        let c = try unwrap(StatsFlyoutTarget(profile: side))
         try expectEqual(a.account, b.account, "同一账号")
         try expectEqual(a.account.id, "account:u-1", "与账本记的账号一致")
         try expect(a.account != c.account, "不同账号")
@@ -137,11 +137,6 @@ final class StatsFlyoutChecks: CheckSuite {
         let loggedOut = Profile(name: "empty", configDir: "/nonexistent/empty",
                                 claudeJSON: URL(fileURLWithPath: "/nonexistent/empty.json"), account: .loggedOut)
         try expect(StatsFlyoutTarget(profile: loggedOut) == nil, "未登录没有面板")
-    }
-
-    static func expectSome<T>(_ value: T?, file: StaticString = #fileID, line: UInt = #line) throws -> T {
-        guard let value else { throw CheckFailure(description: "\(file):\(line): 不应为 nil") }
-        return value
     }
 
     static func hover() throws {

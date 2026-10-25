@@ -17,11 +17,7 @@ final class TokenUsageRecorderChecks: CheckSuite {
         ]
     }
 
-    static let calendar: Calendar = {
-        var c = Calendar(identifier: .gregorian)
-        c.timeZone = TimeZone(identifier: "Asia/Shanghai")!
-        return c
-    }()
+    static let calendar = TokenLedgerRollupChecks.calendar
 
     static func makeRecorder(_ env: LedgerEnv, now: Date = Date(),
                              attribute: ((TokenLedger) throws -> Void)? = { _ in },

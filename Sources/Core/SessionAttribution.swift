@@ -48,7 +48,7 @@ final class SessionAttribution {
         guard !pending.isEmpty else { return }
         let paths = ProfilePaths(environment: environment)
         let store = ProfileStore(environment: environment)
-        let names = [ProfileName.defaultName] + store.profileNames()
+        let names = store.allProfileNames()
         let historyPaths = names.map { paths.runtimeDir(forProfileNamed: $0) + "/history.jsonl" }
         // 已经不是档案的 history.jsonl 不再参与
         histories = histories.filter { historyPaths.contains($0.key) }
@@ -65,8 +65,7 @@ final class SessionAttribution {
         var unreadable: Set<String> = []
         func account(of name: String) -> UsageAccount? {
             if unreadable.contains(name) { return nil }
-            let path = name == ProfileName.defaultName ? paths.defaultClaudeJSON : paths.claudeJSON(for: name)
-            let stamp = FileStamp(path: path.path)
+            let stamp = FileStamp(path: paths.claudeJSON(forProfileNamed: name).path)
             if let stamp, let cached = accounts[name], cached.file == stamp { return cached.account }
             let account = store.profile(named: name).usageAccount
             if let stamp, let account {
@@ -113,33 +112,25 @@ final class SessionAttribution {
     /// 一份 history.jsonl 里出现过的会话，及各会话最新一行的时间（毫秒）
     private final class HistoryIndex {
         private(set) var sessions: [String: Double] = [:]
-        private var offset = 0
-        private var inode = 0
+        private var position: FilePosition?
 
         func update(path: String) {
-            var info = stat()
-            guard stat(path, &info) == 0 else {
-                (sessions, offset, inode) = ([:], 0, 0)
+            let read: AppendedLines?
+            do { read = try AppendedLines(path: path, after: position) } catch { return }  // 读不出来：下次再试
+            guard let read else {
+                // 文件没了才清空；只是一时打不开时留着，下次再试
+                if !FileManager.default.fileExists(atPath: path) { (sessions, position) = ([:], nil) }
                 return
             }
-            let size = Int(info.st_size)
-            if Int(info.st_ino) != inode || size < offset {
-                (sessions, offset, inode) = ([:], 0, Int(info.st_ino))
-            }
-            guard size > offset, let handle = FileHandle(forReadingAtPath: path) else { return }
-            defer { try? handle.close() }
-            guard (try? handle.seek(toOffset: UInt64(offset))) != nil,
-                  let data = try? handle.readToEnd(), let lastNewline = data.lastIndex(of: 0x0A)
-            else { return }
-            let complete = data[data.startIndex...lastNewline]
-            for line in complete.split(separator: 0x0A) {
-                guard let object = (try? JSONSerialization.jsonObject(with: Data(line))) as? [String: Any],
+            if read.start == 0 { sessions = [:] }
+            for line in read.lines {
+                guard let object = (try? JSONSerialization.jsonObject(with: line)) as? [String: Any],
                       let session = object["sessionId"] as? String, !session.isEmpty
                 else { continue }
                 let ts = (object["timestamp"] as? NSNumber)?.doubleValue ?? 0
                 sessions[session] = max(sessions[session] ?? ts, ts)
             }
-            offset += complete.count
+            position = read.position
         }
     }
 }

@@ -61,7 +61,7 @@ struct PanelView: View {
                                 action: { actions.remove(profile.name, currentProfile: current.name) }
                             ),
                             // 未登录的档案没有统计面板：停在上面等同于离开账号行
-                            onHover: profile.usageAccount == nil ? nil : { hovering in
+                            onHover: StatsFlyoutTarget(profile: profile) == nil ? nil : { hovering in
                                 flyout.row(profile.name, hovering: hovering)
                             }
                         ) {
@@ -113,7 +113,7 @@ struct PanelView: View {
         }
         .onChange(of: profiles.profiles) { list in
             actions.update(with: list)
-            flyout.rowsChanged(Set(list.filter { $0.usageAccount != nil }.map(\.name)))
+            flyout.rowsChanged(Set(list.filter { StatsFlyoutTarget(profile: $0) != nil }.map(\.name)))
         }
     }
 

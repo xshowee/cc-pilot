@@ -11,9 +11,7 @@ enum TokenUsageRetention {
 
     static func days(environment: CoreEnvironment) -> Int {
         let paths = ProfilePaths(environment: environment)
-        // 只要目录：不用 listProfiles（它会解析每个档案的 .claude.json）
-        let dirs = ([ProfileName.defaultName] + ProfileStore(environment: environment).profileNames())
-            .map(paths.runtimeDir(forProfileNamed:))
+        let dirs = ProfileStore(environment: environment).allProfileNames().map(paths.runtimeDir(forProfileNamed:))
         let longest = dirs.compactMap { cleanupPeriodDays(in: $0 + "/settings.json") }.max() ?? 0
         return max(minimumDays, longest + marginDays)
     }

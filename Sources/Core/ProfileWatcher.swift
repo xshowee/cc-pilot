@@ -48,7 +48,7 @@ final class ProfileWatcher {
         func defaultProfileFile(_ paths: ProfilePaths) -> String {
             switch self {
             case .accountConfigs: return paths.defaultClaudeJSON.path
-            case .history: return paths.homePath + "/.claude/history.jsonl"
+            case .history: return paths.runtimeDir(forProfileNamed: ProfileName.defaultName) + "/history.jsonl"
             }
         }
     }
@@ -83,7 +83,7 @@ final class ProfileWatcher {
         self.onChange = onChange
         self.onLiveQuotaChange = onLiveQuotaChange
         // FSEvents 报告的是解析过软链接的真实路径（例如 /var → /private/var），比较前先解析 HOME
-        let paths = ProfilePaths(environment: CoreEnvironment(home: Self.realPath(environment.home)))
+        let paths = ProfilePaths(environment: CoreEnvironment(home: FSEventsSupport.realPath(environment.home)))
         fileName = watching.fileName
         homeConfig = watching.defaultProfileFile(paths)
         profilesRoot = paths.profilesRootPath
@@ -107,18 +107,15 @@ final class ProfileWatcher {
     /// 停止监听；返回后不会再有新的回调
     func stop() {
         onQueue {
-            if let s = rootStream { Self.destroy(s) }
+            if let s = rootStream { FSEventsSupport.destroy(s) }
             rootStream = nil
-            linkStreams.values.forEach(Self.destroy)
+            linkStreams.values.forEach(FSEventsSupport.destroy)
             linkStreams = [:]
         }
     }
 
     // MARK: - 内部
 
-    private static let rescanFlags = FSEventStreamEventFlags(
-        kFSEventStreamEventFlagMustScanSubDirs | kFSEventStreamEventFlagUserDropped
-            | kFSEventStreamEventFlagKernelDropped | kFSEventStreamEventFlagRootChanged)
 
     private func onQueue(_ body: () -> Void) {
         if DispatchQueue.getSpecific(key: queueKey) == true { body() } else { queue.sync(execute: body) }
@@ -126,7 +123,7 @@ final class ProfileWatcher {
 
     private func handleRootEvents(_ paths: [String], _ flags: [FSEventStreamEventFlags]) {
         guard rootStream != nil else { return }
-        let rescan = flags.contains { $0 & Self.rescanFlags != 0 }
+        let rescan = flags.contains { $0 & FSEventsSupport.rescanFlags != 0 }
         if rescan || paths.contains(where: isUnderLiveQuota) { onLiveQuotaChange?() }
         guard rescan || paths.contains(where: isRelevantUnderRoot) else { return }
         updateLinkStreams()
@@ -148,14 +145,14 @@ final class ProfileWatcher {
     private func updateLinkStreams() {
         let targets = linkedProfileTargets()
         for (target, stream) in linkStreams where !targets.contains(target) {
-            Self.destroy(stream)
+            FSEventsSupport.destroy(stream)
             linkStreams[target] = nil
         }
         for target in targets where linkStreams[target] == nil {
             let config = target + "/" + fileName
             linkStreams[target] = makeStream([target]) { [weak self] paths, flags in
                 guard let self, self.linkStreams[target] != nil else { return }
-                let rescan = flags.contains { $0 & Self.rescanFlags != 0 }
+                let rescan = flags.contains { $0 & FSEventsSupport.rescanFlags != 0 }
                 if rescan || paths.contains(where: { $0 == target || $0 == config }) { self.onChange() }
             }
         }
@@ -208,23 +205,11 @@ final class ProfileWatcher {
         return s
     }
 
-    private static func destroy(_ s: FSEventStreamRef) {
-        FSEventStreamStop(s)
-        FSEventStreamInvalidate(s)
-        FSEventStreamRelease(s)
-    }
-
     private static let callback: FSEventStreamCallback = { _, info, count, paths, flags, _ in
         guard let info else { return }
         let handler = Unmanaged<Handler>.fromOpaque(info).takeUnretainedValue()
         let pathList = unsafeBitCast(paths, to: NSArray.self) as? [String] ?? []
         handler.handle(pathList, Array(UnsafeBufferPointer(start: flags, count: count)))
-    }
-
-    private static func realPath(_ url: URL) -> URL {
-        guard let resolved = realpath(url.path, nil) else { return url }
-        defer { free(resolved) }
-        return URL(fileURLWithPath: String(cString: resolved))
     }
 
     /// 流的回调对象（FSEvents 的 context 持有它）

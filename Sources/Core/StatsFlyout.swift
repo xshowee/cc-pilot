@@ -1,6 +1,6 @@
 // 侧边统计面板（token-usage ticket 07，原型方案 A）显示什么。界面（Sources/App/StatsFlyoutView.swift）只按这里
 // 算好的结果画，不自己判断阈值、占比或单位。从上到下：
-//   顶部       账号邮箱、订阅等级（StatsFlyoutTarget）
+//   顶部       账号邮箱（StatsFlyoutTarget）、订阅等级
 //   圆环卡     5 小时窗口、周窗口的剩余百分比（合并了实时额度的主窗口，颜色同 UsageReading）与重置倒计时；
 //              没有数字（没有数据、已重置待刷新）时显示"—"、不画弧（QuotaRing）
 //   Token 用量卡、模型卡  按分段（5 小时 / 周 / 累计）显示主数字、四类比例与图例、各模型用量（TokenFigure）
@@ -150,13 +150,11 @@ struct StatsFlyoutTarget: Equatable {
     /// 与账本里记的账号相同（UsageAccount.id，见 SessionAttribution）
     let account: UsageAccount
     let email: String?
-    let tier: SubscriptionTier?
 
     init?(profile: Profile) {
         guard let account = profile.usageAccount else { return nil }
         self.account = account
         email = profile.account.account?.email
-        tier = profile.displayTier
     }
 }
 

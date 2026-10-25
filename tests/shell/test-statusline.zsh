@@ -40,14 +40,10 @@ test_default_profile_gets_statusline_override_before_user_args() {
   assert_rc 0
   assert_stderr_empty
   assert_claude_config_dir_unset
+  assert_wrapper_args "a b" "" -p
   local -a reply
   claude_args
-  assert_eq "$(claude_field argc)" 5 "参数个数"
-  assert_eq "${reply[1]}" --settings "第 1 个参数"
   assert_eq "$(print -rn -- "${reply[2]}" | /usr/bin/plutil -extract statusLine.type raw -o - -)" command "statusLine.type"
-  assert_eq "${reply[3]}" "a b" "第 3 个参数"
-  assert_eq "${reply[4]}" "" "第 4 个参数"
-  assert_eq "${reply[5]}" -p "第 5 个参数"
   # 只覆盖 statusLine 的 type 和 command，其他字段（padding 等）留给用户自己的设置（深合并）
   local keys
   keys=$(print -rn -- "${reply[2]}" | /usr/bin/plutil -convert xml1 -o - - \
@@ -61,12 +57,7 @@ test_other_profile_gets_override_and_config_dir() {
   t_claude -- --resume x
   assert_rc 0
   assert_claude_config_dir "$T_HOME/.claude-profiles/work"
-  local -a reply
-  claude_args
-  assert_eq "$(claude_field argc)" 4 "参数个数"
-  assert_eq "${reply[1]}" --settings "第 1 个参数"
-  assert_eq "${reply[3]}" --resume "第 3 个参数"
-  assert_eq "${reply[4]}" x "第 4 个参数"
+  assert_wrapper_args --resume x
   assert_contains "$(override_command)" "statusline work" "状态栏命令应带上档案名"
 }
 

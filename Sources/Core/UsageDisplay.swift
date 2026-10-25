@@ -9,11 +9,16 @@ enum UsageDisplay {
                           locale: Locale = .current) -> String {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = timeZone
+        return localized(date, template: calendar.isDate(date, inSameDayAs: now) ? "jjmm" : "MMMdjjmm",
+                         timeZone: timeZone, locale: locale)
+    }
+
+    /// 按 locale 把 DateFormatter 模板（"jjmm""MMMd" 等）换成当地写法后格式化
+    static func localized(_ date: Date, template: String, timeZone: TimeZone, locale: Locale) -> String {
         let formatter = DateFormatter()
         formatter.locale = locale
         formatter.timeZone = timeZone
-        formatter.setLocalizedDateFormatFromTemplate(
-            calendar.isDate(date, inSameDayAs: now) ? "jjmm" : "MMMdjjmm")
+        formatter.setLocalizedDateFormatFromTemplate(template)
         return formatter.string(from: date)
     }
 

@@ -68,11 +68,6 @@ final class LiveQuotaMergeChecks: CheckSuite {
         board.usage(for: solo)?.fiveHour(now: now)
     }
 
-    static func unwrap<T>(_ value: T?, _ message: String, file: StaticString = #fileID, line: UInt = #line) throws -> T {
-        guard let value else { throw CheckFailure(description: "\(file):\(line): \(message)：得到 nil") }
-        return value
-    }
-
     // MARK: 检查
 
     static func forwarderFileReachesMenuBar() throws {

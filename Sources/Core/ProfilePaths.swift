@@ -30,13 +30,17 @@ struct ProfilePaths {
 
     /// 档案放 Claude Code 运行时文件（settings.json、history.jsonl 等）的目录：
     /// 默认档案是 $HOME/.claude，其他档案是它的 configDir
-    func runtimeDir(of profile: Profile) -> String { profile.configDir ?? homePath + "/.claude" }
     func runtimeDir(forProfileNamed name: String) -> String {
         name == ProfileName.defaultName ? homePath + "/.claude" : configDir(for: name)
     }
 
     func claudeJSON(for name: String) -> URL {
         URL(fileURLWithPath: configDir(for: name) + "/.claude.json")
+    }
+
+    /// 档案的 .claude.json：默认档案是 defaultClaudeJSON，其他档案是 claudeJSON(for:)
+    func claudeJSON(forProfileNamed name: String) -> URL {
+        name == ProfileName.defaultName ? defaultClaudeJSON : claudeJSON(for: name)
     }
 
     /// ~/.claude-profiles/ 下有没有名字与 name 逐字节相同的目录（跟随软链接，与 shell 的

@@ -69,10 +69,3 @@ final class TranscriptLineChecks: CheckSuite {
         try expect(TranscriptLine.parse(Data(user.utf8)) == nil, "用户消息不应读出用量")
     }
 }
-
-/// 取出可选值，nil 时检查失败
-func unwrap<T>(_ value: T?, _ message: @autoclosure () -> String = "值为 nil",
-               file: StaticString = #fileID, line: UInt = #line) throws -> T {
-    guard let value else { throw CheckFailure(description: "\(file):\(line): \(message())") }
-    return value
-}

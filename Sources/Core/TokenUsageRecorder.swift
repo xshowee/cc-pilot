@@ -5,12 +5,13 @@
 // 给待归属的明细定归属）→ 把超过保留期的已归属明细合并成按天汇总。账本有变化（新明细、归属、汇总，
 // 见 TokenLedger.revision）时，同步完成后调用 onUpdate；只追加了用户消息之类的不通知。
 // 除了 projects/ 的变化，各档案的 history.jsonl 变化（ProfileWatcher 的 history.jsonl 模式）也触发一次同步：
-// 消息可能先于 history.jsonl 的条目写出来，条目出现时要再归属一次。
+// 消息可能先于 history.jsonl 的条目写出来，条目出现时要再归属一次。这种同步只归属、汇总，不扫描会话记录
+// （新追加的会话记录由 projects/ 的事件读入）；projects/ 的流没建成时才全量扫描。
 // 汇总按整天进行，只在启动后第一次同步和本地日期变了之后做（算保留期要读每个档案的设置，
 // 会话进行中每隔一两秒就同步一次，没必要每次都做）。
 // projects/ 的事件按 FSEvents 报告的目录只扫描有变化的项目（projectsToScan）：会话进行中每一两秒同步一次，
 // 每次都遍历、stat 全部项目的全部会话记录太浪费。说不清哪些项目变了时（projects/ 本身或之外的目录、
-// 需要重新扫描、事件丢失、根目录变了）全量扫描；启动时和 history.jsonl 变化引起的同步也是全量。
+// 需要重新扫描、事件丢失、根目录变了）全量扫描；启动时的同步也是全量。
 // 增量读取本身只读有变化的部分。projects/ 启动时可以不存在，之后创建也能收到。
 //
 // 账本只在 `queue`（默认是一个后台串行队列）上访问：同步、归属钩子、onUpdate 和 `read` 的 body
@@ -60,8 +61,8 @@ final class TokenUsageRecorder: @unchecked Sendable {
         self.environment = environment
         self.ledgerURL = ledgerURL ?? TokenLedger.defaultURL(environment: environment)
         // FSEvents 按解析过软链接的真实路径工作（例如 /var → /private/var）
-        projectsRoot = URL(fileURLWithPath: Self.realPath(ProfilePaths(environment: environment).homePath)
-                           + "/.claude/projects")
+        let paths = ProfilePaths(environment: CoreEnvironment(home: FSEventsSupport.realPath(environment.home)))
+        projectsRoot = URL(fileURLWithPath: paths.runtimeDir(forProfileNamed: ProfileName.defaultName) + "/projects")
         self.latency = latency
         self.queue = queue
         self.calendar = calendar
@@ -95,11 +96,7 @@ final class TokenUsageRecorder: @unchecked Sendable {
         onQueue {
             running = false
             historyWatcher?.stop()
-            if let s = stream {
-                FSEventStreamStop(s)
-                FSEventStreamInvalidate(s)
-                FSEventStreamRelease(s)
-            }
+            if let s = stream { FSEventsSupport.destroy(s) }
             stream = nil
         }
     }
@@ -147,19 +144,22 @@ final class TokenUsageRecorder: @unchecked Sendable {
     private func syncIfRunning() {
         queue.async { [self] in
             guard running else { return }
-            sync()
+            sync(ingest: stream == nil)
         }
     }
 
     /// - projects: 只扫描这些项目，nil 全量扫描
-    private func sync(projects: Set<String>? = nil) {
+    /// - ingest: false 时不读会话记录，只归属、汇总；上次同步没做成时照样全量扫描
+    private func sync(projects: Set<String>? = nil, ingest: Bool = true) {
         guard let ledger = try? openLedger() else {
             needsFullScan = true
             return
         }
         let revision = ledger.revision
-        let scope = needsFullScan ? nil : projects
-        needsFullScan = (try? ledger.ingest(projectsRoot: projectsRoot, projects: scope)) == nil
+        if ingest || needsFullScan {
+            let scope = needsFullScan ? nil : projects
+            needsFullScan = (try? ledger.ingest(projectsRoot: projectsRoot, projects: scope)) == nil
+        }
         try? attribute(ledger)
         let current = now()
         let day = calendar.dateComponents([.year, .month, .day], from: current)
@@ -203,9 +203,7 @@ final class TokenUsageRecorder: @unchecked Sendable {
     /// 一批 FSEvents 事件（目录，标志）涉及哪些项目（projectsRoot 下的目录名）；要全量扫描时为 nil（见文件头）
     static func projectsToScan(events: [(path: String, flags: FSEventStreamEventFlags)],
                                projectsRoot: String) -> Set<String>? {
-        let rescan = FSEventStreamEventFlags(kFSEventStreamEventFlagMustScanSubDirs
-            | kFSEventStreamEventFlagUserDropped | kFSEventStreamEventFlagKernelDropped
-            | kFSEventStreamEventFlagRootChanged)
+        let rescan = FSEventsSupport.rescanFlags
         let prefix = projectsRoot + "/"
         var projects: Set<String> = []
         for event in events {
@@ -215,11 +213,5 @@ final class TokenUsageRecorder: @unchecked Sendable {
             projects.insert(String(project))
         }
         return projects
-    }
-
-    private static func realPath(_ path: String) -> String {
-        guard let resolved = realpath(path, nil) else { return path }
-        defer { free(resolved) }
-        return String(cString: resolved)
     }
 }

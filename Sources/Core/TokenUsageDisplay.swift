@@ -36,27 +36,22 @@ enum TokenUsageDisplay {
         calendar.timeZone = timeZone
         let template = calendar.isDate(date, inSameDayAs: now) ? "jjmm"
             : calendar.component(.year, from: date) == calendar.component(.year, from: now) ? "MMMd" : "yMMMd"
-        let formatter = DateFormatter()
-        formatter.locale = locale
-        formatter.timeZone = timeZone
-        formatter.setLocalizedDateFormatFromTemplate(template)
-        return formatter.string(from: date)
+        return UsageDisplay.localized(date, template: template, timeZone: timeZone, locale: locale)
     }
 
     /// 历史柱状图悬停提示里的时间（本地时区）：24 小时写这一格的时段（"14:00–15:00"），
     /// 30 天写日期和星期（zh_CN "10月24日 周六"，en_GB "Sat 24 Oct"）
     static func historySlot(_ start: Date, range: HistoryRange, timeZone: TimeZone = .current,
                             locale: Locale = .current) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = locale
-        formatter.timeZone = timeZone
         switch range {
         case .hours:
+            let formatter = DateFormatter()
+            formatter.locale = locale
+            formatter.timeZone = timeZone
             formatter.dateFormat = "HH:mm"
             return formatter.string(from: start) + "–" + formatter.string(from: start.addingTimeInterval(3600))
         case .days:
-            formatter.setLocalizedDateFormatFromTemplate("MMMdEEE")
-            return formatter.string(from: start)
+            return UsageDisplay.localized(start, template: "MMMdEEE", timeZone: timeZone, locale: locale)
         }
     }
 

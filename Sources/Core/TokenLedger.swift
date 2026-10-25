@@ -162,9 +162,10 @@ final class TokenLedger {
         let files = Self.transcriptFiles(in: projectsRoot, projects: projects)
         var added = 0
         let positions = try readPositions()
+        let statements = try IngestStatements(db)
         for file in files {
             // 每个文件单独提交：后面的文件出错时，前面已记入的也算变化
-            let count = try ingest(file, from: positions[file.path])
+            let count = try ingest(file, from: positions[file.path], statements)
             if count > 0 { revision += 1 }
             added += count
         }
@@ -176,8 +177,9 @@ final class TokenLedger {
             !present.contains(path) && (prefixes?.contains { path.hasPrefix($0) } ?? true)
         }
         if !gone.isEmpty {
+            let forget = try db.prepare("DELETE FROM files WHERE path = ?1")
             try db.transaction {
-                for path in gone { try db.run("DELETE FROM files WHERE path = ?1", [.text(path)]) }
+                for path in gone { try forget.run([.text(path)]) }
             }
         }
         return added
@@ -188,9 +190,21 @@ final class TokenLedger {
         let parentSessionID: String?
     }
 
-    private struct ReadPosition {
-        let offset: Int
-        let inode: Int
+    /// 读入用的语句，每次 ingest 只准备一次
+    private struct IngestStatements {
+        let insert: SQLiteStatement
+        let savePosition: SQLiteStatement
+
+        init(_ db: SQLiteDatabase) throws {
+            insert = try db.prepare("""
+                INSERT OR IGNORE INTO messages
+                    (message_id, ts, session_id, parent_session_id, model, input, output, cache_write, cache_read)
+                SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9
+                WHERE (?1 IS NULL OR NOT EXISTS (SELECT 1 FROM rolled_message_ids WHERE message_id = ?1))
+                  AND ?2 >= coalesce((SELECT value FROM meta WHERE key = 'forgotten_before'), 0)
+                """)
+            savePosition = try db.prepare("INSERT OR REPLACE INTO files (path, offset, inode) VALUES (?1, ?2, ?3)")
+        }
     }
 
     /// projects/<项目>/*.jsonl 和 projects/<项目>/<会话>/subagents/*.jsonl；projects 不为 nil 时只看这些项目
@@ -222,49 +236,32 @@ final class TokenLedger {
         return files
     }
 
-    private func readPositions() throws -> [String: ReadPosition] {
+    private func readPositions() throws -> [String: FilePosition] {
         let statement = try db.prepare("SELECT path, offset, inode FROM files")
-        var positions: [String: ReadPosition] = [:]
+        var positions: [String: FilePosition] = [:]
         while try statement.step() {
-            positions[statement.text(0) ?? ""] = ReadPosition(offset: statement.int(1), inode: statement.int(2))
+            positions[statement.text(0) ?? ""] = FilePosition(offset: statement.int(1), inode: statement.int(2))
         }
         return positions
     }
 
-    private func ingest(_ file: TranscriptFile, from position: ReadPosition?) throws -> Int {
-        var info = stat()
-        guard stat(file.path, &info) == 0 else { return 0 }
-        let size = Int(info.st_size), inode = Int(info.st_ino)
-        var offset = position?.offset ?? 0
-        if position?.inode != inode || size < offset { offset = 0 }
-        guard size > offset, let handle = FileHandle(forReadingAtPath: file.path) else { return 0 }
-        defer { try? handle.close() }
-        try handle.seek(toOffset: UInt64(offset))
-        guard let data = try handle.readToEnd(), let lastNewline = data.lastIndex(of: 0x0A) else { return 0 }
-        let complete = data[data.startIndex...lastNewline]
-
+    private func ingest(_ file: TranscriptFile, from position: FilePosition?,
+                        _ statements: IngestStatements) throws -> Int {
+        guard let read = try AppendedLines(path: file.path, after: position),
+              read.position.offset > read.start
+        else { return 0 }
         return try db.transaction {
-            let insert = try db.prepare("""
-                INSERT OR IGNORE INTO messages
-                    (message_id, ts, session_id, parent_session_id, model, input, output, cache_write, cache_read)
-                SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9
-                WHERE (?1 IS NULL OR NOT EXISTS (SELECT 1 FROM rolled_message_ids WHERE message_id = ?1))
-                  AND ?2 >= coalesce((SELECT value FROM meta WHERE key = 'forgotten_before'), 0)
-                """)
             var added = 0
-            for line in complete.split(separator: 0x0A) {
-                guard let entry = TranscriptLine.parse(Data(line)) else { continue }
-                try insert.bind([
+            for line in read.lines {
+                guard let entry = TranscriptLine.parse(line) else { continue }
+                try statements.insert.run([
                     .text(entry.messageID), .real(entry.timestamp.timeIntervalSince1970), .text(entry.sessionID),
                     .text(file.parentSessionID), .text(entry.model),
-                    .int(entry.tokens.input), .int(entry.tokens.output),
-                    .int(entry.tokens.cacheWrite), .int(entry.tokens.cacheRead),
-                ])
-                while try insert.step() {}
+                ] + entry.tokens.sqlValues)
                 added += db.changes
             }
-            try db.run("INSERT OR REPLACE INTO files (path, offset, inode) VALUES (?1, ?2, ?3)",
-                       [.text(file.path), .int(offset + complete.count), .int(inode)])
+            try statements.savePosition.run([.text(file.path), .int(read.position.offset),
+                                             .int(read.position.inode)])
             return added
         }
     }
@@ -288,8 +285,7 @@ final class TokenLedger {
             result.append(LedgerMessage(
                 messageID: statement.text(0), timestamp: Date(timeIntervalSince1970: statement.double(1)),
                 sessionID: statement.text(2) ?? "", parentSessionID: statement.text(3), model: statement.text(4) ?? "",
-                tokens: TokenCounts(input: statement.int(5), output: statement.int(6),
-                                    cacheWrite: statement.int(7), cacheRead: statement.int(8)),
+                tokens: statement.tokenCounts(from: 5),
                 attribution: Self.attribution(state: statement.int(9), profile: statement.text(10),
                                               account: statement.text(11))))
         }
@@ -298,23 +294,17 @@ final class TokenLedger {
 
     /// 全部汇总，按日期排列（同一天里已归属的账号在前、未归属在后）
     func dailyUsage() throws -> [LedgerDailyUsage] {
-        try dailyUsage(where: "1", [])
-    }
-
-    private func dailyUsage(where condition: String, _ values: [SQLiteValue]) throws -> [LedgerDailyUsage] {
         let statement = try db.prepare("""
             SELECT day, day_start, account, model, input, output, cache_write, cache_read
-            FROM daily WHERE \(condition) ORDER BY day, account = '', account, model
+            FROM daily ORDER BY day, account = '', account, model
             """)
-        try statement.bind(values)
         var result: [LedgerDailyUsage] = []
         while try statement.step() {
             let account = statement.text(2) ?? ""
             result.append(LedgerDailyUsage(
                 day: statement.text(0) ?? "", dayStart: Date(timeIntervalSince1970: statement.double(1)),
                 account: account.isEmpty ? nil : account, model: statement.text(3) ?? "",
-                tokens: TokenCounts(input: statement.int(4), output: statement.int(5),
-                                    cacheWrite: statement.int(6), cacheRead: statement.int(7))))
+                tokens: statement.tokenCounts(from: 4)))
         }
         return result
     }
@@ -382,9 +372,7 @@ final class TokenLedger {
                 let day = calendar.dateComponents([.year, .month, .day], from: ts)
                 let key = Key(day: String(format: "%04d-%02d-%02d", day.year ?? 0, day.month ?? 0, day.day ?? 0),
                               account: select.text(8) ?? "", model: select.text(3) ?? "")
-                let tokens = TokenCounts(input: select.int(4), output: select.int(5),
-                                         cacheWrite: select.int(6), cacheRead: select.int(7))
-                totals[key, default: (calendar.startOfDay(for: ts), .zero)].tokens += tokens
+                totals[key, default: (calendar.startOfDay(for: ts), .zero)].tokens += select.tokenCounts(from: 4)
             }
             let upsert = try db.prepare("""
                 INSERT INTO daily (day, day_start, account, model, input, output, cache_write, cache_read)
@@ -394,21 +382,13 @@ final class TokenLedger {
                     cache_write = cache_write + excluded.cache_write, cache_read = cache_read + excluded.cache_read
                 """)
             for (key, value) in totals {
-                try upsert.bind([.text(key.day), .real(value.dayStart.timeIntervalSince1970), .text(key.account),
-                                 .text(key.model), .int(value.tokens.input), .int(value.tokens.output),
-                                 .int(value.tokens.cacheWrite), .int(value.tokens.cacheRead)])
-                while try upsert.step() {}
+                try upsert.run([.text(key.day), .real(value.dayStart.timeIntervalSince1970), .text(key.account),
+                                .text(key.model)] + value.tokens.sqlValues)
             }
             let remember = try db.prepare("INSERT OR IGNORE INTO rolled_message_ids (message_id, ts) VALUES (?1, ?2)")
-            for message in messageIDs {
-                try remember.bind([.text(message.id), .real(message.ts)])
-                while try remember.step() {}
-            }
+            for message in messageIDs { try remember.run([.text(message.id), .real(message.ts)]) }
             let delete = try db.prepare("DELETE FROM messages WHERE id = ?1")
-            for id in rowIDs {
-                try delete.bind([.int(id)])
-                while try delete.step() {}
-            }
+            for id in rowIDs { try delete.run([.int(id)]) }
             // 分界只往后移（保留期变短时也不会把已忘掉的又当成没见过）
             try db.run("""
                 INSERT INTO meta (key, value) VALUES ('forgotten_before', ?1)
@@ -461,21 +441,19 @@ final class TokenLedger {
         var entries: [(model: String, tokens: TokenCounts)] = []
         var earliest: Double?
         while try statement.step() {
-            entries.append((statement.text(0) ?? "", TokenCounts(input: statement.int(1), output: statement.int(2),
-                                                                 cacheWrite: statement.int(3),
-                                                                 cacheRead: statement.int(4))))
+            entries.append((statement.text(0) ?? "", statement.tokenCounts(from: 1)))
             earliest = min(earliest ?? .infinity, statement.double(5))
         }
         return TokenUsageCumulative(origin: stored ?? earliest.map(Date.init(timeIntervalSince1970:)),
                                     usage: TokenUsageBreakdown(entries))
     }
 
-    /// 清空一个账号的累计 Token 用量：把起算点移到 now。account 为 nil 表示未归属
-    func clearCumulative(account: String?, at now: Date) throws {
+    /// 清空一个账号的累计 Token 用量：把起算点移到 now
+    func clearCumulative(account: String, at now: Date) throws {
         try db.run("""
             INSERT INTO origins (account, ts) VALUES (?1, ?2)
             ON CONFLICT (account) DO UPDATE SET ts = excluded.ts
-            """, [.text(Self.accountFilter(account).key), .real(now.timeIntervalSince1970)])
+            """, [.text(account), .real(now.timeIntervalSince1970)])
     }
 
     /// 清空全部账号（连同未归属）的累计 Token 用量
@@ -516,4 +494,9 @@ final class TokenLedger {
         default: return .pending
         }
     }
+}
+
+private extension TokenCounts {
+    /// 按 input、output、cache_write、cache_read 的顺序绑定
+    var sqlValues: [SQLiteValue] { [.int(input), .int(output), .int(cacheWrite), .int(cacheRead)] }
 }

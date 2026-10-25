@@ -38,24 +38,17 @@ struct StatsFlyoutRoot: View {
            let profile = profiles.profiles.first(where: { $0.name == name }),
            let target = StatsFlyoutTarget(profile: profile) {
             let quota = usage.board.usage(for: target.account)
-            let request = Request(account: target.account, resets: KnownResets(usage: quota))
+            let request = TokenStatsModel.Request(account: target.account, resets: KnownResets(usage: quota))
             StatsFlyoutView(title: target.email ?? profile.name,
-                            tier: target.tier.map(AccountText.tierName),
+                            tier: AccountText.tier(for: profile),
                             account: target.account,
                             quota: quota,
                             tokens: stats.loaded[target.account],
                             now: usage.now,
                             onClear: { stats.clear(target.account) })
-                .onAppear { stats.show(request.account, resets: request.resets) }
-                .onChange(of: request) { stats.show($0.account, resets: $0.resets) }
-                // 滚动窗口随时间移动：定时器走一格就重读（不看 now：每次并入实时额度它都会变）
-                .onChange(of: usage.tick) { _ in stats.reload() }
+                .onAppear { stats.show(request) }
+                .onChange(of: request) { stats.show($0) }
                 .onDisappear { stats.hide() }
         }
-    }
-
-    private struct Request: Equatable {
-        let account: UsageAccount
-        let resets: KnownResets
     }
 }
