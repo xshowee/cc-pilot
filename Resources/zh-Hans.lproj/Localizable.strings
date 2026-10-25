@@ -41,7 +41,6 @@
 
 /* 切换与菜单栏（ticket 07） */
 "Current" = "当前";
-"This is the current profile" = "这是当前账号";
 "Switch to %@" = "切换到 %@";
 "Current profile: %@" = "当前账号：%@";
 "Show only an icon in the menu bar" = "菜单栏只显示图标";

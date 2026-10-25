@@ -44,7 +44,8 @@ struct SwitchableProfileRow: View {
             }
             .buttonStyle(.plain)
             .accessibilityAddTraits(isCurrent ? .isSelected : [])
-            .help(isCurrent ? Text("This is the current profile") : Text("Switch to \(profile.name)"))
+            // 当前档案不加提示：已有"当前"标记，悬停时提示框还会挡住额度那一行
+            .help(isCurrent ? "" : String(localized: "Switch to \(profile.name)"))
 
             buttons
                 // 与头像（30pt，距顶 12pt）垂直居中
