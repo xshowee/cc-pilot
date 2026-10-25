@@ -8,6 +8,15 @@
 // 同一条消息按 content block 写成多行、每行重复同一份 usage，去重由账本按 message.id 做，这里不管。
 // thinking_tokens 是 output_tokens 的子集，不另加。模型是 <synthetic> 的条目（Claude Code 自己合成的
 // 消息，没有真的调用模型）不计。
+//
+// 调用了 advisor 的消息，usage.iterations 里逐轮列出用量：type 为 message 的是主模型自己的几轮，
+// 加起来就是顶层的四个数；type 为 advisor_message 的是 advisor（带自己的 model），不在顶层里：
+//
+//   "usage":{"input_tokens":4,…,"iterations":[{"type":"message","input_tokens":2,…},
+//     {"type":"advisor_message","model":"claude-fable-5-1","input_tokens":107701,"output_tokens":7973,…},
+//     {"type":"message","input_tokens":2,…}]}
+//
+// 每轮 advisor 另算一条，message.id 记成 <id>#advisor<序号>（序号只数 advisor 轮，从 0 起），同样按它去重。
 
 import Foundation
 
@@ -43,8 +52,9 @@ struct TranscriptLine: Equatable, Sendable {
     let model: String
     let tokens: TokenCounts
 
-    /// 不是带用量的 assistant 消息（用户消息、摘要、半截行、<synthetic> 等）时返回 nil
-    static func parse(_ line: Data) -> TranscriptLine? {
+    /// 一行里的全部用量：主模型一条，之后每轮 advisor 一条。
+    /// 不是带用量的 assistant 消息（用户消息、摘要、半截行、<synthetic> 等）时为空
+    static func parse(_ line: Data) -> [TranscriptLine] {
         // 大部分行不是 assistant 消息（其中 tool_result 行可能很大）：不含这两个词的行一定不是，不必解析 JSON。
         // 只查词本身、不查 "type":"assistant"，键值之间有空格也不会漏掉
         guard !line.isEmpty, line.range(of: assistantMarker) != nil, line.range(of: usageMarker) != nil,
@@ -55,16 +65,28 @@ struct TranscriptLine: Equatable, Sendable {
               let model = message["model"] as? String, model != syntheticModel,
               let sessionID = object["sessionId"] as? String,
               let stamp = object["timestamp"] as? String, let timestamp = parseTimestamp(stamp)
-        else { return nil }
+        else { return [] }
+        let messageID = message["id"] as? String
+        var entries = [TranscriptLine(messageID: messageID, timestamp: timestamp, sessionID: sessionID,
+                                      model: model, tokens: tokenCounts(usage))]
+        let iterations = usage["iterations"] as? [[String: Any]] ?? []
+        for advisor in iterations where advisor["type"] as? String == advisorIterationType {
+            entries.append(TranscriptLine(
+                messageID: messageID.map { "\($0)#advisor\(entries.count - 1)" }, timestamp: timestamp,
+                sessionID: sessionID, model: advisor["model"] as? String ?? model, tokens: tokenCounts(advisor)))
+        }
+        return entries
+    }
+
+    private static func tokenCounts(_ usage: [String: Any]) -> TokenCounts {
         func count(_ key: String) -> Int { (usage[key] as? NSNumber)?.intValue ?? 0 }
-        return TranscriptLine(
-            messageID: message["id"] as? String, timestamp: timestamp, sessionID: sessionID, model: model,
-            tokens: TokenCounts(input: count("input_tokens"), output: count("output_tokens"),
-                                cacheWrite: count("cache_creation_input_tokens"),
-                                cacheRead: count("cache_read_input_tokens")))
+        return TokenCounts(input: count("input_tokens"), output: count("output_tokens"),
+                           cacheWrite: count("cache_creation_input_tokens"),
+                           cacheRead: count("cache_read_input_tokens"))
     }
 
     static let syntheticModel = "<synthetic>"
+    private static let advisorIterationType = "advisor_message"
     private static let assistantMarker = Data(#""assistant""#.utf8)
     private static let usageMarker = Data(#""usage""#.utf8)
 

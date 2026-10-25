@@ -13,6 +13,8 @@ final class TokenLedgerIngestChecks: CheckSuite {
             Check("只读新追加的部分；写到一半的最后一行下次再读", readsIncrementallyAndWaitsForHalfLine),
             Check("重新打开账本再读不会重复计入；会话记录被删除不影响账本", survivesReopenAndDeletion),
             Check("只扫描有变化的项目：别的项目的读取位置不丢，之后也不重复计入", scansOnlyGivenProjects),
+            Check("advisor 的用量另记一条，同一消息写成多行也只记一次", recordsAdvisorOnce),
+            Check("旧版账本（user_version 3）升级后从头重读，补上 advisor、不重复计入别的", rereadsAfterVersion3),
         ]
     }
 
@@ -162,6 +164,47 @@ extension TokenLedgerIngestChecks {
         try expectEqual(try env.ledger.ingest(projectsRoot: env.projects, projects: ["p1"]), 1, "p1 从上次的位置接着读")
         try expectEqual(try env.ledger.messages().map(\.tokens.output).sorted(), [1, 2, 3, 4])
         try expectEqual(try env.ledger.ingest(projectsRoot: env.projects), 0, "再全量读一遍也不重复")
+    }
+
+    static func recordsAdvisorOnce() throws {
+        let env = try LedgerEnv()
+        defer { env.remove() }
+        // 一条调用了 advisor 的消息按 content block 写成两行，每行重复同一份 usage（含 iterations）
+        let lines = ["advisor", "回答"].map { text in
+            TranscriptFixture.assistant(id: "msg_a", session: "s-1", at: t0, input: 4, output: 10,
+                                        advisors: [("claude-fable-5-1", 1000, 80)], text: text)
+        }
+        try env.transcript("p/s-1.jsonl", lines)
+        try env.ledger.ingest(projectsRoot: env.projects)
+        let messages = try env.ledger.messages()
+        try expectEqual(messages.compactMap(\.messageID).sorted(), ["msg_a", "msg_a#advisor0"])
+        let advisor = try unwrap(messages.first { $0.messageID == "msg_a#advisor0" })
+        try expectEqual(advisor.model, "claude-fable-5-1")
+        try expectEqual(advisor.sessionID, "s-1")
+        try expectEqual(sum(messages), TokenCounts(input: 1004, output: 90, cacheWrite: 0, cacheRead: 0))
+    }
+
+    static func rereadsAfterVersion3() throws {
+        let env = try LedgerEnv()
+        defer { env.remove() }
+        try env.transcript("p/s-1.jsonl", [
+            TranscriptFixture.assistant(id: "msg_a", session: "s-1", at: t0, output: 10,
+                                        advisors: [("claude-fable-5-1", 1000, 80)]),
+            TranscriptFixture.assistant(id: "msg_b", session: "s-1", at: t0, output: 5),
+        ])
+        try env.ledger.ingest(projectsRoot: env.projects)
+        // 做成旧版读过之后的样子：没有 advisor 那条，读取位置已到文件末尾
+        do {
+            let db = try SQLiteDatabase(path: env.ledgerURL.path)
+            try db.execute("""
+                DELETE FROM messages WHERE message_id = 'msg_a#advisor0';
+                PRAGMA user_version = 3;
+                """)
+        }
+        let ledger = try TokenLedger(at: env.ledgerURL)
+        try expectEqual(try ledger.ingest(projectsRoot: env.projects), 1, "只补上 advisor 那条")
+        try expectEqual(try ledger.messages().compactMap(\.messageID).sorted(), ["msg_a", "msg_a#advisor0", "msg_b"])
+        try expectEqual(try ledger.ingest(projectsRoot: env.projects), 0, "之后照常增量读")
     }
 }
 

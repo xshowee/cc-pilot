@@ -6,9 +6,11 @@ import Foundation
 
 enum TranscriptFixture {
     /// 一行 assistant 记录。id 传 nil 时不写 message.id；thinking 非 nil 时在 usage 里附带 thinking_tokens。
+    /// advisors 不为空时写 usage.iterations：主模型一轮（数与顶层相同），之后每个 advisor 一轮
     static func assistant(id: String?, session: String, model: String = "claude-opus-5-5",
                           at timestamp: String, input: Int = 0, output: Int = 0,
                           cacheWrite: Int = 0, cacheRead: Int = 0, thinking: Int? = nil,
+                          advisors: [(model: String, input: Int, output: Int)] = [],
                           text: String = "好的") -> String {
         var usage: [String: Any] = [
             "input_tokens": input, "output_tokens": output,
@@ -16,6 +18,19 @@ enum TranscriptFixture {
             "service_tier": "standard",
         ]
         if let thinking { usage["thinking_tokens"] = thinking }
+        if !advisors.isEmpty {
+            func iteration(_ type: String, _ input: Int, _ output: Int, _ cacheWrite: Int,
+                           _ cacheRead: Int) -> [String: Any] {
+                ["type": type, "input_tokens": input, "output_tokens": output,
+                 "cache_creation_input_tokens": cacheWrite, "cache_read_input_tokens": cacheRead]
+            }
+            usage["iterations"] = [iteration("message", input, output, cacheWrite, cacheRead)]
+                + advisors.map { advisor in
+                    var it = iteration("advisor_message", advisor.input, advisor.output, 0, 0)
+                    it["model"] = advisor.model
+                    return it
+                }
+        }
         var message: [String: Any] = [
             "type": "message", "role": "assistant", "model": model,
             "content": [["type": "text", "text": text]], "usage": usage,

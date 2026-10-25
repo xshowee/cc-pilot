@@ -1,7 +1,7 @@
 // cc-pilot 自己的 Token 用量账本（spec 决策 11）：~/Library/Application Support/cc-pilot/token-usage.sqlite。
 // 只读 Claude Code 的会话记录，从不改动它们；会话记录被删除不影响账本。
 //
-// 数据（SQLite，PRAGMA user_version = 3）：
+// 数据（SQLite，PRAGMA user_version = 4）：
 //   messages  逐条明细：每条 assistant 消息一行，message.id 唯一（没有 id 的行各占一行）。
 //             attribution 是归属状态（见 LedgerAttribution），由 ticket 02 填写；读入时一律是"待归属"。
 //   daily     超过保留期的明细合并成的"每账号、每模型、每天"汇总；account 为空串表示未归属。
@@ -112,6 +112,16 @@ final class TokenLedger {
                 try db.execute("""
                     CREATE TABLE origins (account TEXT PRIMARY KEY, ts REAL NOT NULL) WITHOUT ROWID;
                     PRAGMA user_version = 3;
+                    """)
+            }
+        }
+        if current < 4 {
+            // 之前没读 advisor 的用量（usage.iterations）：忘掉读取位置，全部会话记录从头再读一遍。
+            // 已记的消息按 message.id 去重不会重复，补进来的只有 advisor 那几条
+            try db.transaction {
+                try db.execute("""
+                    DELETE FROM files;
+                    PRAGMA user_version = 4;
                     """)
             }
         }
@@ -253,12 +263,13 @@ final class TokenLedger {
         return try db.transaction {
             var added = 0
             for line in read.lines {
-                guard let entry = TranscriptLine.parse(line) else { continue }
-                try statements.insert.run([
-                    .text(entry.messageID), .real(entry.timestamp.timeIntervalSince1970), .text(entry.sessionID),
-                    .text(file.parentSessionID), .text(entry.model),
-                ] + entry.tokens.sqlValues)
-                added += db.changes
+                for entry in TranscriptLine.parse(line) {
+                    try statements.insert.run([
+                        .text(entry.messageID), .real(entry.timestamp.timeIntervalSince1970),
+                        .text(entry.sessionID), .text(file.parentSessionID), .text(entry.model),
+                    ] + entry.tokens.sqlValues)
+                    added += db.changes
+                }
             }
             try statements.savePosition.run([.text(file.path), .int(read.position.offset),
                                              .int(read.position.inode)])
