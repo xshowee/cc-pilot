@@ -4,6 +4,7 @@
 // 鼠标停在已登录的档案卡片上时，左侧弹出它所在账号的统计面板（token-usage ticket 07，StatsFlyoutController）；
 // 设置菜单里点"清空全部账号的累计…"后，底栏上方出现确认条（ClearAllBanner）。
 // 打开面板只重读档案列表、当前档案和 zsh 接入状态，不刷新额度。
+// 打开时面板若离开了菜单栏（过夜后可能往下掉），PanelPositionGuard 把它挪回菜单栏下。
 
 import SwiftUI
 
@@ -15,6 +16,7 @@ struct PanelView: View {
     @EnvironmentObject private var shellIntegration: ShellIntegrationModel
     @EnvironmentObject private var tokenStats: TokenStatsModel
     @StateObject private var flyout = StatsFlyoutController()
+    @StateObject private var positionGuard = PanelPositionGuard()
 
     @State private var addingProfile = false
     /// 档案列表内容的实际高度（用来决定要不要显示滚动条）
@@ -95,7 +97,10 @@ struct PanelView: View {
             PanelFooter(addDisabled: addingProfile || actions.isOpening) { addingProfile = true }
         }
         .frame(width: 340)
-        .background(WindowReader { flyout.attach(to: $0) })
+        .background(WindowReader { window in
+            flyout.attach(to: window)
+            positionGuard.attach(to: window)
+        })
         .onAppear {
             profiles.reload(); current.reload(); actions.update(with: profiles.profiles)
             // 终端里可能 ccp init / ccp uninstall 过（ticket 25 的提示随之更新）
