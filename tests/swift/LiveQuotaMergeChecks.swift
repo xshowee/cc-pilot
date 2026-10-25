@@ -23,6 +23,7 @@ final class LiveQuotaMergeChecks: CheckSuite {
             Check("只有实时：两个主窗口都显示，按模型周窗口、超额付费没有", liveOnly),
             Check("跨窗口重置：resets_at 更晚的优先，不管哪份后到", crossWindowReset),
             Check("数值相同：刷新算确认、重新计时变灰；实时不算", confirmation),
+            Check("同一份实时额度里有窗口被采纳为新数据：其他窗口的相同数值也算确认；空闲重绘不算", liveConfirmsSibling),
             Check("刷新给小数、实时给整数：同一窗口取已用较高的", fractionalRefresh),
             Check("resets_at 差几秒（ISO 去掉小数秒 vs 整数秒）算同一个窗口", resetsAtTolerance),
             Check("同一账号的其他档案也显示；未登录、不在列表里的档案跳过", accountMapping),
@@ -198,6 +199,36 @@ final class LiveQuotaMergeChecks: CheckSuite {
         board.recordLive([live(fiveHour: used(40, resetsInMinutes: 120), at: at(minutes: 40))], profiles: [solo])
         try expectEqual(board.usage(for: solo)?.fiveHourWindow?.observedAt, at(minutes: 20), "实时的相同数值不算确认")
         try expectEqual(fiveHour(board, now: at(minutes: 51)), .remaining(60, tint: .stale))
+    }
+
+    static func liveConfirmsSibling() throws {
+        func sevenDayObservedAt(_ board: UsageBoard) -> Date? { board.usage(for: solo)?.sevenDayWindow?.observedAt }
+        var board = UsageBoard()
+        board.record(refresh(fiveHour: used(10, resetsInMinutes: 200), sevenDay: used(3, resetsInMinutes: 5000),
+                             at: at(minutes: 0)))
+
+        // 空闲会话重绘：两个窗口都和已有的相同，都不算确认
+        board.recordLive([live(fiveHour: used(10, resetsInMinutes: 200), sevenDay: used(3, resetsInMinutes: 5000),
+                               at: at(minutes: 20))], profiles: [solo])
+        try expectEqual(board.usage(for: solo)?.fiveHourWindow?.observedAt, at(minutes: 0), "5 小时不动")
+        try expectEqual(sevenDayObservedAt(board), at(minutes: 0), "周窗口不动")
+
+        // 文件更晚写、5 小时却更低（旧的 rate_limits）：不采纳，周窗口也不算确认
+        board.recordLive([live(fiveHour: used(8, resetsInMinutes: 200), sevenDay: used(3, resetsInMinutes: 5000),
+                               at: at(minutes: 25))], profiles: [solo])
+        try expectEqual(sevenDayObservedAt(board), at(minutes: 0), "5 小时没被采纳时周窗口不动")
+
+        // 一直在用：5 小时涨了，周窗口还是 3%，从这份文件起重新计时变灰
+        board.recordLive([live(fiveHour: used(13, resetsInMinutes: 200), sevenDay: used(3, resetsInMinutes: 5000),
+                               at: at(minutes: 40))], profiles: [solo])
+        try expectEqual(sevenDayObservedAt(board), at(minutes: 40), "周窗口随 5 小时一起确认")
+        try expectEqual(board.usage(for: solo)?.sevenDay(now: at(minutes: 45)), .remaining(97, tint: .green),
+                        "不变灰")
+
+        // 反过来也一样：周窗口涨了，5 小时的相同数值也算确认
+        board.recordLive([live(fiveHour: used(13, resetsInMinutes: 200), sevenDay: used(4, resetsInMinutes: 5000),
+                               at: at(minutes: 60))], profiles: [solo])
+        try expectEqual(board.usage(for: solo)?.fiveHourWindow?.observedAt, at(minutes: 60), "5 小时随周窗口一起确认")
     }
 
     static func fractionalRefresh() throws {

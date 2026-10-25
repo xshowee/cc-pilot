@@ -73,16 +73,17 @@ struct ObservedWindow: Equatable {
     ///   - 任一方没有 resets_at：无法判断是不是同一个窗口，取观察时间较新的（与接入实时额度前的刷新行为一致）。
     /// 变灰用的时间（observedAt）：
     ///   - 换成另一份数值时，取那份数据的时间。
-    ///   - 数值相同（显示的剩余百分比相同）时，刷新算确认，observedAt 更新为刷新的获取时间；实时额度不算确认，
+    ///   - 数值相同（显示的剩余百分比相同）时，刷新算确认，observedAt 更新为刷新的获取时间；实时额度一般不算确认，
     ///     因为它的 received_at 可能只是重绘时间——否则一个空闲却不断重绘的会话会让旧数字永远不变灰。
-    func merging(_ candidate: ObservedWindow) -> ObservedWindow {
+    ///     confirming 为 true 时实时额度也算（同一份文件里别的窗口被采纳为新数据，见 AccountUsage.merge(live:)）。
+    func merging(_ candidate: ObservedWindow, confirming: Bool = false) -> ObservedWindow {
         guard let mine = window.resetsAt, let theirs = candidate.window.resetsAt else {
             return candidate.observedAt >= observedAt ? candidate : self
         }
         if theirs.timeIntervalSince(mine) > Self.sameWindowTolerance { return candidate }
         if mine.timeIntervalSince(theirs) > Self.sameWindowTolerance { return self }
         if candidate.window.utilization > window.utilization { return candidate }
-        if candidate.source == .refresh, candidate.window.remainingPercent == window.remainingPercent,
+        if candidate.source == .refresh || confirming, candidate.window.remainingPercent == window.remainingPercent,
            candidate.observedAt > observedAt {
             return ObservedWindow(window: window, observedAt: candidate.observedAt, source: source)
         }
@@ -92,8 +93,8 @@ struct ObservedWindow: Equatable {
 
 extension Optional where Wrapped == ObservedWindow {
     /// 并入一份数据；还没有数据时直接采用它
-    func merging(_ candidate: ObservedWindow) -> ObservedWindow {
-        self?.merging(candidate) ?? candidate
+    func merging(_ candidate: ObservedWindow, confirming: Bool = false) -> ObservedWindow {
+        self?.merging(candidate, confirming: confirming) ?? candidate
     }
 }
 
@@ -168,16 +169,18 @@ struct AccountUsage: Equatable {
         sevenDayWindow = Self.merge(sevenDayWindow, snapshot.sevenDay, at: snapshot.fetchedAt, from: .refresh)
     }
 
-    /// 并入一份实时额度；状态栏没给的窗口不动
+    /// 并入一份实时额度；状态栏没给的窗口不动。
+    /// 文件里有一个窗口被采纳为新数据时，说明这份文件的 rate_limits 是新的（不是重绘带来的旧数据），
+    /// 它带来的其他窗口的相同数值也算确认：周窗口涨得慢，一直在用时也可能很久停在同一个百分比，
+    /// 不这样它会在刷新 30 分钟后变灰。空闲重绘的文件没有窗口被采纳，什么都不确认。
     mutating func merge(live quota: LiveQuota) {
-        if let window = quota.fiveHour {
-            fiveHourWindow = fiveHourWindow.merging(ObservedWindow(window: window, observedAt: quota.receivedAt,
-                                                                   source: .live))
+        let five = quota.fiveHour.map { ObservedWindow(window: $0, observedAt: quota.receivedAt, source: .live) }
+        let seven = quota.sevenDay.map { ObservedWindow(window: $0, observedAt: quota.receivedAt, source: .live) }
+        let fresh = [(fiveHourWindow, five), (sevenDayWindow, seven)].contains { current, candidate in
+            candidate.map { current.merging($0) == $0 } ?? false
         }
-        if let window = quota.sevenDay {
-            sevenDayWindow = sevenDayWindow.merging(ObservedWindow(window: window, observedAt: quota.receivedAt,
-                                                                   source: .live))
-        }
+        if let five { fiveHourWindow = fiveHourWindow.merging(five, confirming: fresh) }
+        if let seven { sevenDayWindow = sevenDayWindow.merging(seven, confirming: fresh) }
     }
 
     /// 格式无法识别：丢掉来自刷新的数值（接口可能已变化，旧数字不可信），实时额度另有来源，保留
