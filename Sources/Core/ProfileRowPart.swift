@@ -11,7 +11,7 @@ enum ProfileRowPart: Equatable, Hashable {
     case modelWeekly
     /// 超额付费（展开后才显示）
     case extraUsage
-    /// "刚刚获取 / N 分钟前获取"
+    /// "刚刚获取 / N 分钟前获取 / N 小时 M 分钟前获取"等
     case fetchedAt
     /// 最近一次刷新失败的原因（与获取时间相关：例如"连不上服务器，显示的是上次获取的数据"）
     case problem

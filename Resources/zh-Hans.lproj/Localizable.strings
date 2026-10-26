@@ -111,6 +111,10 @@
 "· resets %@" = "· %@ 重置";
 "Updated just now" = "刚刚获取";
 "Updated %lld min ago" = "%lld 分钟前获取";
+"Updated %lldh ago" = "%lld 小时前获取";
+"Updated %lldh %lldm ago" = "%1$lld 小时 %2$lld 分钟前获取";
+"Updated %lldd ago" = "%lld 天前获取";
+"Updated %lldd %lldh ago" = "%1$lld 天 %2$lld 小时前获取";
 
 /* 额度的异常、过期数据与颜色（ticket 12） */
 "Reset" = "已重置";

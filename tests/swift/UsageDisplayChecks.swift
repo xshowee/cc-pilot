@@ -1,4 +1,4 @@
-// ticket 11：额度的显示。重置时间按本地时区显示；获取时间显示为"N 分钟前"。
+// ticket 11：额度的显示。重置时间按本地时区显示；获取时间显示为"N 分钟前""N 小时 M 分钟前"等。
 
 import Foundation
 
@@ -6,7 +6,7 @@ final class UsageDisplayChecks: CheckSuite {
     override class var checks: [Check] {
         [
             Check("重置时间按本地时区显示：当天只显示时刻，不是当天加上日期", resetTimeInLocalTimeZone),
-            Check("获取时间显示为几分钟前（不足一分钟算 0）", minutesSinceFetch),
+            Check("获取时间：向下取整，保留最大的两个单位，第二个单位是 0 时省掉", fetchAge),
             Check("频率限制还要等几分钟：向上取整，至少 1 分钟（ticket 12）", waitMinutes),
         ]
     }
@@ -33,11 +33,16 @@ final class UsageDisplayChecks: CheckSuite {
         try expect(text.contains("20 Jan") && text.contains("09:30"), "应带日期：\(text)")
     }
 
-    static func minutesSinceFetch() throws {
-        let cases: [(TimeInterval, Int)] = [(0, 0), (59, 0), (60, 1), (125, 2), (3600, 60), (-30, 0)]
-        for (elapsed, minutes) in cases {
-            try expectEqual(UsageDisplay.minutesSince(fixedNow, now: fixedNow.addingTimeInterval(elapsed)),
-                            minutes, "过了 \(elapsed) 秒")
+    static func fetchAge() throws {
+        let cases: [(TimeInterval, FetchAge)] = [
+            (0, .justNow), (59, .justNow), (-30, .justNow),
+            (60, .minutes(1)), (125, .minutes(2)), (3599, .minutes(59)),
+            (3600, .hours(1)), (209 * 60 + 59, .hoursMinutes(3, 29)), (86399, .hoursMinutes(23, 59)),
+            (86400, .days(1)), (2 * 86400 + 3 * 3600 + 3599, .daysHours(2, 3)),
+        ]
+        for (elapsed, age) in cases {
+            try expectEqual(UsageDisplay.fetchAge(fixedNow, now: fixedNow.addingTimeInterval(elapsed)),
+                            age, "过了 \(elapsed) 秒")
         }
     }
 

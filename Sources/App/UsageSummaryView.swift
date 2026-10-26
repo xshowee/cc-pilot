@@ -1,6 +1,6 @@
 // 档案行里的一项额度信息（ticket 19 起由 ProfileRow 按 App 核心的 ProfileRowPart.order 逐项显示）：
 // 5 小时窗口和"全部模型"周窗口的剩余百分比（明确标注"剩余"）与重置时间（本地时区），
-// 最近一次拿到数据（刷新或实时额度，ticket 05）是几分钟前，以及最近一次刷新失败的原因（ticket 12）；
+// 最近一次拿到数据（刷新或实时额度，ticket 05）是多久以前，以及最近一次刷新失败的原因（ticket 12）；
 // 展开后的详情交给 UsageDetailsView。
 // 没有数字的窗口（utilization 为 null）不显示；怎么显示每个窗口由 App 核心的 UsageReading 决定。
 
@@ -48,10 +48,14 @@ struct UsageSummaryView: View {
     }
 
     private func fetchedText(_ fetchedAt: Date) -> String {
-        let minutes = UsageDisplay.minutesSince(fetchedAt, now: now)
-        return minutes == 0
-            ? String(localized: "Updated just now")
-            : String(localized: "Updated \(minutes) min ago")
+        switch UsageDisplay.fetchAge(fetchedAt, now: now) {
+        case .justNow: return String(localized: "Updated just now")
+        case .minutes(let minutes): return String(localized: "Updated \(minutes) min ago")
+        case .hours(let hours): return String(localized: "Updated \(hours)h ago")
+        case .hoursMinutes(let hours, let minutes): return String(localized: "Updated \(hours)h \(minutes)m ago")
+        case .days(let days): return String(localized: "Updated \(days)d ago")
+        case .daysHours(let days, let hours): return String(localized: "Updated \(days)d \(hours)h ago")
+        }
     }
 
     /// 失败原因的提示；不需要提示时为 nil

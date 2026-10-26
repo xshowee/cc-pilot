@@ -22,9 +22,18 @@ enum UsageDisplay {
         return formatter.string(from: date)
     }
 
-    /// 从获取时间到 now 过了几分钟（向下取整，不会是负数）
-    static func minutesSince(_ fetchedAt: Date, now: Date) -> Int {
-        max(0, Int(now.timeIntervalSince(fetchedAt) / 60))
+    /// 从获取时间到 now 过了多久（向下取整到分钟；获取时间在 now 之后时算刚刚）
+    static func fetchAge(_ fetchedAt: Date, now: Date) -> FetchAge {
+        let minutes = max(0, Int(now.timeIntervalSince(fetchedAt) / 60))
+        if minutes >= 1440 {
+            let (days, hours) = (minutes / 1440, minutes % 1440 / 60)
+            return hours == 0 ? .days(days) : .daysHours(days, hours)
+        }
+        if minutes >= 60 {
+            let (hours, rest) = (minutes / 60, minutes % 60)
+            return rest == 0 ? .hours(hours) : .hoursMinutes(hours, rest)
+        }
+        return minutes == 0 ? .justNow : .minutes(minutes)
     }
 
     /// 频率限制还要等几分钟（AccountUsage.waitRemaining 的秒数）：向上取整，至少 1，宁可多说不少说
@@ -41,4 +50,14 @@ enum UsageDisplay {
         formatter.currencyCode = code
         return formatter.string(from: value as NSDecimalNumber)
     }
+}
+
+/// 获取时间是多久以前（"刚刚""N 分钟前""N 小时 M 分钟前"等）：只保留最大的两个单位，第二个单位是 0 时省掉
+enum FetchAge: Equatable {
+    case justNow
+    case minutes(Int)
+    case hours(Int)
+    case hoursMinutes(Int, Int)
+    case days(Int)
+    case daysHours(Int, Int)
 }
