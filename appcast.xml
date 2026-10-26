@@ -1,8 +1,42 @@
-<?xml version="1.0" standalone="yes"?><!-- sparkle-sign-warning:
+<?xml version="1.0" standalone="yes"?>
+<!-- sparkle-sign-warning:
 IMPORTANT: This file was signed by Sparkle. Any modifications to this file requires re-signing this file with generate_appcast or sign_update! The signed signature will be embedded at the end of this file.
---><rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+-->
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
     <channel>
         <title>CC Pilot</title>
+        <item>
+            <title>0.3.0</title>
+            <pubDate>Mon, 26 Oct 2026 16:29:27 +0800</pubDate>
+            <link>https://github.com/xshowee/cc-pilot</link>
+            <sparkle:fullReleaseNotesLink>https://github.com/xshowee/cc-pilot/releases</sparkle:fullReleaseNotesLink>
+            <sparkle:version>3</sparkle:version>
+            <sparkle:shortVersionString>0.3.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <description sparkle:format="markdown"><![CDATA[CC Pilot 0.3.0
+
+- **Live usage**: while Claude Code is running, the usage in the menu bar and the panel updates by itself. You can turn this off in the settings menu.
+- **Token usage**: hover over an account in the panel to see its token usage, by model, with a 24-hour and 30-day history.
+- Usage colors now follow the percentage left: red, amber or green.
+- Fetch times over an hour old are shown in hours and days.
+- Fixed the panel sometimes opening partway down the screen after the display slept overnight.
+
+If you use only the command line tool without the app, copy the new `shell/` directory to `~/.cc-pilot/` again.
+
+---
+
+CC Pilot 0.3.0
+
+- **实时额度**：Claude Code 运行时，菜单栏和面板里的额度会自动更新。可以在设置菜单里关闭。
+- **Token 用量**：鼠标停在面板里的账号上，可以查看它的 Token 用量，按模型细分，并有 24 小时和 30 天的历史。
+- 额度颜色改为按剩余比例显示红、琥珀、绿。
+- 获取时间超过一小时后改用小时、天显示。
+- 修复显示器休眠过夜后，面板有时打开在屏幕中间的问题。
+
+只用命令行、没装 App 的话，把新版的 `shell/` 目录重新复制为 `~/.cc-pilot/`。
+]]></description>
+            <enclosure url="https://github.com/xshowee/cc-pilot/releases/download/v0.3.0/CCPilot-0.3.0.dmg" length="2969052" type="application/octet-stream" sparkle:edSignature="KZ7EtK5hwff2s+6tAkb+/I5JHD/TUS363c3T6dW1cN1JU8vRBpbpHDURjDZ3zuyreE5pmjYZYBaWq+33cDnrCw=="/>
+        </item>
         <item>
             <title>0.2.0</title>
             <pubDate>Sat, 24 Oct 2026 14:44:26 +0800</pubDate>
@@ -49,10 +83,11 @@ CC Pilot 0.2.0：新建的账号使用自己的一份设置，不再与默认账
 
 App 下次启动时会自动更新 `~/.cc-pilot/` 里的 `ccp`。只用命令行、没装 App 的话，把新版的 `shell/` 目录重新复制为 `~/.cc-pilot/`。
 ]]></description>
-            <enclosure url="https://github.com/xshowee/cc-pilot/releases/download/v0.2.0/CCPilot-0.2.0.dmg" length="2281752" type="application/octet-stream" sparkle:edSignature="ttpMfmo2SE8zaPxMJ2679f4p2WG6CR1eOzzNL3RZxawi4sZuNW2E+pQIekcTiX1XlLV1qgPn4S0Gh3YMXHnrBg=="></enclosure>
+            <enclosure url="https://github.com/xshowee/cc-pilot/releases/download/v0.2.0/CCPilot-0.2.0.dmg" length="2281752" type="application/octet-stream" sparkle:edSignature="ttpMfmo2SE8zaPxMJ2679f4p2WG6CR1eOzzNL3RZxawi4sZuNW2E+pQIekcTiX1XlLV1qgPn4S0Gh3YMXHnrBg=="/>
         </item>
     </channel>
-</rss><!-- sparkle-signatures:
-edSignature: fSQTfY9twsF9YjsqY6n2NxQ51wTZ1bU1LADYRkSqZFy3zBeRgDWXn0CFNy0EtUrKipm7Fzh58FYW3X1Oh1O9Cw==
-length: 3889
+</rss>
+<!-- sparkle-signatures:
+edSignature: Jkm7L7RW6SSD6Mqq9vPQqzczh1BwcINbi2/WmjtrLBszghqhRuE1QPxWD3KzqK6ooWZH8qGsgS2ya4QVD6USBw==
+length: 5965
 -->
