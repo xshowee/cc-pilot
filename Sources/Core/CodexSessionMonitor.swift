@@ -6,8 +6,9 @@
 // （根目录本身、需要重新扫描、事件丢失）时全量扫描。上次读不了的文件（.zst 正在写入）所在目录下次一并扫描。
 // 两个目录启动时可以不存在，之后创建也能收到。
 //
-// 读取位置（CodexFileCursor）在内存里跟着扫描前进；启动时从 cursors 取初值（ticket 09：TokenUsageRecorder 给的是
-// 账本里记着的位置，App 重启后接着读，不重读历史会话记录；不给时从头读）。
+// 读取位置（CodexFileCursor）：给了 cursors 时每次扫描前都从它取，位置由调用方保存（ticket 09：TokenUsageRecorder
+// 给的是账本里记着的位置——App 重启后接着读，不重读历史会话记录；记入账本失败时位置不前进，下次扫描重读这一批）。
+// cursors 返回 nil（账本打不开）或没给时，位置在内存里跟着扫描前进，启动时从头读。
 // 所有状态只在 queue 上访问；onScan 在 queue 上调用，界面需要自己切回主线程。
 
 import CoreServices
@@ -29,13 +30,13 @@ final class CodexSessionMonitor: @unchecked Sendable {
     /// 上次读不了的文件所在的目录
     private var retry: Set<String> = []
 
-    private let initialCursors: () -> [String: CodexFileCursor]
+    private let cursorSource: (() -> [String: CodexFileCursor]?)?
 
     /// - queue: 监听、扫描、onScan 所在的串行队列（可以与使用者共用一个）
-    /// - cursors: 启动时的读取位置，在 queue 上调用一次
+    /// - cursors: 每次扫描前在 queue 上调用，取这次的起始读取位置（见文件头）
     init(environment: CoreEnvironment, latency: TimeInterval = 1,
          queue: DispatchQueue = DispatchQueue(label: "com.ccpilot.codex-sessions", qos: .utility),
-         cursors: @escaping () -> [String: CodexFileCursor] = { [:] },
+         cursors: (() -> [String: CodexFileCursor]?)? = nil,
          onScan: @escaping (CodexSessionScan) -> Void) {
         // 路径按解析过软链接的主目录算（FSEvents 按真实路径上报，例如 /var → /private/var）。
         // 只换 home，不新建 CoreEnvironment：其他注入（进程查询等）保持调用方给的
@@ -46,7 +47,7 @@ final class CodexSessionMonitor: @unchecked Sendable {
         self.latency = latency
         self.queue = queue
         self.onScan = onScan
-        initialCursors = cursors
+        cursorSource = cursors
         queue.setSpecific(key: queueKey, value: true)
     }
 
@@ -57,7 +58,6 @@ final class CodexSessionMonitor: @unchecked Sendable {
         queue.async { [self] in
             guard !running else { return }
             running = true
-            cursors = initialCursors()
             stream = makeStream()
             if stream == nil { NSLog("CC Pilot: 无法监听 ChatGPT 会话目录") }
             sync(under: nil)
@@ -77,7 +77,7 @@ final class CodexSessionMonitor: @unchecked Sendable {
     /// directories 为 nil 时全量扫描
     private func sync(under directories: Set<String>?) {
         let scope = directories.map { Array($0.union(retry)).sorted() }
-        let scan = reader.scan(cursors, under: scope)
+        let scan = reader.scan(cursorSource?() ?? cursors, under: scope)
         cursors = scan.cursors
         retry = Set(scan.deferred.map { ($0 as NSString).deletingLastPathComponent })
         onScan(scan)

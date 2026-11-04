@@ -12,6 +12,7 @@ final class ChatGPTTokenUsageRecorderChecks: CheckSuite {
             Check("启动时读入 ChatGPT 会话记录并归属；之后追加的自动读入；同一批事件的实时额度交给回调",
                   followsChatGPTSessions),
             Check("重启后从账本记着的位置接着读，不重复计入", resumesFromStoredCursors),
+            Check("记入账本失败时读取位置不前进，之后重读这一批，不漏记", rereadsAfterFailedIngest),
             Check("Claude 一侧的同步也会重试 ChatGPT 的归属（没有新的 ChatGPT 事件也能过等待期）",
                   claudeSyncRetriesChatGPTAttribution),
         ]
@@ -128,5 +129,43 @@ final class ChatGPTTokenUsageRecorderChecks: CheckSuite {
         try expect(waitUntil {
             (try? recorder.read { try $0.messages().filter { $0.tool == .chatgpt }.map(\.attribution) }) == [.unattributed]
         }, "Claude 的同步之后 ChatGPT 的会话仍没有记为未归属")
+    }
+
+    static func rereadsAfterFailedIngest() throws {
+        let env = try A.Env()
+        defer { env.remove() }
+        env.home.codexProcesses.run(pid: 42, home: .path(env.codexHome), files: [env.lock(A.session)])
+        try env.rollout(A.session, events: [1])
+        let now = Box(A.at(5)), quotas = Box<[UsageAccount: LiveQuota]>([:])
+        let recorder = makeRecorder(env, now: now, quotas: quotas)
+        recorder.start()
+        defer { recorder.stop() }
+        try expect(waitUntil { (try? recorder.read { try $0.messages().count }) == 1 }, "启动后 5 秒内没有读入")
+
+        func appendLimited(_ minute: Double, used: Double) throws {
+            let handle = try FileHandle(forWritingTo: env.home.url.appendingPathComponent(CodexRollout.path(A.session)))
+            defer { try? handle.close() }
+            try handle.seekToEnd()
+            try handle.write(contentsOf: Data(CodexRollout.file([
+                CodexRollout.tokenCount(at: A.iso(A.at(minute)), last: .init(input: 10, output: 1),
+                                        total: .init(input: 10 + Int(minute * 1000), output: 1),
+                                        primary: .init(used: used, minutes: 300, resetsAt: 1_793_800_000)),
+            ]).utf8))
+        }
+        func fiveHourUsed() -> Double? { quotas.value[UsageAccount(id: A.workAccount)]?.fiveHour?.utilization }
+
+        // 账本写不进去（模拟磁盘错误：位置表没了）；这一批照样交给了实时额度
+        let ledgerPath = TokenLedger.defaultURL(environment: env.home.environment).path
+        try SQLiteDatabase(path: ledgerPath).execute("DROP TABLE chatgpt_files")
+        try appendLimited(2, used: 20)
+        try expect(waitUntil { fiveHourUsed() == 20 }, "追加的事件 5 秒内没有扫描到")
+        try expectEqual(try recorder.read { try $0.messages().count }, 1, "写入失败，没有记入")
+
+        // 恢复后下一次扫描把失败的那一批一起读回来
+        try SQLiteDatabase(path: ledgerPath).execute(
+            "CREATE TABLE chatgpt_files (path TEXT PRIMARY KEY, cursor TEXT NOT NULL) WITHOUT ROWID")
+        try appendLimited(3, used: 30)
+        try expect(waitUntil { (try? recorder.read { try $0.messages().count }) == 3 },
+                   "写入失败的那一批没有重读：\((try? recorder.read { try $0.messages().count }) ?? -1) 条")
     }
 }

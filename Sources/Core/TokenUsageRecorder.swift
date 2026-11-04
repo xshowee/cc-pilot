@@ -17,12 +17,12 @@
 // ChatGPT（chatgpt-profiles ticket 09，followsChatGPT 为 true 时）：ChatGPT 会话记录的唯一读取器与监视器
 // （CodexSessionMonitor，ticket 08）也由它带着，跑在同一个队列上。每次扫描依次：记入账本（事件、session_meta、
 // 读取位置同一事务，见 TokenLedger+ChatGPT.swift）→ 归属钩子 → 汇总 → 有变化时 onUpdate → 同一批事件交给
-// 实时额度（ChatGPTLiveQuotaTracker），各账号的实时额度交给 onChatGPTLiveQuota。监视器启动时从账本记着的位置
-// 接着读：App 重启后不重读历史会话记录，进行中的会话要等它写下一次事件才有实时额度。
+// 实时额度（ChatGPTLiveQuotaTracker），各账号的实时额度交给 onChatGPTLiveQuota。监视器每次扫描都从账本记着的
+// 位置接着读：App 重启后不重读历史会话记录（进行中的会话要等它写下一次事件才有实时额度）；记入账本失败时
+// 位置不前进，下次扫描重读这一批（实时额度重复并入不改变结果）。
 // 默认的归属钩子先归属 Claude 的（SessionAttribution）、再归属 ChatGPT 的（ChatGPTSessionAttribution），
 // 所以 Claude 一侧的同步也会重试 ChatGPT 的归属（等待期是否已过、history.jsonl 是否已写出）。
 // 归属与实时额度共用一个"写入进程"查询（ChatGPTSessionWriters，只能在一个队列上用，所以都在 `queue` 上）。
-// 记入失败时这一批的事件留到 App 下次启动再读（账本里的位置没前进）。
 //
 // 账本只在 `queue`（默认是一个后台串行队列）上访问：同步、归属钩子、onUpdate 和 `read` 的 body
 // 都在它上面执行，界面需要自己切回主线程。start / stop / read 可以在任意线程调用。
@@ -110,7 +110,7 @@ final class TokenUsageRecorder: @unchecked Sendable {
         if followsChatGPT {
             chatgptSessions = CodexSessionMonitor(
                 environment: environment, latency: latency, queue: queue,
-                cursors: { [weak self] in (try? self?.openLedger().chatgptCursors()) ?? [:] },
+                cursors: { [weak self] in try? self?.openLedger().chatgptCursors() },
                 onScan: { [weak self] in self?.record(chatgpt: $0) })
         }
     }
@@ -225,7 +225,7 @@ final class TokenUsageRecorder: @unchecked Sendable {
             do {
                 try ledger.ingest(chatgpt: scan)
             } catch {
-                NSLog("CC Pilot: 记入 ChatGPT 会话记录失败，下次启动时重读：%@", String(describing: error))
+                NSLog("CC Pilot: 记入 ChatGPT 会话记录失败，下次扫描时重读：%@", String(describing: error))
             }
             try? attribute(ledger)
             rollUpIfNewDay(ledger)
