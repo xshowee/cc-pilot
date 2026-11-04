@@ -10,9 +10,10 @@
 #   $T_HOME     临时用户主目录（路径里故意带空格），所有被测程序都以它为 HOME
 #               其中 $T_HOME/.cc-pilot/ 是仓库 shell/ 目录的原样复制（即安装后的布局）
 #   $T_CLAUDE_LOG  假 claude 的记录目录
+#   $T_CODEX_LOG   假 codex 的记录目录（即 FAKE_CODEX_LOG_DIR，格式见 tests/fakes/codex）
 #   $T_SECURITY    假 security 的钥匙串内容和调用记录（即 FAKE_SECURITY_DIR，格式见 tests/fakes/security）
 # 被测程序一律通过 t_run / t_claude / t_zsh / t_ccp / t_ccp_in 启动：`env -i` 清空环境，
-# PATH 最前面是 tests/fakes/（假 claude、假 security），然后才是 /usr/bin:/bin:/usr/sbin:/sbin。
+# PATH 最前面是 tests/fakes/（假 claude、假 codex、假 security），然后才是 /usr/bin:/bin:/usr/sbin:/sbin。
 # 标准输入默认是 /dev/null；用 t_stdin 准备输入（例如回答确认提示）。
 # 运行结果在 $T_OUT、$T_ERR、$T_RC 里。
 
@@ -82,6 +83,7 @@ t_run() {
     PATH=$FAKES:/usr/bin:/bin:/usr/sbin:/sbin \
     LANG=en_US.UTF-8 \
     FAKE_CLAUDE_LOG_DIR=$T_CLAUDE_LOG \
+    FAKE_CODEX_LOG_DIR=$T_CODEX_LOG \
     FAKE_SECURITY_DIR=$T_SECURITY \
     "${extra[@]}" \
     "$@" > $T/out 2> $T/err < ${T_STDIN:-/dev/null}
@@ -162,6 +164,35 @@ claude_args() {
   done < $T_CLAUDE_LOG/$n
 }
 
+# ---------- 读取假 codex 的记录 ----------
+
+# 假 codex 被调用的次数
+codex_calls() {
+  local -a files
+  files=($T_CODEX_LOG/<->(N.))
+  print -r -- ${#files}
+}
+
+# codex_field 键 [第几次调用，默认最后一次]：输出该键的值（codex_home_set、codex_home、cwd、argc）
+codex_field() {
+  local n=${2:-$(codex_calls)} line
+  [[ -f $T_CODEX_LOG/$n ]] || fail "假 codex 没有第 $n 次调用的记录"
+  while IFS= read -r line; do
+    if [[ $line == $1=* ]]; then print -r -- "${line#$1=}"; return 0; fi
+  done < $T_CODEX_LOG/$n
+  return 1
+}
+
+# codex_args [第几次调用]：把参数放进数组 reply
+codex_args() {
+  local n=${1:-$(codex_calls)} line
+  reply=()
+  [[ -f $T_CODEX_LOG/$n ]] || fail "假 codex 没有第 $n 次调用的记录"
+  while IFS= read -r line; do
+    [[ $line == arg=* ]] && reply+=("${line#arg=}")
+  done < $T_CODEX_LOG/$n
+}
+
 # ---------- 读取假 security 的记录 ----------
 
 # 假 security 被调用的次数
@@ -217,6 +248,25 @@ assert_stderr_empty() {
 
 assert_claude_calls() {  # 期望的调用次数
   assert_eq "$(claude_calls)" "$1" "假 claude 的调用次数"
+}
+
+assert_codex_calls() {  # 期望的调用次数
+  assert_eq "$(codex_calls)" "$1" "假 codex 的调用次数"
+}
+
+assert_codex_home() {  # 期望值 [第几次调用]
+  assert_eq "$(codex_field codex_home_set $2)" yes "CODEX_HOME 应当已设置"
+  assert_eq "$(codex_field codex_home $2)" "$1" "CODEX_HOME"
+}
+
+assert_codex_args() {  # 期望的参数...（最后一次调用）
+  local -a reply
+  codex_args
+  assert_eq "$(codex_field argc)" "$#" "假 codex 收到的参数个数"
+  local i
+  for (( i = 1; i <= $#; i++ )); do
+    assert_eq "${reply[i]}" "${@[i]}" "第 $i 个参数"
+  done
 }
 
 assert_claude_config_dir_unset() {  # [第几次调用]
@@ -289,6 +339,7 @@ t_main() {
     T=$(mktemp -d "${${TMPDIR:-/tmp}%/}/ccp-test.XXXXXX") || exit 1
     T_HOME="$T/home dir"
     T_CLAUDE_LOG=$T/claude-log
+    T_CODEX_LOG=$T/codex-log
     T_SECURITY=$T/security
     mkdir -p -- $T_HOME && cp -R -- $SHELL_SRC $T_HOME/.cc-pilot || exit 1
     ( unset T_RC T_OUT T_ERR T_STDIN; $name )

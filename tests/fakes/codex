@@ -1,0 +1,66 @@
+#!/bin/zsh -f
+# 假的 codex（ChatGPT 的命令行）：记录收到的 CODEX_HOME 和参数；login 写 auth.json，logout 删除它。
+# shell 测试（tests/shell/lib.zsh 的 t_run）和 Swift 检查（tests/swift/ShellRun.swift）都把 tests/fakes/
+# 放在 PATH 最前面，所以 ccp 与 codex 包装函数经 PATH（`command codex`）调用的都是它，绝不碰真的 codex。
+#
+# 每次调用在 $FAKE_CODEX_LOG_DIR 下写一个新文件（1、2、3……），内容（同假 claude）：
+#   codex_home_set=yes|no     区分"未设置"和"设置为空"
+#   codex_home=<值>
+#   cwd=<启动时的工作目录>      物理路径（pwd -P）
+#   argc=<参数个数>
+#   arg=<参数>                每个参数一行，按顺序
+#
+# 第一个参数是子命令时的副作用（只在退出码为 0 时发生；目标目录是 CODEX_HOME，未设置或为空时是 $HOME/.codex）：
+#   login    写 <目录>/auth.json：内容取自 FAKE_CODEX_AUTH_JSON 指向的文件，未设置时写一个占位的 JSON
+#            （不是真实格式，App 会把它当作版本不兼容）。目录不存在时失败（真 codex 不会自己建 CODEX_HOME）。
+#   logout   删除 <目录>/auth.json（不存在也算成功）
+#
+# 可选环境变量：
+#   FAKE_CODEX_EXIT     退出码，默认 0；非 0 时不发生上面的副作用（模拟登录、登出失败）
+#   FAKE_CODEX_HOOK     记录与副作用完成后用 zsh eval 执行的一段代码（例如登出后又写回 auth.json）
+#   FAKE_CODEX_AUTH_JSON  login 写入的 auth.json 的来源文件
+
+emulate -R zsh
+
+if [[ -z ${FAKE_CODEX_LOG_DIR-} ]]; then
+  print -u2 -r -- "fake codex: FAKE_CODEX_LOG_DIR 未设置"
+  exit 99
+fi
+mkdir -p -- $FAKE_CODEX_LOG_DIR || exit 99
+
+integer n=1
+while [[ -e $FAKE_CODEX_LOG_DIR/$n ]]; do (( n++ )); done
+
+{
+  print -r -- "codex_home_set=${${CODEX_HOME+yes}:-no}"
+  print -r -- "codex_home=${CODEX_HOME-}"
+  print -r -- "cwd=$(pwd -P)"
+  print -r -- "argc=$#"
+  for a in "$@"; do print -r -- "arg=$a"; done
+} > $FAKE_CODEX_LOG_DIR/$n
+
+integer rc=${FAKE_CODEX_EXIT:-0}
+home=${CODEX_HOME:-${HOME%/}/.codex}
+
+if (( rc == 0 )); then
+  case ${1-} in
+    (login)
+      if [[ ! -d $home ]]; then
+        print -u2 -r -- "fake codex: CODEX_HOME $home 不存在"
+        rc=1
+      elif [[ -n ${FAKE_CODEX_AUTH_JSON-} ]]; then
+        /bin/cp -- $FAKE_CODEX_AUTH_JSON $home/auth.json || rc=1
+      else
+        print -r -- '{"fake_codex":"login"}' > $home/auth.json || rc=1
+      fi
+      ;;
+    (logout)
+      /bin/rm -f -- $home/auth.json || rc=1
+      ;;
+  esac
+fi
+
+if [[ -n ${FAKE_CODEX_HOOK-} ]]; then
+  eval "$FAKE_CODEX_HOOK"
+fi
+exit $rc

@@ -29,7 +29,7 @@
 - `cc-pilot.zsh` 只 source `lib/profiles.zsh`；`bin/ccp` source `lib/` 下所有不以 `cmd-` 开头的 `.zsh` 文件，再只 source 被调用的那个 `cmd-<命令>.zsh`。新增共享库直接放进 `lib/` 即可。
 - `lib/` 里的代码会进入用户的交互 shell：只定义 `_ccp_` 开头的函数，不定义全局变量；函数开头写 `emulate -L zsh`；出错只 `return`，不 `exit`。
 - 输出位置：询问（如 `[y/N]`）、进度和结果写 stdout；错误（以 `ccp <命令>:` 开头）、用法说明和警告写 stderr。
-- 系统工具用绝对路径（`/usr/bin/osascript`、`/usr/bin/shasum`）；`claude` 和 `security` 按 PATH 查找，测试会在 PATH 最前面放假程序。
+- 系统工具用绝对路径（`/usr/bin/osascript`、`/usr/bin/shasum`）；`claude`、`codex` 和 `security` 按 PATH 查找，测试会在 PATH 最前面放假程序（`tests/fakes/`）。
 
 ## 接入 zsh（`ccp init` / `ccp uninstall`）
 
@@ -67,6 +67,17 @@ source "$HOME/.cc-pilot/cc-pilot.zsh"  # cc-pilot
 `ccp chatgpt <子命令>` 与 `ccp codex <子命令>` 完全相同。ChatGPT 档案与 Claude 档案互相独立（各有当前档案，可以同名）：默认档案是 `~/.codex`（不设置 `CODEX_HOME`），其他档案是 `~/.codex-profiles/<名字>/`（即它的 `CODEX_HOME`），当前档案记录是 `~/.codex-profiles/active`，格式和档案名规则都与 Claude 一侧相同。共享库函数在 `lib/chatgpt-profiles.zsh`，都以 `_ccp_chatgpt_` 开头。
 
 `ccp chatgpt ls` 的输出格式与 `ccp ls` 相同：第一行总是 `default`（不论 `~/.codex` 是否存在），之后按字节序列出 `~/.codex-profiles/` 下名字合规的目录；只显示名字，不读 `auth.json`。
+
+### ccp chatgpt add 建立的档案（ADR 0006）
+
+`ccp chatgpt add <名字>` 先做与 `ccp add` 相同的检查（名字规则、保留名、任何类型的同名项都算已存在），任何一项不通过都不改磁盘。然后在 `~/.codex-profiles/<名字>/` 里只放两类东西：
+
+- 共享资源的软链接，各自指向 `~/.codex/` 中的同名项（绝对路径）。目录：`sessions`、`archived_sessions`、`thread-writer-locks`、`.tmp`、`skills`、`plugins`、`rules`，`~/.codex` 里还没有时先创建（`~/.codex` 本身不存在也一并创建）；文件：`AGENTS.md`，`~/.codex` 里没有时不建链接。清单和建立方式集中在 `chatgpt-profiles.zsh` 的 `_ccp_chatgpt_shared_dirs` / `_ccp_chatgpt_shared_files` / `_ccp_chatgpt_share_resources`（`ccp chatgpt rm` 也据此认出哪些是链接）。
+- `config.toml`：第一行是 `sqlite_home = "<~/.codex 的绝对路径>"`（TOML 基本字符串，转义 `\` 和 `"`；必须是顶层键，所以放第一行），之后是默认档案 `~/.codex/config.toml` 的原样内容（是软链接时取它指向的内容），只去掉其中顶层（第一个 `[表]` 之前）已有的 `sqlite_home`。默认档案没有时只有这一行；读不出时也只有这一行并给出提示。会话数据库靠 `sqlite_home` 落在 `~/.codex`。
+
+不创建、不复制：`auth.json`、`installation_id`、`.codex-global-state.json`、`history.jsonl`、`sqlite/`（桌面 App 自己的库，issue 01 实测每个档案一份即可）。建链接或写 `config.toml` 失败时删除整个新档案目录（只删链接本身）。
+
+然后以 `CODEX_HOME=<档案目录> command codex login` 登录（不经过包装函数，也不看 `CODEX_PROFILE`），不改变当前档案。`codex` 退出码非零或退出后档案里没有 `auth.json` 时保留档案，在 stderr 最后一行给出之后登录用的命令 `CODEX_HOME=<档案目录> command codex login`（`command` 绕过包装函数，否则包装函数会把 `~/.codex-profiles/` 下的 `CODEX_HOME` 换成当前档案），退出码非零。
 
 ## claude 包装函数的行为
 

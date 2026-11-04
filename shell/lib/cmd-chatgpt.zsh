@@ -9,13 +9,14 @@ _ccp_chatgpt_usage() {
   print -r -- "用法：ccp chatgpt <命令> [参数]（ccp codex 与之相同）
 
 命令：
-  ls              列出所有 ChatGPT 档案，并标出当前档案"
+  ls              列出所有 ChatGPT 档案，并标出当前档案
+  add <名字>      新建 ChatGPT 档案（共享会话、技能等），并在其中运行 codex login"
 }
 
 _ccp_cmd_chatgpt() {
   emulate -L zsh
   case ${1-} in
-    (ls)
+    (ls|add)
       source $_ccp_lib/cmd-chatgpt-$1.zsh || return 1
       _ccp_cmd_chatgpt_$1 "${@:2}"
       ;;

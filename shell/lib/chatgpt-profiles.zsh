@@ -132,3 +132,50 @@ _ccp_chatgpt_print_fix_hint() {
     print -u2 -r -- "  修复：执行 \`ccp chatgpt use default\` 切回默认档案，或用 \`ccp chatgpt ls\` 查看已有档案、\`ccp chatgpt add <名字>\` 新建档案。"
   fi
 }
+
+# ---------- 共享资源（ADR 0006） ----------
+# 共享资源的清单和建立方式只在这里定义（ccp chatgpt add 建立，ccp chatgpt rm 据此认出哪些是软链接）。
+# 每一项在非默认档案里都是指向 ~/.codex 下同名项的软链接（绝对路径）：
+#   目录   ~/.codex 里还没有时先创建，再建链接（codex 往链接里写，内容落在 ~/.codex）
+#   文件   AGENTS.md：~/.codex 里没有时不建链接（codex 不会写它，悬空链接没有意义）
+# 不共享、每个档案一份：auth.json、installation_id、.codex-global-state.json、history.jsonl、
+# sqlite/（桌面 App 自己的库，issue 01 实测不需要共享）、config.toml（复制一份，见 cmd-chatgpt-add.zsh）。
+# 会话数据库靠 config.toml 里的 sqlite_home 指向 ~/.codex 共享，不靠软链接。
+
+# 输出作为目录共享的项，每行一项
+_ccp_chatgpt_shared_dirs() {
+  emulate -L zsh
+  print -rl -- sessions archived_sessions thread-writer-locks .tmp skills plugins rules
+}
+
+# 输出作为文件共享的项（默认档案里存在时才建链接），每行一项
+_ccp_chatgpt_shared_files() {
+  emulate -L zsh
+  print -rl -- AGENTS.md
+}
+
+# 输出全部共享资源，每行一项
+_ccp_chatgpt_shared_resources() {
+  emulate -L zsh
+  _ccp_chatgpt_shared_dirs
+  _ccp_chatgpt_shared_files
+}
+
+# 在新档案目录里建立全部共享资源的软链接。参数：档案目录（应为刚创建的目录）。
+# 任何一步失败时往 stderr 说明哪一项，返回 1（已建的链接由调用方随档案目录一起撤销）。
+_ccp_chatgpt_share_resources() {
+  emulate -L zsh
+  local dir=$1 src item
+  src=$(_ccp_chatgpt_default_dir)
+  for item in ${(f)"$(_ccp_chatgpt_shared_dirs)"}; do
+    if [[ ! -d $src/$item ]] && ! /bin/mkdir -p -- "$src/$item"; then
+      print -u2 -r -- "cc-pilot: 无法在默认档案里创建共享目录 $src/$item"
+      return 1
+    fi
+    /bin/ln -s -- "$src/$item" "$dir/$item" || return 1
+  done
+  for item in ${(f)"$(_ccp_chatgpt_shared_files)"}; do
+    [[ -e $src/$item ]] || continue
+    /bin/ln -s -- "$src/$item" "$dir/$item" || return 1
+  done
+}
