@@ -1,7 +1,7 @@
 // 在检查里运行仓库 shell/ 下的真实脚本（跨端测试：App 核心写、shell 读，或反过来）。
 // 与 tests/shell/lib.zsh 的 t_run 一样用干净环境：只有 HOME（临时主目录）、PATH、LANG；
 // PATH 最前面是 tests/fakes/ 和一个只会失败的假 security，绝不碰真实的 claude 和钥匙串。
-// 假 codex、launchctl、osascript、open 的数据目录默认指向 TempHome 的那几个（root/codex 等），
+// 假 codex、launchctl、osascript、open、ps 的数据目录默认指向 TempHome 的那几个（root/codex 等），
 // 与 TempHome.searchPath 下运行的 ccp 看到的是同一份假状态。
 
 import Foundation
@@ -37,6 +37,7 @@ enum ShellRun {
             "FAKE_CODEX_LOG_DIR": home.fakeCodexDir.path,
             "FAKE_LAUNCHCTL_DIR": home.fakeLaunchctlDir.path,
             "FAKE_CHATGPT_APP_DIR": home.fakeChatGPTAppDir.path,
+            "FAKE_PS_DIR": home.fakePsDir.path,
         ].merging(extraEnvironment) { _, extra in extra }
         process.currentDirectoryURL = home.url
         let out = Pipe(), err = Pipe()

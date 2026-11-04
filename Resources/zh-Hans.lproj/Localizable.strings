@@ -98,6 +98,7 @@
 "Delete “%@”…" = "删除“%@”…";
 "The default profile can’t be deleted" = "默认账号不能删除";
 "The current profile can’t be deleted. Switch to another profile first." = "当前账号不能删除，请先切换到其他账号。";
+"Apps opened from the Dock still use this profile. Switch profiles again to update it first." = "从程序坞等打开的 App 仍在使用这个账号，请先重新切换一次账号后再删除。";
 "CC Pilot will open Terminal" = "CC Pilot 将打开终端";
 "To add or delete a profile, CC Pilot opens a new Terminal window and runs the command below there. macOS will ask whether CC Pilot may control Terminal; CC Pilot uses this only to run this command.\n\nIf you’d rather not allow it, copy the command and run it in a terminal yourself." = "添加或删除账号时，CC Pilot 会打开一个新的终端窗口，在里面执行下面这条命令。macOS 会询问是否允许 CC Pilot 控制“终端”；CC Pilot 只用它来执行这条命令。\n\n如果不想允许，可以复制这条命令，自己在终端里执行。";
 "Open Terminal" = "打开终端";

@@ -43,6 +43,8 @@ struct ProfileCommands {
     enum RemovalBlocker: Equatable {
         case defaultProfile
         case currentProfile
+        /// launchd 里的 CODEX_HOME 仍指向它（只有 ChatGPT 档案，见 ChatGPTProfileCommands.removalBlocker）
+        case launchdProfile
     }
 
     /// 删除入口是否可用：默认档案和当前档案不能删除，返回原因；可以删除时返回 nil。

@@ -28,6 +28,9 @@ struct CoreEnvironment: Sendable {
     var appVersion: String
     /// 系统的 osascript 程序（打开终端执行 ccp add / ccp rm 用）。测试换成假程序，绝不能真的打开终端。
     var osascript: URL
+    /// 系统的 launchctl 程序（读取 launchd 里的 CODEX_HOME，判断 ChatGPT 档案能否删除）。
+    /// 测试换成假程序，绝不能读写真实的 launchd 环境。App 只读不写：切换由 ccp chatgpt use 做。
+    var launchctl: URL
 
     init(home: URL = CoreEnvironment.userHome(),
          security: URL = URL(fileURLWithPath: "/usr/bin/security"),
@@ -36,7 +39,8 @@ struct CoreEnvironment: Sendable {
          searchPath: String = "/usr/bin:/bin:/usr/sbin:/sbin",
          transport: UsageTransport = URLSessionUsageTransport.shared,
          appVersion: String = CoreEnvironment.bundleVersion(),
-         osascript: URL = URL(fileURLWithPath: "/usr/bin/osascript")) {
+         osascript: URL = URL(fileURLWithPath: "/usr/bin/osascript"),
+         launchctl: URL = URL(fileURLWithPath: "/bin/launchctl")) {
         self.home = home
         self.security = security
         self.userName = userName
@@ -45,6 +49,7 @@ struct CoreEnvironment: Sendable {
         self.transport = transport
         self.appVersion = appVersion
         self.osascript = osascript
+        self.launchctl = launchctl
     }
 
     /// 真实环境

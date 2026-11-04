@@ -67,12 +67,29 @@ final class ProfileActionsModel: ObservableObject {
         commands.removalBlocker(profile: profile, currentProfile: currentProfile)
     }
 
+    /// 打开终端执行 ccp chatgpt rm（ccp 自己确认、停止守护进程、登出）。删除入口不可用的档案什么都不做。
+    func removeChatGPT(_ name: String, currentProfile: String, launchdCodexHome: String?) {
+        guard !isOpening,
+              chatgptRemovalBlocker(profile: name, currentProfile: currentProfile,
+                                    launchdCodexHome: launchdCodexHome) == nil
+        else { return }
+        open(chatgptCommands.removeCommand(name),
+             pending: PendingProfileChange(tool: .chatgpt, change: .removing(name)))
+    }
+
+    /// ChatGPT 删除入口是否可用（默认档案、当前档案、launchd 仍指向的档案不能删除，规则与 ccp chatgpt rm 相同）
+    func chatgptRemovalBlocker(profile: String, currentProfile: String,
+                               launchdCodexHome: String?) -> ProfileCommands.RemovalBlocker? {
+        chatgptCommands.removalBlocker(profile: profile, currentProfile: currentProfile,
+                                       launchdCodexHome: launchdCodexHome)
+    }
+
     /// Claude 档案列表变化时调用：进行中的 Claude 档案添加或删除完成了就清除
     func update(with profiles: [Profile]) {
         if let pending, pending.tool == .claudeCode, pending.change.isFinished(in: profiles) { self.pending = nil }
     }
 
-    /// ChatGPT 档案列表变化时调用：进行中的 ChatGPT 档案添加完成了就清除
+    /// ChatGPT 档案列表变化时调用：进行中的 ChatGPT 档案添加或删除完成了就清除
     func update(withChatGPT profiles: [ChatGPTProfile]) {
         if let pending, pending.tool == .chatgpt, pending.change.isFinished(inChatGPT: profiles) { self.pending = nil }
     }

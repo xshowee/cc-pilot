@@ -16,6 +16,8 @@
 // FAKE_CHATGPT_APP_DIR = root/chatgpt-app 再执行 tests/fakes/ 里的同名假程序。所以经 `environment.searchPath`
 // 运行的 ccp 绝不会改动真实的 launchd 环境、退出用户的 ChatGPT 或运行真的 codex。
 // 用 `setLaunchdEnv`、`launchdEnv`、`launchctlCalls`、`chatgptApp`、`chatgptAppCalls`、`codexCalls` 准备和读取。
+// `environment.launchctl`（App 核心自己读 launchd 环境，ticket 06）也是 root/bin/launchctl 这个包装。
+// ccp chatgpt rm 查找守护进程用的 ps 同样有包装（FAKE_PS_DIR = root/ps，进程表默认为空）。
 
 import Foundation
 
@@ -37,6 +39,8 @@ final class TempHome {
     let fakeCodexDir: URL
     let fakeLaunchctlDir: URL
     let fakeChatGPTAppDir: URL
+    /// 假 ps 的数据目录（FAKE_PS_DIR，ticket 06）
+    let fakePsDir: URL
     /// 注入给 App 核心的"当前用户名"
     static let userName = "tester"
     /// 注入给 App 核心的版本号（额度请求的 User-Agent 用它）
@@ -80,13 +84,15 @@ final class TempHome {
         fakeCodexDir = root.appendingPathComponent("codex")
         fakeLaunchctlDir = root.appendingPathComponent("launchctl")
         fakeChatGPTAppDir = root.appendingPathComponent("chatgpt-app")
+        fakePsDir = root.appendingPathComponent("ps")
         let fakes = repoRoot.appendingPathComponent("tests/fakes")
-        for tool in ["codex", "launchctl", "osascript", "open"] {
+        for tool in ["codex", "launchctl", "osascript", "open", "ps"] {
             let script = """
                 #!/bin/zsh -f
                 export FAKE_CODEX_LOG_DIR=\(Self.shellQuote(fakeCodexDir.path))
                 export FAKE_LAUNCHCTL_DIR=\(Self.shellQuote(fakeLaunchctlDir.path))
                 export FAKE_CHATGPT_APP_DIR=\(Self.shellQuote(fakeChatGPTAppDir.path))
+                export FAKE_PS_DIR=\(Self.shellQuote(fakePsDir.path))
                 exec \(Self.shellQuote(fakes.appendingPathComponent(tool).path)) "$@"
 
                 """
@@ -107,7 +113,7 @@ final class TempHome {
     var environment: CoreEnvironment {
         CoreEnvironment(home: url, security: securityTool, userName: Self.userName, securityTimeout: 10,
                         searchPath: searchPath, transport: transport, appVersion: Self.appVersion,
-                        osascript: osascriptTool)
+                        osascript: osascriptTool, launchctl: root.appendingPathComponent("bin/launchctl"))
     }
 
     /// 交给 App 核心运行 shell 脚本时的 PATH：最前面是本目录的包装（假 security、codex、launchctl、osascript、open），

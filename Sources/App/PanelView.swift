@@ -131,7 +131,7 @@ struct PanelView: View {
         .onChange(of: chatgpt.profiles) { list in actions.update(withChatGPT: list) }
     }
 
-    /// ChatGPT 一段：分割线 + 档案卡片，点击即切换（ticket 04；刷新 ticket 07；删除由后续 ticket 接上）。
+    /// ChatGPT 一段：分割线 + 档案卡片，点击即切换（ticket 04），刷新额度（ticket 07），删除（ticket 06）。
     /// 正在后台切换时卡片不可点击。
     @ViewBuilder private var chatgptSection: some View {
         ToolSectionDivider(tool: .chatgpt)
@@ -147,7 +147,15 @@ struct PanelView: View {
                 isRefreshing: usage.isRefreshing(profile),
                 onRefresh: profile.usageAccount == nil ? nil : {
                     usage.refresh(profile, in: chatgpt.profiles)
-                })
+                },
+                onDelete: (
+                    blocker: actions.chatgptRemovalBlocker(profile: profile.name, currentProfile: chatgpt.currentName,
+                                                           launchdCodexHome: chatgpt.launchdCodexHome),
+                    action: {
+                        actions.removeChatGPT(profile.name, currentProfile: chatgpt.currentName,
+                                              launchdCodexHome: chatgpt.launchdCodexHome)
+                    }
+                ))
         }
     }
 
