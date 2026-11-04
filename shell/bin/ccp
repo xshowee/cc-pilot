@@ -26,6 +26,7 @@ _ccp_usage() {
   use <名字>      切换当前档案（default 表示默认档案）
   add <名字>      新建档案，并在其中完成首次引导和登录
   rm <名字>       在档案里登出后删除它
+  chatgpt <命令>  管理 ChatGPT 档案（ccp codex 相同；ccp chatgpt help 查看命令）
   init [--yes]    接入 zsh（征得同意后在 ~/.zshrc 里加一行 source；--yes 不询问）
   uninstall       从 ~/.zshrc 里删除 init 加的那一行
 
@@ -37,6 +38,12 @@ case ${1-} in
   (ls|current|use|add|rm|init|uninstall|statusline)
     source $_ccp_lib/cmd-$1.zsh || exit 1
     _ccp_cmd_$1 "${@:2}"
+    exit
+    ;;
+  # ChatGPT 档案的命令：第二级分派见 lib/cmd-chatgpt.zsh；codex 是 chatgpt 的别名
+  (chatgpt|codex)
+    source $_ccp_lib/cmd-chatgpt.zsh || exit 1
+    _ccp_cmd_chatgpt "${@:2}"
     exit
     ;;
   (help|-h|--help)

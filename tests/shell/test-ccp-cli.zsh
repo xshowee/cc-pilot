@@ -2,7 +2,7 @@
 # ccp 命令的分派与用法说明（ticket 01 的骨架；各子命令的行为由各自的测试文件覆盖）
 source "${0:A:h}/lib.zsh"
 
-typeset -ga CCP_COMMANDS=(ls current use add rm init uninstall)
+typeset -ga CCP_COMMANDS=(ls current use add rm chatgpt init uninstall)
 
 assert_usage_lists_all_commands() {  # 文本
   local c

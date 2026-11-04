@@ -21,6 +21,9 @@
 // 软链接档案，另开一个流监听它的目标目录（只看目标目录本身和其中的 .claude.json）；
 // 档案根目录的条目一变化就重新扫描软链接，增删对应的流。（history.jsonl 模式下看目标目录里的 history.jsonl。）
 //
+// ChatGPT 模式（`watching: .chatgptAuth`，chatgpt-profiles ticket 02）：同样的规则，档案根目录换成
+// ~/.codex-profiles，档案里看 auth.json，默认档案看 ~/.codex/auth.json（~/.codex 下的会话记录等不监听）。
+//
 // 通知只说"可能变了"，不说变了什么：收到后重新调用 ProfileStore.listProfiles 即可。
 // 回调在 `queue` 上执行（默认是一个后台串行队列），界面需要自己切回主线程。
 // 所有流都在 `queue` 上创建和销毁；start / stop 可以在任意线程调用。
@@ -35,20 +38,36 @@ final class ProfileWatcher {
         case accountConfigs
         /// 各档案的 history.jsonl（用户在会话里提交输入）
         case history
+        /// ChatGPT 档案（chatgpt-profiles ticket 02）：档案根目录换成 ~/.codex-profiles，
+        /// 看各档案的 auth.json（codex login / logout）；默认档案是 ~/.codex/auth.json。
+        /// 只监听 ~/.codex/auth.json 这一个文件，~/.codex 下的会话记录等频繁变化的内容不监听。
+        case chatgptAuth
 
         /// 档案目录里的文件名
         var fileName: String {
             switch self {
             case .accountConfigs: return ".claude.json"
             case .history: return "history.jsonl"
+            case .chatgptAuth: return "auth.json"
             }
         }
 
         /// 默认档案的这个文件
-        func defaultProfileFile(_ paths: ProfilePaths) -> String {
+        func defaultProfileFile(_ environment: CoreEnvironment) -> String {
+            let paths = ProfilePaths(environment: environment)
             switch self {
             case .accountConfigs: return paths.defaultClaudeJSON.path
             case .history: return paths.runtimeDir(forProfileNamed: ProfileName.defaultName) + "/history.jsonl"
+            case .chatgptAuth: return ChatGPTProfilePaths(environment: environment).authJSON(
+                forProfileNamed: ProfileName.defaultName).path
+            }
+        }
+
+        /// 档案根目录
+        func profilesRoot(_ environment: CoreEnvironment) -> String {
+            switch self {
+            case .accountConfigs, .history: return ProfilePaths(environment: environment).profilesRootPath
+            case .chatgptAuth: return ChatGPTProfilePaths(environment: environment).profilesRootPath
             }
         }
     }
@@ -83,10 +102,10 @@ final class ProfileWatcher {
         self.onChange = onChange
         self.onLiveQuotaChange = onLiveQuotaChange
         // FSEvents 报告的是解析过软链接的真实路径（例如 /var → /private/var），比较前先解析 HOME
-        let paths = ProfilePaths(environment: CoreEnvironment(home: FSEventsSupport.realPath(environment.home)))
+        let real = CoreEnvironment(home: FSEventsSupport.realPath(environment.home))
         fileName = watching.fileName
-        homeConfig = watching.defaultProfileFile(paths)
-        profilesRoot = paths.profilesRootPath
+        homeConfig = watching.defaultProfileFile(real)
+        profilesRoot = watching.profilesRoot(real)
         liveQuotaDir = profilesRoot + "/" + LiveQuotaFiles.directoryName
         queue.setSpecific(key: queueKey, value: true)
     }

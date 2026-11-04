@@ -22,7 +22,12 @@ struct CurrentProfileRecord {
 
     /// 当前档案的名字（"default" 表示默认档案）。可能是一个不合规或不存在的名字，原样返回。
     func currentName() -> String {
-        guard let data = try? Data(contentsOf: paths.activeRecord) else { return ProfileName.defaultName }
+        Self.readName(at: paths.activeRecord)
+    }
+
+    /// 读一个当前档案记录文件（Claude 与 ChatGPT 两个工具的记录格式相同）
+    static func readName(at record: URL) -> String {
+        guard let data = try? Data(contentsOf: record) else { return ProfileName.defaultName }
         let firstLine = data.prefix { $0 != UInt8(ascii: "\n") }
         // 与 zsh 的 [[:space:]] 一致，只去掉 ASCII 空白（空格、\t、\v、\f、\r）
         let name = String(decoding: firstLine, as: UTF8.self)

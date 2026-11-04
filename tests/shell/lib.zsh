@@ -38,6 +38,23 @@ t_active() {
   print -r -- "$1" > "$T_HOME/.claude-profiles/active" || exit 1
 }
 
+# 创建 ChatGPT 档案目录：t_codex_profile work personal（~/.codex-profiles/<名字>/）
+t_codex_profile() {
+  local n
+  for n in "$@"; do mkdir -p -- "$T_HOME/.codex-profiles/$n" || exit 1; done
+}
+
+# 创建 ChatGPT 默认档案目录 ~/.codex
+t_codex_default() {
+  mkdir -p -- "$T_HOME/.codex" || exit 1
+}
+
+# 写 ChatGPT 当前档案记录（一行）：t_codex_active work
+t_codex_active() {
+  mkdir -p -- "$T_HOME/.codex-profiles" || exit 1
+  print -r -- "$1" > "$T_HOME/.codex-profiles/active" || exit 1
+}
+
 # 准备之后每次运行被测程序时的标准输入（自动补一个换行）：t_stdin y
 t_stdin() {
   print -r -- "$1" > $T/stdin || exit 1
