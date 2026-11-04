@@ -129,18 +129,24 @@ struct PanelView: View {
         .onChange(of: chatgpt.profiles) { list in actions.update(withChatGPT: list) }
     }
 
-    /// ChatGPT 一段：分割线 + 档案卡片（ticket 02 只显示；切换、刷新、删除由后续 ticket 接上）
+    /// ChatGPT 一段：分割线 + 档案卡片（ticket 02 只显示；刷新 ticket 07；切换、删除由后续 ticket 接上）
     @ViewBuilder private var chatgptSection: some View {
         ToolSectionDivider(tool: .chatgpt)
             .padding(.top, 4)
         ForEach(chatgpt.profiles) { profile in
-            ChatGPTProfileCard(profile: profile, isCurrent: profile.name == chatgpt.currentName)
+            ChatGPTProfileCard(profile: profile, isCurrent: profile.name == chatgpt.currentName,
+                               usage: usage.usage(for: profile), now: usage.now,
+                               reportedPlan: usage.reportedPlan(for: profile),
+                               isRefreshing: usage.isRefreshing(profile),
+                               onRefresh: profile.usageAccount == nil ? nil : {
+                                   usage.refresh(profile, in: chatgpt.profiles)
+                               })
         }
     }
 
     private var refreshAllButton: some View {
         Button {
-            usage.refreshAll(profiles.profiles)
+            usage.refreshAll(profiles.profiles, chatgpt: chatgpt.profiles)
         } label: {
             Group {
                 if usage.isRefreshing {
@@ -155,7 +161,7 @@ struct PanelView: View {
         .buttonStyle(.borderless)
         .foregroundColor(.secondary)
         // 正在刷新，或每个账号都还在频率限制的等待期内（ticket 12）时不可用
-        .disabled(usage.isRefreshing || !usage.canRefreshAny(profiles.profiles))
+        .disabled(usage.isRefreshing || !usage.canRefreshAny(profiles.profiles, chatgpt: chatgpt.profiles))
         .help(Text("Refresh usage for all accounts"))
         .accessibilityLabel(Text("Refresh All"))
     }

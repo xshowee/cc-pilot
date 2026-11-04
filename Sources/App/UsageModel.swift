@@ -8,6 +8,10 @@
 // 重读（读文件在后台队列上做），按当前档案列表找到账号并入 board；档案列表变化（登录、换账号）时用已读到的
 // 文件重新并入。这条路径只读本地文件，不发请求，也不碰刷新的状态（UsageBoard.recordLive）。
 //
+// ChatGPT（chatgpt-profiles ticket 07）：额度记在同一个 board 里（账号键带 "chatgpt:" 前缀，不与 Claude 相撞），
+// 由 ChatGPTUsageRefresher 刷新，同一个后台队列逐个账号进行；"刷新全部"同时刷新两段。
+// 响应里的套餐（plan_type）按账号记在 reportedPlans，ChatGPT 行用它更新套餐标记。
+//
 // now 是界面用的时钟：每 15 秒前进一次，只用来重算"N 分钟前获取"、变灰、已重置、还要等多久，
 // 让菜单栏和面板随时间更新；它不触发任何请求。拿到新数据时 now 也会拨到此刻。
 
@@ -22,8 +26,11 @@ final class UsageModel: ObservableObject {
     @Published private(set) var refreshing: Set<UsageAccount> = []
     /// 界面时钟（见文件头）
     @Published private(set) var now = Date()
+    /// ChatGPT 账号最近一次成功刷新时响应里的套餐（plan_type 原样）；响应没给或邮箱对不上时没有
+    @Published private(set) var reportedPlans: [UsageAccount: String] = [:]
 
     private let refresher: UsageRefresher
+    private let chatgptRefresher: ChatGPTUsageRefresher
     private let queue = DispatchQueue(label: "com.ccpilot.usage-refresh", qos: .userInitiated)
     private var clock: AnyCancellable?
 
@@ -38,6 +45,7 @@ final class UsageModel: ObservableObject {
 
     init(environment: CoreEnvironment = .live, changes: ProfileChangeFeed) {
         refresher = UsageRefresher(environment: environment)
+        chatgptRefresher = ChatGPTUsageRefresher(environment: environment)
         liveFiles = LiveQuotaFiles(environment: environment)
         clock = Timer.publish(every: 15, tolerance: 5, on: .main, in: .common)
             .autoconnect()
@@ -100,39 +108,88 @@ final class UsageModel: ObservableObject {
         usage(for: profile)?.isWaiting(now: now) ?? false
     }
 
-    /// "刷新全部"现在能否点：有不在等待期、也没在刷新的账号
-    func canRefreshAny(_ profiles: [Profile]) -> Bool {
-        !pending(UsageRefresher.accounts(in: profiles)).isEmpty
+    func isRefreshing(_ profile: ChatGPTProfile) -> Bool {
+        profile.usageAccount.map(refreshing.contains) ?? false
     }
 
-    /// "刷新全部"：列表里每个账号请求一次（正在刷新、还在等待期内的账号跳过）
-    func refreshAll(_ profiles: [Profile]) {
-        start(UsageRefresher.accounts(in: profiles), profiles)
+    /// 这个 ChatGPT 档案所在账号的额度状态
+    func usage(for profile: ChatGPTProfile) -> AccountUsage? {
+        board.usage(for: profile)
+    }
+
+    /// 这个 ChatGPT 档案所在账号最近一次刷新时响应里的套餐
+    func reportedPlan(for profile: ChatGPTProfile) -> String? {
+        profile.usageAccount.flatMap { reportedPlans[$0] }
+    }
+
+    /// "刷新全部"现在能否点：两段里有不在等待期、也没在刷新的账号
+    func canRefreshAny(_ profiles: [Profile], chatgpt: [ChatGPTProfile] = []) -> Bool {
+        !pending(UsageRefresher.accounts(in: profiles) + ChatGPTUsageRefresher.accounts(in: chatgpt)).isEmpty
+    }
+
+    /// "刷新全部"：两段列表里每个账号请求一次（正在刷新、还在等待期内的账号跳过）
+    func refreshAll(_ profiles: [Profile], chatgpt: [ChatGPTProfile] = []) {
+        start(UsageRefresher.accounts(in: profiles).map { claudeJob($0, profiles) }
+              + ChatGPTUsageRefresher.accounts(in: chatgpt).map { chatgptJob($0, chatgpt) })
     }
 
     /// 刷新这个档案所在的账号
     func refresh(_ profile: Profile, in profiles: [Profile]) {
         guard let account = profile.usageAccount else { return }
-        start([account], profiles)
+        start([claudeJob(account, profiles)])
+    }
+
+    /// 刷新这个 ChatGPT 档案所在的账号
+    func refresh(_ profile: ChatGPTProfile, in profiles: [ChatGPTProfile]) {
+        guard let account = profile.usageAccount else { return }
+        start([chatgptJob(account, profiles)])
+    }
+
+    /// 一个账号的刷新：在后台队列上执行 fetch，结果回到主线程交给 apply
+    private struct Job {
+        let account: UsageAccount
+        let fetch: () -> Result
+    }
+
+    private struct Result {
+        let outcome: UsageRefreshOutcome
+        /// ChatGPT 的响应套餐；Claude 为 nil
+        let reported: ChatGPTReportedAccount?
+    }
+
+    private func claudeJob(_ account: UsageAccount, _ profiles: [Profile]) -> Job {
+        let refresher = refresher
+        return Job(account: account) {
+            Result(outcome: refresher.refresh(account, in: profiles, now: Date()), reported: nil)
+        }
+    }
+
+    private func chatgptJob(_ account: UsageAccount, _ profiles: [ChatGPTProfile]) -> Job {
+        let refresher = chatgptRefresher
+        return Job(account: account) {
+            let result = refresher.refresh(account, in: profiles, now: Date())
+            return Result(outcome: result.outcome, reported: result.reported)
+        }
     }
 
     private func pending(_ accounts: [UsageAccount]) -> [UsageAccount] {
         board.accountsAllowedToRefresh(accounts, now: Date()).filter { !refreshing.contains($0) }
     }
 
-    private func start(_ accounts: [UsageAccount], _ profiles: [Profile]) {
-        let pending = pending(accounts)
+    private func start(_ jobs: [Job]) {
+        let allowed = Set(pending(jobs.map(\.account)))
+        let pending = jobs.filter { allowed.contains($0.account) }
         guard !pending.isEmpty else { return }
         now = Date()
-        refreshing.formUnion(pending)
-        let refresher = refresher
+        refreshing.formUnion(pending.map(\.account))
         queue.async { [weak self] in
-            for account in pending {
-                let outcome = refresher.refresh(account, in: profiles, now: Date())
+            for job in pending {
+                let result = job.fetch()
                 Task { @MainActor in
                     guard let self else { return }
-                    self.board.record(outcome)
-                    self.refreshing.remove(account)
+                    self.board.record(result.outcome)
+                    if let reported = result.reported { self.reportedPlans[job.account] = reported.planType }
+                    self.refreshing.remove(job.account)
                     self.now = Date()
                 }
             }
