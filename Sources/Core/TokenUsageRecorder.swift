@@ -19,7 +19,8 @@
 // 读取位置同一事务，见 TokenLedger+ChatGPT.swift）→ 归属钩子 → 汇总 → 有变化时 onUpdate → 同一批事件交给
 // 实时额度（ChatGPTLiveQuotaTracker），各账号的实时额度交给 onChatGPTLiveQuota。监视器每次扫描都从账本记着的
 // 位置接着读：App 重启后不重读历史会话记录（进行中的会话要等它写下一次事件才有实时额度）；记入账本失败时
-// 位置不前进，下次扫描重读这一批（实时额度重复并入不改变结果）。
+// 位置不前进，下次扫描（不管哪个目录有变化，同 Claude 一侧的 needsFullScan）全量重读，这一批所在的会话已经结束、
+// 目录不再变化也能补上（实时额度重复并入不改变结果）。
 // 默认的归属钩子先归属 Claude 的（SessionAttribution）、再归属 ChatGPT 的（ChatGPTSessionAttribution），
 // 所以 Claude 一侧的同步也会重试 ChatGPT 的归属（等待期是否已过、history.jsonl 是否已写出）。
 // 归属与实时额度共用一个"写入进程"查询（ChatGPTSessionWriters，只能在一个队列上用，所以都在 `queue` 上）；
@@ -234,11 +235,14 @@ final class TokenUsageRecorder: @unchecked Sendable {
             do {
                 try ledger.ingest(chatgpt: scan)
             } catch {
-                NSLog("CC Pilot: 记入 ChatGPT 会话记录失败，下次扫描时重读：%@", String(describing: error))
+                NSLog("CC Pilot: 记入 ChatGPT 会话记录失败，下次扫描时全量重读：%@", String(describing: error))
+                chatgptSessions?.requestFullScan()
             }
             try? attribute(ledger)
             rollUpIfNewDay(ledger)
             if ledger.revision != revision { onUpdate() }
+        } else {
+            chatgptSessions?.requestFullScan()
         }
         let quotas = chatgptLiveQuota.update(with: scan.events)
         if !quotas.isEmpty { onChatGPTLiveQuota(quotas) }

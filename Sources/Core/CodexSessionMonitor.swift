@@ -9,6 +9,8 @@
 // 读取位置（CodexFileCursor）：给了 cursors 时每次扫描前都从它取，位置由调用方保存（ticket 09：TokenUsageRecorder
 // 给的是账本里记着的位置——App 重启后接着读，不重读历史会话记录；记入账本失败时位置不前进，下次扫描重读这一批）。
 // cursors 返回 nil（账本打不开）或没给时，位置在内存里跟着扫描前进，启动时从头读。
+// 调用方没处理成这一批（记入账本失败）时在 onScan 里调用 requestFullScan()：内存里的位置不前进，下一次扫描
+// （不管哪个目录有变化）全量扫描——这一批所在的目录之后可能再也没有变化（会话已经结束），只等它的事件会漏掉。
 // 所有状态只在 queue 上访问；onScan 在 queue 上调用，界面需要自己切回主线程。
 
 import CoreServices
@@ -29,6 +31,8 @@ final class CodexSessionMonitor: @unchecked Sendable {
     private var cursors: [String: CodexFileCursor] = [:]
     /// 上次读不了的文件所在的目录
     private var retry: Set<String> = []
+    /// 下一次扫描全量扫描（requestFullScan）
+    private var needsFullScan = false
 
     private let cursorSource: (() -> [String: CodexFileCursor]?)?
 
@@ -74,13 +78,20 @@ final class CodexSessionMonitor: @unchecked Sendable {
         if DispatchQueue.getSpecific(key: queueKey) == true { body() } else { queue.sync(execute: body) }
     }
 
+    /// 这一批没处理成：内存里的读取位置不前进，下一次扫描全量扫描（见文件头）。只能在 queue 上调用（onScan 里）
+    func requestFullScan() {
+        needsFullScan = true
+    }
+
     /// directories 为 nil 时全量扫描
     private func sync(under directories: Set<String>?) {
-        let scope = directories.map { Array($0.union(retry)).sorted() }
+        let scope = needsFullScan ? nil : directories.map { Array($0.union(retry)).sorted() }
+        needsFullScan = false
         let scan = reader.scan(cursorSource?() ?? cursors, under: scope)
+        onScan(scan)
+        guard !needsFullScan else { return }
         cursors = scan.cursors
         retry = Set(scan.deferred.map { ($0 as NSString).deletingLastPathComponent })
-        onScan(scan)
     }
 
     /// 一批事件涉及的目录（读取器用的路径）；要全量扫描时为 nil

@@ -13,6 +13,8 @@ final class ChatGPTTokenUsageRecorderChecks: CheckSuite {
                   followsChatGPTSessions),
             Check("重启后从账本记着的位置接着读，不重复计入", resumesFromStoredCursors),
             Check("记入账本失败时读取位置不前进，之后重读这一批，不漏记", rereadsAfterFailedIngest),
+            Check("记入账本失败后，下一次扫描（不管哪个目录有变化）全量扫描：已经结束的会话的那一批也读回来",
+                  fullScanAfterFailedIngest),
             Check("Claude 一侧的同步也会重试 ChatGPT 的归属（没有新的 ChatGPT 事件也能过等待期）",
                   claudeSyncRetriesChatGPTAttribution),
             Check("一次扫描（归属 + 实时额度）只列一次进程、只查一次打开的文件；没有待归属会话、没有额度时不列",
@@ -155,6 +157,53 @@ final class ChatGPTTokenUsageRecorderChecks: CheckSuite {
         try expect(waitUntil {
             (try? recorder.read { try $0.messages().filter { $0.tool == .chatgpt }.map(\.attribution) }) == [.unattributed]
         }, "Claude 的同步之后 ChatGPT 的会话仍没有记为未归属")
+    }
+
+    static func fullScanAfterFailedIngest() throws {
+        let env = try A.Env()
+        defer { env.remove() }
+        env.home.codexProcesses.run(pid: 42, home: .path(env.codexHome), files: [env.lock(A.session)])
+        try env.rollout(A.session, events: [1])
+        // 另一个会话在另一个目录（另一天）里，先只有开头
+        let otherPath = CodexRollout.path(A.other, day: "2026/11/05")
+        try env.home.write(otherPath, CodexRollout.file([
+            CodexRollout.meta(id: A.other, at: A.iso(A.start)),
+            CodexRollout.turnContext(model: "gpt-5.3-codex", at: A.iso(A.start)),
+        ]))
+        let now = Box(A.at(5)), quotas = Box<[UsageAccount: LiveQuota]>([:])
+        let recorder = makeRecorder(env, now: now, quotas: quotas)
+        recorder.start()
+        defer { recorder.stop() }
+        try expect(waitUntil { (try? recorder.read { try $0.messages().count }) == 1 }, "启动后 5 秒内没有读入")
+        Thread.sleep(forTimeInterval: 0.3)  // 等启动前写入的文件可能晚到的 FSEvents 扫描做完
+
+        // 账本写不进去时会话写下最后一批，之后会话结束，它所在的目录不再有变化
+        let ledgerPath = TokenLedger.defaultURL(environment: env.home.environment).path
+        try SQLiteDatabase(path: ledgerPath).execute("DROP TABLE chatgpt_files")
+        let handle = try FileHandle(forWritingTo: env.home.url.appendingPathComponent(CodexRollout.path(A.session)))
+        try handle.seekToEnd()
+        try handle.write(contentsOf: Data(CodexRollout.file([
+            CodexRollout.tokenCount(at: A.iso(A.at(2)), last: .init(input: 10, output: 1),
+                                    total: .init(input: 2010, output: 1),
+                                    primary: .init(used: 20, minutes: 300, resetsAt: 1_793_800_000)),
+        ]).utf8))
+        try handle.close()
+        try expect(waitUntil { quotas.value[UsageAccount(id: A.workAccount)] != nil }, "追加的事件 5 秒内没有扫描到")
+        try expectEqual(try recorder.read { try $0.messages().count }, 1, "写入失败，没有记入")
+        try SQLiteDatabase(path: ledgerPath).execute(
+            "CREATE TABLE chatgpt_files (path TEXT PRIMARY KEY, cursor TEXT NOT NULL) WITHOUT ROWID")
+
+        Thread.sleep(forTimeInterval: 0.3)  // 失败的那次扫描之后不再有这个目录的变化
+
+        // 恢复后只有另一个目录里的会话有变化
+        let other = try FileHandle(forWritingTo: env.home.url.appendingPathComponent(otherPath))
+        try other.seekToEnd()
+        try other.write(contentsOf: Data(CodexRollout.file([
+            CodexRollout.tokenCount(at: A.iso(A.at(3)), last: .init(input: 7, output: 1)),
+        ]).utf8))
+        try other.close()
+        try expect(waitUntil { (try? recorder.read { try $0.messages().count }) == 3 },
+                   "写入失败的那一批没有读回来：\((try? recorder.read { try $0.messages().map(\.sessionID) }) ?? [])")
     }
 
     static func rereadsAfterFailedIngest() throws {
