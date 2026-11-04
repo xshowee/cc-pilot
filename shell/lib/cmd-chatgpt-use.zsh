@@ -12,7 +12,11 @@
 #   4. ChatGPT 桌面 App（bundle com.openai.codex）正在运行时：询问"重启 ChatGPT？[y/N]"（--restart / --no-restart
 #      不询问）。重启 = 请它正常退出、等它退出（超时则放弃并说明）、再 open -b 重新打开（继承 launchd 里的新值）。
 #      退出被拒（macOS 自动化授权）、超时、重新打开失败时不算失败：档案照样已经切换，在 stderr 说明怎么手动完成，
-#      退出码仍为 0。所以带 --restart 运行时，stderr 非空就表示 ChatGPT 没有被重启（App 据此提示用户）。
+#      退出码仍为 0。
+#
+# 只给 App 用的选项 --restart-status：要求了重启（--restart 或回答 y）却没能重启时，改以退出码 3 结束
+# （说明照样写 stderr）；重启成功、桌面 App 没在运行、不重启时仍为 0。App 按退出码判断是否重启了，
+# 不看 stderr 是否为空。终端里的用户不带它，没能重启时仍是退出码 0 和人读的说明。
 #
 # 外部程序 launchctl、osascript、open 都按 PATH 查找（测试在 PATH 最前面放假程序，见 tests/fakes/）。
 # 桌面 App 退出后它的 codex app-server 守护进程仍在运行；重启时是否一并停止它待真机实测（ticket 04），目前不停止。
@@ -22,9 +26,12 @@
 _ccp_cmd_chatgpt_use() {
   emulate -L zsh
   local name= restart=ask arg choice
-  integer count=0
+  integer count=0 report=0
   for arg in "$@"; do
     case $arg in
+      (--restart-status)
+        report=1
+        ;;
       (--restart|--no-restart)
         if [[ $arg == --restart ]]; then choice=yes; else choice=no; fi
         if [[ $restart != ask && $restart != $choice ]]; then
@@ -98,7 +105,8 @@ _ccp_cmd_chatgpt_use() {
     print -r -- "没有重启 ChatGPT：它下次打开时使用新档案。"
     return 0
   fi
-  _ccp_chatgpt_restart_app "$name"
+  _ccp_chatgpt_restart_app "$name" && return 0
+  (( report )) && return 3
   return 0
 }
 
@@ -130,7 +138,7 @@ _ccp_chatgpt_app_running() {
   [[ $(osascript -e 'application id "com.openai.codex" is running' 2>/dev/null) == true ]]
 }
 
-# 退出并重新打开 ChatGPT 桌面 App。做不到时在 stderr 说明怎么手动完成，总是返回 0（档案已经切换）。
+# 退出并重新打开 ChatGPT 桌面 App。做不到时在 stderr 说明怎么手动完成，返回 1（档案已经切换，调用方不当作失败）。
 _ccp_chatgpt_restart_app() {
   emulate -L zsh
   zmodload -F zsh/datetime p:EPOCHREALTIME
@@ -144,7 +152,7 @@ _ccp_chatgpt_restart_app() {
     else
       print -u2 -r -- "ccp chatgpt use: 没能退出 ChatGPT（${err:-osascript 失败}）。档案已经切换，请手动退出 ChatGPT 后重新打开，或再执行：$again"
     fi
-    return 0
+    return 1
   fi
 
   local timeout=${CCP_CHATGPT_QUIT_TIMEOUT-15}
@@ -153,14 +161,14 @@ _ccp_chatgpt_restart_app() {
   while _ccp_chatgpt_app_running; do
     if (( EPOCHREALTIME >= deadline )); then
       print -u2 -r -- "ccp chatgpt use: ChatGPT 没有在 $timeout 秒内退出（可能在等你确认），已放弃重启。档案已经切换，ChatGPT 退出后重新打开即可使用新档案，或再执行：$again"
-      return 0
+      return 1
     fi
     /bin/sleep 0.2
   done
 
   if ! open -b com.openai.codex; then
     print -u2 -r -- "ccp chatgpt use: ChatGPT 已退出，但没能重新打开它。档案已经切换，请手动打开 ChatGPT。"
-    return 0
+    return 1
   fi
   print -r -- "已重新打开 ChatGPT，它现在使用档案 $name。"
 }

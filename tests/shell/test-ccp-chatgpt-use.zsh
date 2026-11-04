@@ -244,6 +244,44 @@ test_reopen_failure_is_reported_as_warning() {
   assert_contains "$T_ERR" "手动打开 ChatGPT" "提示手动打开"
 }
 
+# ---------- 给 App 的机器可读信号：--restart-status ----------
+# 带上它时，要求重启却没能重启（退出被拒、超时、重新打开失败）以退出码 3 结束；说明照样写 stderr。
+# 不带它（终端里的用户）时这些情况仍是退出码 0。
+
+test_restart_status_exits_3_when_quit_is_denied() {
+  t_codex_profile work
+  t_chatgpt_app running deny
+  t_ccp chatgpt use work --restart --restart-status
+  assert_rc 3
+  assert_eq "$(< $(ACTIVE))" work "档案照样切换"
+  assert_contains "$T_ERR" "请手动退出 ChatGPT 后重新打开" "说明照样写出"
+}
+
+test_restart_status_exits_3_when_app_does_not_quit_or_reopen() {
+  t_codex_profile work
+  t_chatgpt_app running ignore-quit
+  t_ccp CCP_CHATGPT_QUIT_TIMEOUT=0.2 chatgpt use work --restart-status --restart
+  assert_rc 3
+  rm -f -- $T_CHATGPT_APP/ignore-quit
+  t_chatgpt_app running open-exit
+  t_ccp chatgpt use work --restart --restart-status
+  assert_rc 3
+  assert_contains "$T_ERR" "手动打开 ChatGPT" "提示手动打开"
+}
+
+test_restart_status_exits_0_when_restarted_or_not_needed() {
+  t_codex_profile work
+  t_ccp chatgpt use work --restart --restart-status
+  assert_rc 0
+  t_chatgpt_app running
+  t_ccp chatgpt use work --restart --restart-status
+  assert_rc 0
+  assert_stderr_empty
+  chatgpt_app_running || fail "应已重新打开"
+  t_ccp chatgpt use work --no-restart --restart-status
+  assert_rc 0
+}
+
 # ---------- Claude Code 一侧不受影响 ----------
 
 test_chatgpt_use_does_not_touch_claude_record() {

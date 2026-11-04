@@ -15,6 +15,7 @@ final class ChatGPTSwitchChecks: CheckSuite {
             Check("切回默认档案：launchd 里去掉 CODEX_HOME", switchToDefaultUnsets),
             Check("退出桌面 App 被拒：档案照样切换，结果带上 ccp 的说明", deniedQuitStillSwitches),
             Check("手动重启的命令：可复制到终端执行的 ccp chatgpt use <名字> --restart", manualRestartCommand),
+            Check("是否重启了只看 ccp 的退出码 3（--restart-status），不看 stderr 是否为空", restartOutcomeFromExitStatus),
             Check("档案不存在：抛出错误、带上 ccp 的说明，记录与 launchd 不变", missingProfileThrows),
             Check("已安装 ~/.cc-pilot 时执行已安装的 ccp", usesInstalledCcp),
             Check("App 启动时：按当前档案执行一次 --no-restart，恢复 launchd 的 CODEX_HOME，不碰桌面 App", restoreAtLaunch),
@@ -119,6 +120,33 @@ final class ChatGPTSwitchChecks: CheckSuite {
         try expectEqual(switcher(home).manualRestartCommand("work"), "~/.cc-pilot/bin/ccp chatgpt use work --restart")
     }
 
+    static func restartOutcomeFromExitStatus() throws {
+        let home = try TempHome()
+        defer { home.remove() }
+        let ccp = home.url.appendingPathComponent(".cc-pilot/bin/ccp")
+        func installCcp(_ body: String) throws {
+            try home.write(".cc-pilot/bin/ccp", "#!/bin/zsh -f\n" + body + "\n")
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: ccp.path)
+        }
+        // 重启成功，但 stderr 上有别的输出（例如某个程序的警告）：仍是重启了
+        try installCcp("print -u2 -r -- 'warning: something unrelated'; exit 0")
+        try expectEqual(try switcher(home).switchTo("work", restart: true), .switched)
+        // 退出码 3：没有重启，带上 ccp 的说明
+        try installCcp("print -u2 -r -- '请手动退出 ChatGPT 后重新打开'; exit 3")
+        try expectEqual(try switcher(home).switchTo("work", restart: true),
+                        .switchedWithoutRestart("请手动退出 ChatGPT 后重新打开"))
+        // 其他非零退出码仍是失败
+        try installCcp("print -u2 -r -- 'launchctl 失败'; exit 1")
+        do {
+            _ = try switcher(home).switchTo("work", restart: true)
+            throw CheckFailure(description: "退出码 1 应抛出错误")
+        } catch let failure as ChatGPTProfileSwitcher.Failure {
+            try expectEqual(failure.status, 1)
+        }
+        // 手动重启的命令不带只给 App 用的选项
+        try expect(!switcher(home).manualRestartCommand("work").contains("--restart-status"), "手动命令不带 --restart-status")
+    }
+
     static func missingProfileThrows() throws {
         let home = try TempHome()
         defer { home.remove() }
@@ -156,7 +184,7 @@ final class ChatGPTSwitchChecks: CheckSuite {
 
         _ = try switcher(home).switchTo("work", restart: true)
 
-        try expectEqual(installedCcpArgs(home), ["chatgpt", "use", "work", "--restart"])
+        try expectEqual(installedCcpArgs(home), ["chatgpt", "use", "work", "--restart", "--restart-status"])
         try expectEqual(home.launchctlCalls().count, 0, "执行的是已安装的（假）ccp，不是内置的")
     }
 

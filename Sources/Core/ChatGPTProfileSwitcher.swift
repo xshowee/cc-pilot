@@ -5,6 +5,9 @@
 // App 启动时执行一次 `ccp chatgpt use <当前档案> --no-restart`，恢复重启或注销后丢失的 launchd 环境变量。
 // 之后的当前档案由文件监听读回（ChatGPTProfileStore）。
 //
+// 是否重启了只看 ccp 的退出码：切换时带上只给 App 用的 --restart-status，要求重启却没能重启时 ccp 以 3 结束
+// （说明写在 stderr）；不看 stderr 是否为空（别的程序的警告也可能写到那里）。
+//
 // 执行哪个 ccp：已安装 ~/.cc-pilot/bin/ccp 时用它，否则用 App 内置的（与 ShellIntegration.disconnect 相同）。
 // 环境只有 HOME、PATH（CoreEnvironment.searchPath，测试在最前面放假程序）、LANG；标准输入为空，
 // 所以 ccp 不会停在询问上（App 总是传 --restart 或 --no-restart）。
@@ -40,16 +43,21 @@ struct ChatGPTProfileSwitcher {
         self.bundledCcp = bundledCcp
     }
 
-    /// 交给 ccp 的参数
+    /// 交给 ccp 的参数（也用于给用户复制的手动命令，所以不含只给 App 用的选项）
     static func arguments(switchingTo name: String, restart: Bool) -> [String] {
         ["chatgpt", "use", name, restart ? "--restart" : "--no-restart"]
     }
 
+    /// 只给 App 用的选项：要求重启却没能重启时，ccp 以 notRestartedStatus 结束（终端里不带它时仍是 0）
+    static let restartStatusOption = "--restart-status"
+    static let notRestartedStatus: Int32 = 3
+
     /// 切换到 name。restart：桌面 App 正在运行时是否退出并重新打开它（用户在确认框里的选择）。
     func switchTo(_ name: String, restart: Bool) throws -> Outcome {
-        let result = try runCcp(Self.arguments(switchingTo: name, restart: restart))
-        // ccp 只在没能重启桌面 App 时往 stderr 写说明，退出码仍为 0（档案已经切换）
-        if restart, !result.stderr.isEmpty { return .switchedWithoutRestart(result.stderr) }
+        let result = try runCcp(Self.arguments(switchingTo: name, restart: restart) + [Self.restartStatusOption],
+                                accepting: [Self.notRestartedStatus])
+        // 退出码 3：档案已经切换，但没能重启桌面 App，stderr 里是 ccp 的说明
+        if result.status == Self.notRestartedStatus { return .switchedWithoutRestart(result.stderr) }
         return .switched
     }
 
@@ -70,7 +78,8 @@ struct ChatGPTProfileSwitcher {
             .ccpCommand(Self.arguments(switchingTo: name, restart: true))
     }
 
-    private func runCcp(_ arguments: [String]) throws -> Subprocess.Result {
+    /// accepting：除 0 以外也算 ccp 执行成功的退出码
+    private func runCcp(_ arguments: [String], accepting: Set<Int32> = []) throws -> Subprocess.Result {
         let installed = environment.home.appendingPathComponent(".cc-pilot/bin/ccp")
         let ccp: URL
         if FileManager.default.isExecutableFile(atPath: installed.path) {
@@ -85,7 +94,9 @@ struct ChatGPTProfileSwitcher {
             "PATH": environment.searchPath,
             "LANG": "en_US.UTF-8",
         ], currentDirectory: environment.home)
-        guard result.status == 0 else { throw Failure(status: result.status, message: result.stderr) }
+        guard result.status == 0 || accepting.contains(result.status) else {
+            throw Failure(status: result.status, message: result.stderr)
+        }
         return result
     }
 }
