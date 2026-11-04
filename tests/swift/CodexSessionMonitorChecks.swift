@@ -9,6 +9,7 @@ final class CodexSessionMonitorChecks: CheckSuite {
     override class var checks: [Check] {
         [
             Check("启动时读入已有的会话记录；之后追加的事件自动读入，不重复", backfillsThenFollows),
+            Check("同一批变化报告了父目录与子目录（零点新建日期目录时）也不重复读入", followsNestedDirectoriesOnce),
             Check("会话目录启动时还不存在，之后创建也能读入", picksUpRootsCreatedLater),
             Check("只扫描事件报告的目录；根目录本身变化或要求重新扫描时全量", scopesToReportedDirectories),
         ]
@@ -54,6 +55,36 @@ final class CodexSessionMonitorChecks: CheckSuite {
         try handle.close()
         try expect(collected.wait(for: 2), "追加的事件 5 秒内没有读入")
         Thread.sleep(forTimeInterval: 0.3)
+        try expectEqual(collected.all.map(\.usage?.input), [1, 2])
+    }
+
+    static func followsNestedDirectoriesOnce() throws {
+        let home = try TempHome()
+        defer { home.remove() }
+        let path = CodexRollout.path(id)
+        try home.write(path, CodexRollout.file([
+            CodexRollout.meta(id: id, at: t0),
+            CodexRollout.tokenCount(at: t0, last: .init(input: 1, output: 1)),
+        ]))
+        let collected = Collected()
+        // 合并窗口放长，让新建目录与追加写入落在同一批通知里。没合并到一批时是两次各自正确的扫描，
+        // 本检查不会误报、只是抓不到回归；确定性的守护是 CodexSessionReaderChecks 的"目录互相包含"
+        let monitor = CodexSessionMonitor(environment: home.environment, latency: 0.5) { collected.add($0) }
+        monitor.start()
+        defer { monitor.stop() }
+        try expect(collected.wait(for: 1), "启动后 5 秒内没有读入已有的会话记录")
+        Thread.sleep(forTimeInterval: 0.6)
+
+        // 新的一天：sessions/2026/11 下新建 05 目录（报告 2026/11），同时 04 里的会话继续写（报告 2026/11/04）
+        try FileManager.default.createDirectory(
+            at: home.url.appendingPathComponent(".codex/sessions/2026/11/05"), withIntermediateDirectories: true)
+        let handle = try FileHandle(forWritingTo: home.url.appendingPathComponent(path))
+        try handle.seekToEnd()
+        try handle.write(contentsOf: Data((CodexRollout.tokenCount(at: t0, last: .init(input: 2, output: 1),
+                                                                   total: .init(input: 3, output: 2)) + "\n").utf8))
+        try handle.close()
+        try expect(collected.wait(for: 2), "追加的事件 5 秒内没有读入")
+        Thread.sleep(forTimeInterval: 1)
         try expectEqual(collected.all.map(\.usage?.input), [1, 2])
     }
 

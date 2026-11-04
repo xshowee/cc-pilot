@@ -17,6 +17,7 @@ final class CodexSessionReaderChecks: CheckSuite {
             Check("损坏的 .zst（不是截断）不反复重读：记下位置跳过，文件变了才再读", skipsCorruptZst),
             Check("只读 ~/.codex 的 sessions 与 archived_sessions 各一次，不进档案里指向它们的软链接", readsSharedRootsOnce),
             Check("只扫描给出的目录：别处的位置原样保留；扫描过的目录里删掉的文件位置被忘掉", scansOnlyGivenDirectories),
+            Check("给出的目录互相包含（同一批变化报告了父目录与子目录）时每份文件只读一次", readsNestedDirectoriesOnce),
             Check("fork 重放的父会话事件、重复写的同一事件去重键相同；之后的新事件去重键不同", deduplicationKeys),
             Check("窗口按 window_minutes 识别（不按 primary / secondary）；其他长度、其他 limit_id 不算", identifiesWindows),
         ]
@@ -268,6 +269,31 @@ final class CodexSessionReaderChecks: CheckSuite {
         let scan4 = reader.scan(scan3.cursors, under: [todayDir])
         try expect(scan4.cursors[home.url.appendingPathComponent(today).path] == nil, "删掉的文件位置被忘掉")
         try expect(scan4.cursors[olderFile] != nil, "没扫描的目录里的位置保留")
+    }
+
+    static func readsNestedDirectoriesOnce() throws {
+        let home = try TempHome()
+        defer { home.remove() }
+        let path = CodexRollout.path(sessionA)
+        try home.write(path, CodexRollout.file([
+            CodexRollout.meta(id: sessionA, at: t0),
+            CodexRollout.tokenCount(at: t1, last: .init(input: 1, output: 1)),
+        ]))
+        let reader = CodexSessionReader(environment: home.environment)
+        let scan1 = reader.scan([:])
+        let handle = try FileHandle(forWritingTo: home.url.appendingPathComponent(path))
+        try handle.seekToEnd()
+        try handle.write(contentsOf: Data((CodexRollout.tokenCount(at: t2, last: .init(input: 2, output: 1),
+                                                                   total: .init(input: 3, output: 2)) + "\n").utf8))
+        try handle.close()
+        // FSEvents 一批里可以同时有新建的日期目录的父目录与追加写入的目录（例如零点新建 2026/11/05 时）
+        let sessions = home.url.path + "/.codex/sessions"
+        let scan2 = reader.scan(scan1.cursors, under: [sessions + "/2026/11/04", sessions + "/2026/11/",
+                                                       sessions + "/2026", sessions + "/2026/11/04/"])
+        try expectEqual(scan2.events.map(\.usage?.input), [2])
+        let file = home.url.appendingPathComponent(path).path
+        try expectEqual(reader.scan(scan2.cursors).events.count, 0, "读过的不再读")
+        try expectEqual(scan2.cursors[file], reader.scan(scan2.cursors).cursors[file])
     }
 
     // MARK: 去重键

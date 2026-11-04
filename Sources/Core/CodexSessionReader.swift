@@ -11,6 +11,8 @@
 //              不重复计入）。截断（正在写入）或读文件出错时位置不动，记进 deferred，下次再试；
 //              其他解压错误（损坏、要字典、超过上限）记下位置跳过，文件再变才重读。
 // 只扫描 under 给出的目录时，别处文件的位置原样保留；扫描过的目录里已不存在的文件，位置被忘掉。
+// under 里的目录可以互相包含（FSEvents 一批里同时报告父目录与子目录，例如零点新建日期目录时）：
+// 每份文件只读一次——否则每个包含它的目录都从同一个旧位置读一遍，同一批新事件会重复报告。
 // 只读文件，不写任何东西；读不了的文件跳过。调用方负责在一个线程 / 串行队列上使用。
 
 import Foundation
@@ -41,9 +43,11 @@ struct CodexSessionReader {
 
     /// 扫描会话目录。under 为 nil 时扫描两个会话目录的全部；否则只扫描这些目录（及其子目录）
     func scan(_ cursors: [String: CodexFileCursor], under directories: [String]? = nil) -> CodexSessionScan {
-        let scopes = (directories ?? roots).map(Self.trimmingSlash)
+        let given = Set((directories ?? roots).map(Self.trimmingSlash))
+        // 被别的目录包含的不再单独枚举；文件列表再去重一次，保证每份文件只读一次
+        let scopes = given.filter { scope in !given.contains(where: { Self.isInside(scope, $0) }) }.sorted()
         var result = CodexSessionScan(cursors: cursors)
-        let files = scopes.flatMap(Self.rolloutFiles).sorted()
+        let files = Set(scopes.flatMap(Self.rolloutFiles)).sorted()
         let found = Set(files)
         for path in cursors.keys where !found.contains(path) && scopes.contains(where: { Self.isInside(path, $0) }) {
             result.cursors[path] = nil
