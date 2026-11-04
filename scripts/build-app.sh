@@ -61,12 +61,17 @@ SPARKLE=$(./scripts/fetch-sparkle.sh)
 
 print -r -- "==> 编译 $EXECUTABLE $VERSION（${(j:, :)archs}，macOS $MIN_MACOS+）"
 SDK=$(xcrun --show-sdk-path)
+# 较新的 Xcode 把 SwiftUIMacros 等宏插件放在 MacOSX 平台目录下，命令行 swiftc 默认不搜索那里，
+# @State 等宏会报 "plugin for module 'SwiftUIMacros' not found"；目录存在时显式加上（同 check.sh）。
+typeset -a plugin_args
+platform_plugins="$(xcode-select -p)/Platforms/MacOSX.platform/Developer/usr/lib/swift/host/plugins"
+[[ -d $platform_plugins ]] && plugin_args=(-plugin-path "$platform_plugins")
 mkdir -p -- $BUILD/obj
 typeset -a slices
 for arch in $archs; do
   slice=$BUILD/obj/$EXECUTABLE-$arch
   swiftc -O -swift-version 5 -parse-as-library \
-    -sdk $SDK -target $arch-apple-macos$MIN_MACOS \
+    -sdk $SDK -target $arch-apple-macos$MIN_MACOS $plugin_args \
     -module-name $EXECUTABLE -module-cache-path $BUILD/obj/ModuleCache \
     -F $SPARKLE -framework Sparkle -Xlinker -rpath -Xlinker @executable_path/../Frameworks \
     Sources/Core/*.swift Sources/App/*.swift -o $slice
