@@ -5,7 +5,7 @@
 #   - 命令表：两份 README 的命令表各自列出的 ccp 子命令，与 shell/lib/cmd-*.zsh 完全一致。
 #     命令表的每一行以 "| `ccp <命令>" 开头（README 里约定的写法），其他地方提到 ccp 不算。
 #   - 接入行：README 里写的 ~/.zshrc 接入行与 ccp init 实际写入的逐字节相同。
-#   - 联网承诺：README 写出的两个地址就是代码里的额度接口和 Info.plist 的 SUFeedURL。
+#   - 联网承诺：README 写出的三个地址就是代码里的两个额度接口（Claude Code、ChatGPT）和 Info.plist 的 SUFeedURL。
 source "${0:A:h}/lib.zsh"
 
 READMES=($ROOT/README.md $ROOT/README.zh-CN.md)
@@ -51,16 +51,21 @@ test_readmes_show_the_exact_zshrc_line() {
   done
 }
 
-test_readmes_name_the_only_two_network_addresses() {
-  local endpoint feed
+test_readmes_name_the_only_three_network_addresses() {
+  local endpoint chatgpt_endpoint feed
   endpoint=$(sed -n 's/.*static let endpoint = URL(string: "\([^"]*\)").*/\1/p' \
     $ROOT/Sources/Core/UsageRefresher.swift)
   [[ $endpoint == https://* ]] || fail "取不到额度接口地址：[$endpoint]"
+  # ChatGPT 的额度接口（chatgpt-profiles ticket 07、12）
+  chatgpt_endpoint=$(sed -n 's/.*static let usageEndpoint = URL(string: "\([^"]*\)").*/\1/p' \
+    $ROOT/Sources/Core/ChatGPTUsageRefresher.swift)
+  [[ $chatgpt_endpoint == https://* ]] || fail "取不到 ChatGPT 额度接口地址：[$chatgpt_endpoint]"
   feed=$(/usr/libexec/PlistBuddy -c "Print :SUFeedURL" $ROOT/Resources/Info.plist)
   [[ $feed == https://* ]] || fail "取不到 SUFeedURL：[$feed]"
   local readme
   for readme in $READMES; do
     assert_contains "$(< $readme)" "$endpoint" "${readme:t} 写明额度接口"
+    assert_contains "$(< $readme)" "$chatgpt_endpoint" "${readme:t} 写明 ChatGPT 额度接口"
     assert_contains "$(< $readme)" "$feed" "${readme:t} 写明更新检查地址"
   done
 }
