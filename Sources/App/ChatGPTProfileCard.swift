@@ -1,6 +1,6 @@
 // 面板里的 ChatGPT 档案卡片：在 ChatGPTProfileRow 外面包一层卡片底色和描边，样式与 SwitchableProfileRow 相同；
 // 当前档案用强调色的淡底色和强调色头像标出。
-// onSelect 为 nil 时（ticket 02：切换由 ticket 04 接上）卡片不可点击；ticket 04 传入切换动作即可点击切换。
+// onSelect 为 nil 时卡片不可点击（例如正在后台切换）；面板传入切换动作（ticket 04）即可点击切换。
 // 右上角的按钮叠在卡片上面（点它们不会切换），参照 SwitchableProfileRow：已登录 ChatGPT 的档案有刷新按钮
 // （ticket 07，onRefresh 为 nil 时不显示），删除（06）以后加在它左边。
 

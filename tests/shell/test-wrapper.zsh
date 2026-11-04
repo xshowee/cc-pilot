@@ -228,7 +228,8 @@ test_wrapper_works_under_unusual_user_options() {
 
 # ---------- 入口文件 cc-pilot.zsh ----------
 
-test_sourcing_entry_only_adds_claude_and_private_names() {
+# 入口只多出 claude、codex（chatgpt-profiles ticket 04）两个包装函数和 _ccp_ 开头的私有函数
+test_sourcing_entry_only_adds_wrappers_and_private_names() {
   t_run -- /bin/zsh -f -c '
     before_f=(${(k)functions}); before_p=(${(k)parameters})
     source "$HOME/.cc-pilot/cc-pilot.zsh" || exit 98
@@ -240,9 +241,10 @@ test_sourcing_entry_only_adds_claude_and_private_names() {
   assert_rc 0
   local line
   for line in ${(f)T_OUT}; do
-    [[ $line == ("function claude"|"function _ccp_"*) ]] || fail "source 后多出了 [$line]"
+    [[ $line == ("function claude"|"function codex"|"function _ccp_"*) ]] || fail "source 后多出了 [$line]"
   done
   assert_contains "$T_OUT" "function claude" "应定义 claude 函数"
+  assert_contains "$T_OUT" "function codex" "应定义 codex 函数"
 }
 
 test_sourcing_entry_puts_installed_bin_on_path_once() {

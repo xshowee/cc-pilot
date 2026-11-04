@@ -7,9 +7,15 @@
 //
 // 网络：`environment` 里的网络层一律是 `transport`（假的，见 FakeUsageTransport.swift），绝不访问真的网络。
 //
-// 终端：`environment` 里的 osascript 一律是假的 tests/fakes/fake-osascript（经 root/bin/osascript 包一层，
+// 终端：`environment` 里的 osascript 一律是假的 tests/fakes/fake-osascript（经 root/bin/terminal-osascript 包一层，
 // 带上 FAKE_OSASCRIPT_DIR = root/osascript），绝不会真的打开终端或触发自动化授权弹窗。
 // 用 `osascriptCalls()` 读取调用记录，`osascriptFails(exit:stderr:)` 模拟失败。
+//
+// ccp 按 PATH 调用的 codex、launchctl、osascript、open（chatgpt-profiles ticket 04）：`searchPath` 最前面的 root/bin
+// 里有同名包装脚本，带上 FAKE_CODEX_DIR = root/codex、FAKE_LAUNCHCTL_DIR = root/launchctl、
+// FAKE_CHATGPT_APP_DIR = root/chatgpt-app 再执行 tests/fakes/ 里的同名假程序。所以经 `environment.searchPath`
+// 运行的 ccp 绝不会改动真实的 launchd 环境、退出用户的 ChatGPT 或运行真的 codex。
+// 用 `setLaunchdEnv`、`launchdEnv`、`launchctlCalls`、`chatgptApp`、`chatgptAppCalls`、`codexCalls` 准备和读取。
 
 import Foundation
 
@@ -27,6 +33,10 @@ final class TempHome {
     let fakeOsascriptDir: URL
     /// 注入给 App 核心的 osascript 路径（调用假 osascript 的包装脚本）
     let osascriptTool: URL
+    /// 假 codex、假 launchctl、假 ChatGPT 桌面 App（假 osascript 与假 open 共用）的数据目录
+    let fakeCodexDir: URL
+    let fakeLaunchctlDir: URL
+    let fakeChatGPTAppDir: URL
     /// 注入给 App 核心的"当前用户名"
     static let userName = "tester"
     /// 注入给 App 核心的版本号（额度请求的 User-Agent 用它）
@@ -55,7 +65,7 @@ final class TempHome {
         try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: securityTool.path)
 
         fakeOsascriptDir = root.appendingPathComponent("osascript")
-        osascriptTool = root.appendingPathComponent("bin/osascript")
+        osascriptTool = root.appendingPathComponent("bin/terminal-osascript")
         try fm.createDirectory(at: fakeOsascriptDir, withIntermediateDirectories: true)
         let fakeOsascript = repoRoot.appendingPathComponent("tests/fakes/fake-osascript").path
         let osascriptWrapper = """
@@ -66,6 +76,24 @@ final class TempHome {
             """
         try Data(osascriptWrapper.utf8).write(to: osascriptTool)
         try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: osascriptTool.path)
+
+        fakeCodexDir = root.appendingPathComponent("codex")
+        fakeLaunchctlDir = root.appendingPathComponent("launchctl")
+        fakeChatGPTAppDir = root.appendingPathComponent("chatgpt-app")
+        let fakes = repoRoot.appendingPathComponent("tests/fakes")
+        for tool in ["codex", "launchctl", "osascript", "open"] {
+            let script = """
+                #!/bin/zsh -f
+                export FAKE_CODEX_DIR=\(Self.shellQuote(fakeCodexDir.path))
+                export FAKE_LAUNCHCTL_DIR=\(Self.shellQuote(fakeLaunchctlDir.path))
+                export FAKE_CHATGPT_APP_DIR=\(Self.shellQuote(fakeChatGPTAppDir.path))
+                exec \(Self.shellQuote(fakes.appendingPathComponent(tool).path)) "$@"
+
+                """
+            let file = root.appendingPathComponent("bin/\(tool)")
+            try Data(script.utf8).write(to: file)
+            try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: file.path)
+        }
     }
 
     private static func shellQuote(_ s: String) -> String {
@@ -82,7 +110,8 @@ final class TempHome {
                         osascript: osascriptTool)
     }
 
-    /// 交给 App 核心运行 shell 脚本时的 PATH：最前面是假的 security（本目录的包装）和 tests/fakes/ 里的假 claude
+    /// 交给 App 核心运行 shell 脚本时的 PATH：最前面是本目录的包装（假 security、codex、launchctl、osascript、open），
+    /// 然后是 tests/fakes/ 里的假 claude
     var searchPath: String {
         let fakes = repoRoot.appendingPathComponent("tests/fakes").path
         return "\(securityTool.deletingLastPathComponent().path):\(fakes):/usr/bin:/bin:/usr/sbin:/sbin"
@@ -148,6 +177,46 @@ final class TempHome {
     func osascriptFails(exit: Int32, stderr: String) throws {
         try Data("\(exit)\n".utf8).write(to: fakeOsascriptDir.appendingPathComponent("exit"))
         try Data(stderr.utf8).write(to: fakeOsascriptDir.appendingPathComponent("stderr"))
+    }
+
+    // MARK: 假 launchctl、假 ChatGPT 桌面 App、假 codex
+
+    /// 假 launchd 环境里变量 name 的值；没有时为 nil
+    func launchdEnv(_ name: String) -> String? {
+        try? String(contentsOf: fakeLaunchctlDir.appendingPathComponent("env/\(name)"), encoding: .utf8)
+    }
+
+    /// 在假 launchd 环境里预先设置一个变量
+    func setLaunchdEnv(_ name: String, _ value: String) throws {
+        let dir = fakeLaunchctlDir.appendingPathComponent("env")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try Data(value.utf8).write(to: dir.appendingPathComponent(name))
+    }
+
+    /// 假 launchctl 每次被调用时收到的参数
+    func launchctlCalls() -> [[String]] {
+        Self.calls(in: fakeLaunchctlDir.appendingPathComponent("calls"))
+    }
+
+    /// 假 ChatGPT 桌面 App 的状态文件：running、deny、ignore-quit（含义见 tests/fakes/osascript）
+    func chatgptApp(_ states: String...) throws {
+        try FileManager.default.createDirectory(at: fakeChatGPTAppDir, withIntermediateDirectories: true)
+        for state in states { try Data().write(to: fakeChatGPTAppDir.appendingPathComponent(state)) }
+    }
+
+    /// 假桌面 App 正在运行时，它启动时从 launchd 拿到的 CODEX_HOME（"" 表示没有）；没在运行时为 nil
+    var chatgptAppRunningHome: String? {
+        try? String(contentsOf: fakeChatGPTAppDir.appendingPathComponent("running"), encoding: .utf8)
+    }
+
+    /// 假 osascript 与假 open 每次被调用时收到的参数（两者共用编号）
+    func chatgptAppCalls() -> [[String]] {
+        Self.calls(in: fakeChatGPTAppDir.appendingPathComponent("calls"))
+    }
+
+    /// 假 codex 每次被调用时收到的参数
+    func codexCalls() -> [[String]] {
+        Self.calls(in: fakeCodexDir.appendingPathComponent("calls"))
     }
 
     /// 读取假程序的调用记录目录（calls/1、2、3……，每个参数一行 arg=<参数>）

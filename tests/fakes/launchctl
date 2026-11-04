@@ -1,0 +1,52 @@
+#!/bin/zsh -f
+# 假的 launchctl：用一个目录模拟 launchd 的环境变量（launchctl setenv / unsetenv / getenv），记录每次调用。
+# 绝不改动真实的 launchd 环境。
+#
+# 配置：环境变量 FAKE_LAUNCHCTL_DIR 指向一个目录（未设置时以 99 退出，绝不回退到真程序）。
+#
+#   $FAKE_LAUNCHCTL_DIR/env/<变量名>   launchd 里的一个变量，文件内容就是它的值（不含结尾换行）
+#   $FAKE_LAUNCHCTL_DIR/calls/1、2……   每次调用：argc=<参数个数>，然后每个参数一行 arg=<参数>
+#   $FAKE_LAUNCHCTL_DIR/exit           存在时：记录后以其中的数字退出，不改环境（模拟失败）
+#   $FAKE_LAUNCHCTL_DIR/stderr         存在时：原样输出到 stderr
+#
+# 支持：setenv <变量> <值>、unsetenv <变量>、getenv <变量>（变量不存在时什么都不输出，退出码 0）。
+# 其他用法以 2 退出，让测试发现意外的调用。
+
+emulate -R zsh
+setopt extended_glob
+
+if [[ -z ${FAKE_LAUNCHCTL_DIR-} ]]; then
+  print -u2 -r -- "fake launchctl: FAKE_LAUNCHCTL_DIR 未设置"
+  exit 99
+fi
+mkdir -p -- $FAKE_LAUNCHCTL_DIR/calls $FAKE_LAUNCHCTL_DIR/env || exit 99
+
+integer n=1
+while [[ -e $FAKE_LAUNCHCTL_DIR/calls/$n ]]; do (( n++ )); done
+{
+  print -r -- "argc=$#"
+  for a in "$@"; do print -r -- "arg=$a"; done
+} > $FAKE_LAUNCHCTL_DIR/calls/$n
+
+[[ -f $FAKE_LAUNCHCTL_DIR/stderr ]] && /bin/cat -- $FAKE_LAUNCHCTL_DIR/stderr >&2
+if [[ -f $FAKE_LAUNCHCTL_DIR/exit ]]; then
+  integer rc=1
+  read -r rc < $FAKE_LAUNCHCTL_DIR/exit
+  exit $rc
+fi
+
+var=${2-}
+if [[ $var != [A-Za-z_][A-Za-z0-9_]# ]]; then
+  print -u2 -r -- "fake launchctl: 不支持的用法：$*"
+  exit 2
+fi
+case "${1-}:$#" in
+  (setenv:3)   print -rn -- "$3" > $FAKE_LAUNCHCTL_DIR/env/$var ;;
+  (unsetenv:2) /bin/rm -f -- $FAKE_LAUNCHCTL_DIR/env/$var ;;
+  (getenv:2)   [[ -f $FAKE_LAUNCHCTL_DIR/env/$var ]] && print -r -- "$(< $FAKE_LAUNCHCTL_DIR/env/$var)" ;;
+  (*)
+    print -u2 -r -- "fake launchctl: 不支持的用法：$*"
+    exit 2
+    ;;
+esac
+exit 0

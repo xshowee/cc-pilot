@@ -6,7 +6,7 @@
 
 ```
 ~/.cc-pilot/
-├── cc-pilot.zsh        入口：被 ~/.zshrc source；定义 claude 包装函数，把 bin/ 加到 PATH 最前面
+├── cc-pilot.zsh        入口：被 ~/.zshrc source；定义 claude、codex 包装函数，把 bin/ 加到 PATH 最前面
 ├── bin/ccp             命令行工具（可执行，#!/bin/zsh -f）
 └── lib/
     ├── profiles.zsh    共享库：档案目录、当前档案记录、档案名规则、档案解析
@@ -26,10 +26,10 @@
 
 ## 代码约定
 
-- `cc-pilot.zsh` 只 source `lib/profiles.zsh`；`bin/ccp` source `lib/` 下所有不以 `cmd-` 开头的 `.zsh` 文件，再只 source 被调用的那个 `cmd-<命令>.zsh`。新增共享库直接放进 `lib/` 即可。
+- `cc-pilot.zsh` 只 source `lib/profiles.zsh` 和 `lib/chatgpt-profiles.zsh`（包装函数要用的辅助函数必须放在这两个文件里）；`bin/ccp` source `lib/` 下所有不以 `cmd-` 开头的 `.zsh` 文件，再只 source 被调用的那个 `cmd-<命令>.zsh`。新增共享库直接放进 `lib/` 即可。
 - `lib/` 里的代码会进入用户的交互 shell：只定义 `_ccp_` 开头的函数，不定义全局变量；函数开头写 `emulate -L zsh`；出错只 `return`，不 `exit`。
 - 输出位置：询问（如 `[y/N]`）、进度和结果写 stdout；错误（以 `ccp <命令>:` 开头）、用法说明和警告写 stderr。
-- 系统工具用绝对路径（`/usr/bin/osascript`、`/usr/bin/shasum`）；`claude`、`codex` 和 `security` 按 PATH 查找，测试会在 PATH 最前面放假程序（`tests/fakes/`）。
+- 系统工具用绝对路径（`/usr/bin/osascript`、`/usr/bin/shasum`）；`claude`、`codex`、`security` 按 PATH 查找，测试会在 PATH 最前面放假程序。例外：`ccp chatgpt` 用来改 launchd 环境、控制 ChatGPT 桌面 App 的 `launchctl`、`osascript`、`open` 也按 PATH 查找（spec 要求可被测试替换，`tests/fakes/` 里有同名假程序）；做 JSON 和 NFC 的 `/usr/bin/osascript` 仍用绝对路径。
 
 ## 接入 zsh（`ccp init` / `ccp uninstall`）
 
@@ -78,6 +78,27 @@ source "$HOME/.cc-pilot/cc-pilot.zsh"  # cc-pilot
 不创建、不复制：`auth.json`、`installation_id`、`.codex-global-state.json`、`history.jsonl`、`sqlite/`（桌面 App 自己的库，issue 01 实测每个档案一份即可）。建链接或写 `config.toml` 失败时删除整个新档案目录（只删链接本身）。
 
 然后以 `CODEX_HOME=<档案目录> command codex login` 登录（不经过包装函数，也不看 `CODEX_PROFILE`），不改变当前档案。`codex` 退出码非零或退出后档案里没有 `auth.json` 时保留档案，在 stderr 最后一行给出之后登录用的命令 `CODEX_HOME=<档案目录> command codex login`（`command` 绕过包装函数，否则包装函数会把 `~/.codex-profiles/` 下的 `CODEX_HOME` 换成当前档案），退出码非零。
+
+### `ccp chatgpt use <名字> [--restart|--no-restart]`（ADR 0005）
+
+切换逻辑只在这里实现一份，App 点击 ChatGPT 档案时在后台执行它（总是带 `--restart` 或 `--no-restart`），App 启动时执行 `ccp chatgpt use <当前档案> --no-restart` 恢复重启后丢失的 launchd 环境变量。
+
+1. 名字检查与 `ccp use` 相同；不通过时什么都不改，退出码 1（参数错误 2）。
+2. 写 `~/.codex-profiles/active`（格式、原子写入与 `ccp use` 相同）。
+3. `launchctl setenv CODEX_HOME <档案目录>`；`default` 时 `launchctl unsetenv CODEX_HOME`。之后经 LaunchServices 打开的 App（Dock、Spotlight、`open`、Zed 等）使用新档案。失败时退出码 1。
+4. ChatGPT 桌面 App（`com.openai.codex`）正在运行时询问"重启 ChatGPT？[y/N]"（只认 `y`/`yes`，读不到算否；`--restart`/`--no-restart` 不询问）。重启：`osascript -e 'tell application id "com.openai.codex" to quit'`，每 0.2 秒查一次是否还在运行（`… is running`，不需要自动化授权），最多等 `CCP_CHATGPT_QUIT_TIMEOUT` 秒（默认 15），退出后 `open -b com.openai.codex`。
+   - 退出被拒（macOS 自动化授权，`(-1743)`）、超时、重新打开失败：档案照样已经切换，在 stderr 说明怎么手动完成（附可复制的 `ccp chatgpt use <名字> --restart`），退出码仍是 0。所以带 `--restart` 时 stderr 非空就表示桌面 App 没有重启，App 据此提示。
+   - 桌面 App 在 `CODEX_HOME/packages/` 下的 `codex app-server` 守护进程退出后仍在运行；重启时是否一并停止旧档案的守护进程待真机实测，目前不停止。
+
+## codex 包装函数的行为
+
+档案的决定顺序：
+
+1. `CODEX_PROFILE` 非空：用它指定的档案（为空视同未设置），不管 `CODEX_HOME`。
+2. 环境里有用户直接指定的 `CODEX_HOME`（即使为空）：原样调用 codex。
+3. 否则用 ChatGPT 当前档案记录 `~/.codex-profiles/active`。
+
+`CODEX_HOME` 等于 `~/.codex` 或位于 `~/.codex-profiles/` 之下（比较前转成绝对路径、去掉结尾的 `/`，不解析软链接）时，视为 cc-pilot 设置的——多半是从 launchd 继承来的旧值（从 Dock 打开的终端）——不算第 2 条，按第 3 条重设。解析出默认档案时去掉 `CODEX_HOME`（在子 shell 里 `unset` 后调用，用户 shell 里的变量不变；本来就没有时直接 `command codex`，与没装 cc-pilot 完全一样）；其他档案只对这一次调用设置 `CODEX_HOME=$HOME/.codex-profiles/<名字>`。档案不存在或名字不合规时报错、返回非零，不启动 codex。
 
 ## claude 包装函数的行为
 

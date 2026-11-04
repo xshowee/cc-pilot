@@ -27,7 +27,7 @@
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>CC Pilot opens a Terminal window to run ccp when you add or delete a profile.</string>
+	<string>CC Pilot opens a Terminal window to run ccp when you add or delete a profile, and quits and reopens ChatGPT when you switch ChatGPT profiles.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSHumanReadableCopyright</key>

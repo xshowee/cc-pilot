@@ -1,0 +1,51 @@
+#!/bin/zsh -f
+# 假的 open：模拟 ccp 重新打开 ChatGPT 桌面 App（open -b com.openai.codex）。绝不真的打开任何 App。
+# 与假的 osascript 共用状态目录（格式见 tests/fakes/osascript）。
+#
+# 配置：环境变量 FAKE_CHATGPT_APP_DIR（未设置时以 99 退出，绝不回退到真程序）。
+#
+#   打开时创建 $FAKE_CHATGPT_APP_DIR/running，内容是此刻 launchd 里的 CODEX_HOME（读假 launchctl 的
+#   $FAKE_LAUNCHCTL_DIR/env/CODEX_HOME；没有时为空）：真 open 经 LaunchServices 启动 App，
+#   App 拿到的是 launchd 的环境，不是 open 自己的环境。
+#   调用记录写进 $FAKE_CHATGPT_APP_DIR/calls/N：prog=open、launchd_codex_home_set=yes|no、launchd_codex_home=、argc=、arg=
+#   $FAKE_CHATGPT_APP_DIR/open-exit   存在时：记录后以其中的数字退出，不打开（模拟打开失败）
+#
+# 只认 open -b com.openai.codex；其他用法以 2 退出。
+
+emulate -R zsh
+
+dir=${FAKE_CHATGPT_APP_DIR-}
+if [[ -z $dir ]]; then
+  print -u2 -r -- "fake open: FAKE_CHATGPT_APP_DIR 未设置"
+  exit 99
+fi
+mkdir -p -- $dir/calls || exit 99
+
+launchd_home_file=${FAKE_LAUNCHCTL_DIR:+$FAKE_LAUNCHCTL_DIR/env/CODEX_HOME}
+launchd_home= launchd_set=no
+if [[ -n $launchd_home_file && -f $launchd_home_file ]]; then
+  launchd_home=$(< $launchd_home_file)
+  launchd_set=yes
+fi
+
+integer n=1
+while [[ -e $dir/calls/$n ]]; do (( n++ )); done
+{
+  print -r -- "prog=open"
+  print -r -- "launchd_codex_home_set=$launchd_set"
+  print -r -- "launchd_codex_home=$launchd_home"
+  print -r -- "argc=$#"
+  for a in "$@"; do print -r -- "arg=$a"; done
+} > $dir/calls/$n
+
+if [[ $# != 2 || $1 != -b || $2 != com.openai.codex ]]; then
+  print -u2 -r -- "fake open: 不支持的用法：$*"
+  exit 2
+fi
+if [[ -f $dir/open-exit ]]; then
+  integer rc=1
+  read -r rc < $dir/open-exit
+  exit $rc
+fi
+print -rn -- "$launchd_home" > $dir/running
+exit 0

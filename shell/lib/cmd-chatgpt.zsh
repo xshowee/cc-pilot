@@ -10,13 +10,18 @@ _ccp_chatgpt_usage() {
 
 命令：
   ls              列出所有 ChatGPT 档案，并标出当前档案
-  add <名字>      新建 ChatGPT 档案（共享会话、技能等），并在其中运行 codex login"
+  use <名字> [--restart|--no-restart]
+                  切换当前档案（default 表示默认档案）；ChatGPT 桌面 App 正在运行时询问是否重启它，
+                  --restart / --no-restart 不询问，直接重启 / 不重启
+  add <名字>      新建 ChatGPT 档案（共享会话、技能等），并在其中运行 codex login
+
+单个终端临时使用其他档案：CODEX_PROFILE=<名字> codex"
 }
 
 _ccp_cmd_chatgpt() {
   emulate -L zsh
   case ${1-} in
-    (ls|add)
+    (ls|use|add)
       source $_ccp_lib/cmd-chatgpt-$1.zsh || return 1
       _ccp_cmd_chatgpt_$1 "${@:2}"
       ;;

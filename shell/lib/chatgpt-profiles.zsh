@@ -3,7 +3,7 @@
 # 与 profiles.zsh（Claude Code 一侧）并列，规则相同：只定义 _ccp_ 开头的函数，不定义全局变量；
 # 每个函数开头 `emulate -L zsh`；出错时只 return，绝不 exit。
 # bin/ccp 自动 source lib/ 下所有不以 cmd- 开头的文件，所以 ccp 的子命令里可以直接用这里的函数；
-# 交互 shell 的入口 cc-pilot.zsh 目前只 source profiles.zsh（codex 包装函数加入时再 source 本文件）。
+# 交互 shell 的入口 cc-pilot.zsh 也 source 本文件（codex 包装函数要用这里的函数）。
 #
 # 约定（spec "工具维度"）：
 #   默认档案      ~/.codex（不设置 CODEX_HOME）
@@ -121,6 +121,18 @@ _ccp_chatgpt_resolve_home() {
     return 1
   fi
   print -r -- "$dir"
+}
+
+# CODEX_HOME 的值 $1 是不是 cc-pilot 设置的：等于默认档案 ~/.codex，或位于 ~/.codex-profiles/ 之下（ADR 0005）。
+# 是的话它可能是从 launchd 继承来的旧值，codex 包装函数按当前档案重设；不是的话算用户直接指定的。
+# 比较前把路径变成绝对路径、去掉结尾的 / 和 . / ..（不解析软链接）。空值不算。
+_ccp_chatgpt_managed_home() {
+  emulate -L zsh
+  [[ -n $1 ]] || return 1
+  local p=${1:a} root default
+  root=$(_ccp_chatgpt_profiles_root)
+  default=$(_ccp_chatgpt_default_dir)
+  [[ $p == "$default" || $p == "$root" || $p == "$root"/* ]]
 }
 
 # 输出修复建议（解析失败时用）。参数：env（来自 CODEX_PROFILE）或 active（来自当前档案记录）

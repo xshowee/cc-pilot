@@ -176,3 +176,12 @@
 "This profile’s auth.json can’t be opened." = "无法打开这个账号的 auth.json。";
 "This profile’s auth.json is in an unrecognized format." = "这个账号的 auth.json 格式无法识别。";
 "Please update cc-pilot." = "请更新 cc-pilot。";
+
+/* 切换 ChatGPT 档案（chatgpt-profiles ticket 04） */
+"Restart ChatGPT?" = "重启 ChatGPT？";
+"ChatGPT needs to restart to use the profile “%@”. Tasks in progress will be interrupted.\n\nIf you choose Later, the profile is switched now and ChatGPT uses it the next time it opens." = "需要重启 ChatGPT 才能使用账号“%@”，正在进行的任务会中断。\n\n选择“以后再说”时，账号现在就会切换，ChatGPT 下次打开时使用它。";
+"Restart ChatGPT" = "重启 ChatGPT";
+"Later" = "以后再说";
+"Couldn’t switch the ChatGPT profile" = "无法切换 ChatGPT 账号";
+"ChatGPT wasn’t restarted" = "ChatGPT 没有重启";
+"The profile was switched to “%@”, but CC Pilot couldn’t restart ChatGPT. Quit ChatGPT and open it again yourself, or copy the command below and run it in a terminal.\n\nTo let CC Pilot restart ChatGPT for you, turn on ChatGPT under CC Pilot in System Settings > Privacy & Security > Automation." = "已切换到账号“%@”，但 CC Pilot 没能重启 ChatGPT。请手动退出 ChatGPT 后重新打开，或复制下面这条命令到终端里执行。\n\n如果希望 CC Pilot 替你重启 ChatGPT，请在“系统设置 > 隐私与安全性 > 自动化”中，打开 CC Pilot 下的“ChatGPT”。";

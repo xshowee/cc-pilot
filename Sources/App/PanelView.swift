@@ -21,6 +21,8 @@ struct PanelView: View {
     @EnvironmentObject private var tokenStats: TokenStatsModel
     @StateObject private var flyout = StatsFlyoutController()
     @StateObject private var positionGuard = PanelPositionGuard()
+    /// 点击 ChatGPT 档案时的切换（后台执行 ccp chatgpt use，ticket 04）
+    @StateObject private var chatgptSwitch = ChatGPTSwitchModel()
 
     @State private var addingProfile = false
     /// 档案列表内容的实际高度（用来决定要不要显示滚动条）
@@ -129,18 +131,23 @@ struct PanelView: View {
         .onChange(of: chatgpt.profiles) { list in actions.update(withChatGPT: list) }
     }
 
-    /// ChatGPT 一段：分割线 + 档案卡片（ticket 02 只显示；刷新 ticket 07；切换、删除由后续 ticket 接上）
+    /// ChatGPT 一段：分割线 + 档案卡片，点击即切换（ticket 04；刷新 ticket 07；删除由后续 ticket 接上）。
+    /// 正在后台切换时卡片不可点击。
     @ViewBuilder private var chatgptSection: some View {
         ToolSectionDivider(tool: .chatgpt)
             .padding(.top, 4)
         ForEach(chatgpt.profiles) { profile in
-            ChatGPTProfileCard(profile: profile, isCurrent: profile.name == chatgpt.currentName,
-                               usage: usage.usage(for: profile), now: usage.now,
-                               reportedPlan: usage.reportedPlan(for: profile),
-                               isRefreshing: usage.isRefreshing(profile),
-                               onRefresh: profile.usageAccount == nil ? nil : {
-                                   usage.refresh(profile, in: chatgpt.profiles)
-                               })
+            ChatGPTProfileCard(
+                profile: profile, isCurrent: profile.name == chatgpt.currentName,
+                onSelect: chatgptSwitch.isSwitching ? nil : {
+                    chatgptSwitch.switchTo(profile.name, currentName: chatgpt.currentName) { chatgpt.reload() }
+                },
+                usage: usage.usage(for: profile), now: usage.now,
+                reportedPlan: usage.reportedPlan(for: profile),
+                isRefreshing: usage.isRefreshing(profile),
+                onRefresh: profile.usageAccount == nil ? nil : {
+                    usage.refresh(profile, in: chatgpt.profiles)
+                })
         }
     }
 

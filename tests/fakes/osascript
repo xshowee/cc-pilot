@@ -1,0 +1,58 @@
+#!/bin/zsh -f
+# 假的 osascript（按 PATH 查找的那个）：模拟 ccp 控制 ChatGPT 桌面 App（bundle com.openai.codex）——
+# 查询是否在运行、请它退出（含自动化授权被拒）。绝不执行脚本，不会真的退出用户的 ChatGPT。
+# 与假的 open 共用一个状态目录，见 tests/fakes/open。
+# （ccp 用 /usr/bin/osascript 绝对路径做 JSON 和 NFC，不受这个假程序影响；
+#   Swift 检查给 TerminalLauncher 注入的是另一个假程序 fake-osascript。）
+#
+# 配置：环境变量 FAKE_CHATGPT_APP_DIR 指向一个目录（未设置时以 99 退出，绝不回退到真程序）。
+#
+#   $FAKE_CHATGPT_APP_DIR/running      存在表示桌面 App 正在运行（内容是它启动时 launchd 里的 CODEX_HOME，由假 open 写入）
+#   $FAKE_CHATGPT_APP_DIR/deny         存在时：退出请求被拒（模拟用户拒绝了"想要控制 ChatGPT"的自动化授权），
+#                                      输出真 osascript 的 "Not authorized to send Apple events … (-1743)" 并以 1 退出
+#   $FAKE_CHATGPT_APP_DIR/ignore-quit  存在时：退出请求成功发出，但 App 没有退出（模拟卡在退出确认上）
+#   $FAKE_CHATGPT_APP_DIR/calls/1、2……  每次调用（osascript 与 open 共用编号）：prog=osascript、argc=、arg=
+#
+# 只认两种用法（-e 后的脚本里有 application id "com.openai.codex"）：
+#   … is running   输出 true 或 false
+#   … to quit      请 App 退出
+# 其他用法以 2 退出，让测试发现意外的调用。
+
+emulate -R zsh
+
+dir=${FAKE_CHATGPT_APP_DIR-}
+if [[ -z $dir ]]; then
+  print -u2 -r -- "fake osascript: FAKE_CHATGPT_APP_DIR 未设置"
+  exit 99
+fi
+mkdir -p -- $dir/calls || exit 99
+
+integer n=1
+while [[ -e $dir/calls/$n ]]; do (( n++ )); done
+{
+  print -r -- "prog=osascript"
+  print -r -- "argc=$#"
+  for a in "$@"; do print -r -- "arg=$a"; done
+} > $dir/calls/$n
+
+if [[ $# != 2 || $1 != -e || $2 != *'application id "com.openai.codex"'* ]]; then
+  print -u2 -r -- "fake osascript: 不支持的用法：$*"
+  exit 2
+fi
+case $2 in
+  (*" is running"*)
+    if [[ -e $dir/running ]]; then print -r -- true; else print -r -- false; fi
+    ;;
+  (*" to quit"*)
+    if [[ -e $dir/deny ]]; then
+      print -u2 -r -- "0:42: execution error: Not authorized to send Apple events to ChatGPT. (-1743)"
+      exit 1
+    fi
+    [[ -e $dir/ignore-quit ]] || /bin/rm -f -- $dir/running
+    ;;
+  (*)
+    print -u2 -r -- "fake osascript: 不支持的脚本：$2"
+    exit 2
+    ;;
+esac
+exit 0

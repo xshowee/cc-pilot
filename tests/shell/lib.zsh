@@ -12,8 +12,10 @@
 #   $T_CLAUDE_LOG  假 claude 的记录目录
 #   $T_CODEX_LOG   假 codex 的记录目录（即 FAKE_CODEX_LOG_DIR，格式见 tests/fakes/codex）
 #   $T_SECURITY    假 security 的钥匙串内容和调用记录（即 FAKE_SECURITY_DIR，格式见 tests/fakes/security）
+#   $T_LAUNCHD     假 launchctl 模拟的 launchd 环境与调用记录（即 FAKE_LAUNCHCTL_DIR，见 tests/fakes/launchctl）
+#   $T_CHATGPT_APP 假 ChatGPT 桌面 App 的状态与调用记录（即 FAKE_CHATGPT_APP_DIR，假 osascript 与假 open 共用）
 # 被测程序一律通过 t_run / t_claude / t_zsh / t_ccp / t_ccp_in 启动：`env -i` 清空环境，
-# PATH 最前面是 tests/fakes/（假 claude、假 codex、假 security），然后才是 /usr/bin:/bin:/usr/sbin:/sbin。
+# PATH 最前面是 tests/fakes/（假 claude、security、codex、launchctl、osascript、open），然后才是 /usr/bin:/bin:/usr/sbin:/sbin。
 # 标准输入默认是 /dev/null；用 t_stdin 准备输入（例如回答确认提示）。
 # 运行结果在 $T_OUT、$T_ERR、$T_RC 里。
 
@@ -85,6 +87,8 @@ t_run() {
     FAKE_CLAUDE_LOG_DIR=$T_CLAUDE_LOG \
     FAKE_CODEX_LOG_DIR=$T_CODEX_LOG \
     FAKE_SECURITY_DIR=$T_SECURITY \
+    FAKE_LAUNCHCTL_DIR=$T_LAUNCHD \
+    FAKE_CHATGPT_APP_DIR=$T_CHATGPT_APP \
     "${extra[@]}" \
     "$@" > $T/out 2> $T/err < ${T_STDIN:-/dev/null}
   T_RC=$?
@@ -100,6 +104,16 @@ t_claude() {
   [[ ${1-} == -- ]] && shift
   t_run "${extra[@]}" -- /bin/zsh -f -c \
     'source "$HOME/.cc-pilot/cc-pilot.zsh" || exit 98; claude "$@"' _ "$@"
+}
+
+# t_codex [VAR=值 ...] [--] 参数...
+# 在一个新的 zsh 里 source 已安装的 cc-pilot.zsh，然后调用 codex 包装函数。
+t_codex() {
+  local -a extra
+  while [[ ${1-} == [A-Za-z_][A-Za-z0-9_]#=* ]]; do extra+=("$1"); shift; done
+  [[ ${1-} == -- ]] && shift
+  t_run "${extra[@]}" -- /bin/zsh -f -c \
+    'source "$HOME/.cc-pilot/cc-pilot.zsh" || exit 98; codex "$@"' _ "$@"
 }
 
 # t_zsh [VAR=值 ...] [--] 代码 参数...
@@ -212,6 +226,72 @@ security_args() {
   done < $T_SECURITY/calls/$n
 }
 
+# ---------- 读取假 launchctl、假 ChatGPT 桌面 App 的记录 ----------
+
+# 一个记录目录里的调用次数：_fake_calls 目录
+_fake_calls() {
+  local -a files
+  files=($1/<->(N.))
+  print -r -- ${#files}
+}
+
+# 记录文件里某个键的值：_fake_field 文件 键
+_fake_field() {
+  local line
+  [[ -f $1 ]] || fail "没有调用记录 $1"
+  while IFS= read -r line; do
+    if [[ $line == $2=* ]]; then print -r -- "${line#$2=}"; return 0; fi
+  done < $1
+  return 1
+}
+
+# 记录文件里的参数放进数组 reply：_fake_args 文件
+_fake_args() {
+  local line
+  reply=()
+  [[ -f $1 ]] || fail "没有调用记录 $1"
+  while IFS= read -r line; do
+    [[ $line == arg=* ]] && reply+=("${line#arg=}")
+  done < $1
+}
+
+launchctl_calls() { _fake_calls $T_LAUNCHD/calls }
+launchctl_args() { _fake_args $T_LAUNCHD/calls/${1:-$(launchctl_calls)} }  # [第几次] → reply
+
+# 在假 launchd 环境里预先设置一个变量：t_launchd_env 变量 值
+t_launchd_env() {
+  mkdir -p -- $T_LAUNCHD/env || exit 1
+  print -rn -- "$2" > $T_LAUNCHD/env/$1 || exit 1
+}
+
+# 假 launchd 环境里某个变量的值；未设置时输出 <unset>
+launchd_env() {
+  if [[ -f $T_LAUNCHD/env/$1 ]]; then print -r -- "$(< $T_LAUNCHD/env/$1)"; else print -r -- "<unset>"; fi
+}
+
+# 假 ChatGPT 桌面 App：t_chatgpt_app running|deny|ignore-quit|open-exit …（创建对应的状态文件）
+t_chatgpt_app() {
+  mkdir -p -- $T_CHATGPT_APP || exit 1
+  local f
+  for f in "$@"; do
+    if [[ $f == open-exit ]]; then print -r -- 1 > $T_CHATGPT_APP/$f || exit 1
+    else : > $T_CHATGPT_APP/$f || exit 1; fi
+  done
+}
+
+chatgpt_app_running() { [[ -e $T_CHATGPT_APP/running ]] }
+
+# 假 osascript 与假 open 的调用，每次一行 "<程序> <脚本或参数>"，按顺序
+chatgpt_app_calls() {
+  local -a files reply
+  files=($T_CHATGPT_APP/calls/<->(N.n))
+  local f
+  for f in $files; do
+    _fake_args $f
+    print -r -- "$(_fake_field $f prog) ${reply[-1]-}"
+  done
+}
+
 # ---------- 断言（失败即结束当前用例） ----------
 
 fail() {
@@ -267,6 +347,11 @@ assert_codex_args() {  # 期望的参数...（最后一次调用）
   for (( i = 1; i <= $#; i++ )); do
     assert_eq "${reply[i]}" "${@[i]}" "第 $i 个参数"
   done
+}
+
+# CODEX_HOME 应当未设置（codex 包装函数，ticket 04）
+assert_codex_home_unset() {  # [第几次调用]
+  assert_eq "$(codex_field codex_home_set $1)" no "CODEX_HOME 应当未设置"
 }
 
 assert_claude_config_dir_unset() {  # [第几次调用]
@@ -341,6 +426,8 @@ t_main() {
     T_CLAUDE_LOG=$T/claude-log
     T_CODEX_LOG=$T/codex-log
     T_SECURITY=$T/security
+    T_LAUNCHD=$T/launchd
+    T_CHATGPT_APP=$T/chatgpt-app
     mkdir -p -- $T_HOME && cp -R -- $SHELL_SRC $T_HOME/.cc-pilot || exit 1
     ( unset T_RC T_OUT T_ERR T_STDIN; $name )
     rc=$?
