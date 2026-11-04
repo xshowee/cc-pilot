@@ -18,6 +18,7 @@ final class ChatGPTLiveQuotaChecks: CheckSuite {
             Check("归属不到的会话（没有写入进程、外部目录、档案没有账号）不更新任何账号", unattributedUpdatesNothing),
             Check("账号在归属时确定：档案之后换了登录，这个会话的额度仍算旧账号的", accountFixedAtAttribution),
             Check("档案当时没有账号（auth.json 还没写好、会话开始后才登录）：之后有账号了，这个会话照常更新", accountAppearsLater),
+            Check("fork 重放的父会话 rate_limits 不是新鲜的实时额度：不并入；重放结束后自己的照常并入", skipsReplayedRateLimits),
             Check("接收实时额度不发请求", sendsNoRequests),
         ]
     }
@@ -173,6 +174,42 @@ final class ChatGPTLiveQuotaChecks: CheckSuite {
         let late = UsageAccount(id: "chatgpt:user-l:ws-1")
         try expectEqual(Array(quotas.keys), [late])
         try expectEqual(quotas[late]?.fiveHour?.utilization, 22)
+    }
+
+    static func skipsReplayedRateLimits() throws {
+        let home = try TempHome()
+        defer { home.remove() }
+        try prepare(home)  // work 档案的进程在写 session（UUIDv7）
+        let created = try unwrap(CodexSessionLogParser.uuidV7Time(session))
+        let parent = CodexRollout.v7(ms: created - 60_000, serial: 7)
+        let t1 = fixedNow.addingTimeInterval(60), t2 = fixedNow.addingTimeInterval(120)
+        // 父会话（别的账号、很久以前）的额度：已用 90%，resets_at 更晚——当作新鲜的会长期盖住真实的数字
+        let replay = [
+            CodexRollout.meta(id: session, at: iso(t1), forkedFrom: parent),
+            CodexRollout.meta(id: parent, at: iso(t1)),
+            CodexRollout.turnContext(model: "gpt-5.3-codex", at: iso(t1), turnID: CodexRollout.v7(ms: created - 50_000, serial: 8)),
+            CodexRollout.tokenCount(at: iso(t1), last: .init(input: 10, output: 1),
+                                    primary: .init(used: 90, minutes: 300, resetsAt: resets + 3_600)),
+        ]
+        try home.write(CodexRollout.path(session), CodexRollout.file(replay))
+        let reader = CodexSessionReader(environment: home.environment)
+        let tracker = ChatGPTLiveQuotaTracker(environment: home.environment)
+        let scan1 = reader.scan([:])
+        try expectEqual(scan1.events.count, 1)
+        try expect(tracker.update(with: scan1.events).isEmpty, "重放的额度不应并入")
+
+        let handle = try FileHandle(forWritingTo: home.url.appendingPathComponent(CodexRollout.path(session)))
+        try handle.seekToEnd()
+        try handle.write(contentsOf: Data(CodexRollout.file([
+            CodexRollout.turnContext(model: "gpt-5.3-codex", at: iso(t2), turnID: CodexRollout.v7(ms: created + 1_000, serial: 9)),
+            CodexRollout.tokenCount(at: iso(t2), last: .init(input: 20, output: 2), total: .init(input: 30, output: 3),
+                                    primary: .init(used: 20, minutes: 300, resetsAt: resets)),
+        ]).utf8))
+        try handle.close()
+        let quotas = tracker.update(with: reader.scan(scan1.cursors).events)
+        try expectEqual(Array(quotas.keys), [workAccount])
+        try expectEqual(quotas[workAccount]?.fiveHour?.utilization, 20)
+        try expectEqual(quotas[workAccount]?.receivedAt, t2)
     }
 
     static func sendsNoRequests() throws {
