@@ -148,10 +148,10 @@ final class UsageModel: ObservableObject {
     /// 一个账号的刷新：在后台队列上执行 fetch，结果回到主线程交给 apply
     private struct Job {
         let account: UsageAccount
-        let fetch: () -> Result
+        let fetch: () -> RefreshResult
     }
 
-    private struct Result {
+    private struct RefreshResult {
         let outcome: UsageRefreshOutcome
         /// ChatGPT 的响应套餐；Claude 为 nil
         let reported: ChatGPTReportedAccount?
@@ -160,7 +160,7 @@ final class UsageModel: ObservableObject {
     private func claudeJob(_ account: UsageAccount, _ profiles: [Profile]) -> Job {
         let refresher = refresher
         return Job(account: account) {
-            Result(outcome: refresher.refresh(account, in: profiles, now: Date()), reported: nil)
+            RefreshResult(outcome: refresher.refresh(account, in: profiles, now: Date()), reported: nil)
         }
     }
 
@@ -168,7 +168,7 @@ final class UsageModel: ObservableObject {
         let refresher = chatgptRefresher
         return Job(account: account) {
             let result = refresher.refresh(account, in: profiles, now: Date())
-            return Result(outcome: result.outcome, reported: result.reported)
+            return RefreshResult(outcome: result.outcome, reported: result.reported)
         }
     }
 
