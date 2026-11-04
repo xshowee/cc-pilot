@@ -2,8 +2,11 @@
 # ticket 17：App 图标与菜单栏图标。
 #
 # 源文件是 Resources/Icons/*.svg，由 scripts/make-icons.sh 生成 Resources/AppIcon.icns（App 图标）
-# 和 Resources/MenuBarIcon.pdf（菜单栏"只显示图标"用的模板图），生成结果随仓库提交，
+# 和 Resources/MenuBarIcon*.png（菜单栏"只显示图标"用的模板图），生成结果随仓库提交，
 # scripts/build-app.sh 只负责复制。
+# chatgpt-profiles ticket 03：工具图标 Resources/ClaudeIcon*.png、ChatGPTIcon*.png 同样由 make-icons.sh
+# 生成、build-app.sh 复制（名字与尺寸由 Core 的 Tool.iconResourceName / ToolIconResource 决定，
+# 尺寸与单色见 tests/swift/AppIconChecks.swift）；生成与打包按 Resources/*.png 整体核对。
 source "${0:A:h}/lib.zsh"
 
 PLIST=$ROOT/Resources/Info.plist
@@ -53,6 +56,27 @@ assert_menu_bar_icon() {  # 目录
   done
 }
 
+# 目录里有与 Resources/*.png 同名、同像素尺寸的全部 PNG：assert_same_pngs 目录
+assert_same_pngs() {
+  local png name
+  local -a pngs
+  pngs=($ROOT/Resources/*.png(N))
+  (( ${#pngs} )) || fail "Resources/ 下没有 PNG"
+  for png in $pngs; do
+    name=${png:t}
+    [[ -f $1/$name ]] || { fail "缺少 $1/$name"; continue }
+    assert_eq "$(/usr/bin/sips -g pixelWidth -g pixelHeight $1/$name | awk '/pixel/ {print $2}' | paste -sd x -)" \
+      "$(/usr/bin/sips -g pixelWidth -g pixelHeight $png | awk '/pixel/ {print $2}' | paste -sd x -)" "$name 的像素尺寸"
+  done
+}
+
+test_resources_contain_both_tool_icons() {
+  local name
+  for name in ClaudeIcon.png ClaudeIcon@2x.png ChatGPTIcon.png ChatGPTIcon@2x.png; do
+    [[ -f $ROOT/Resources/$name ]] || fail "缺少 Resources/$name"
+  done
+}
+
 test_menu_bar_icon_is_18pt_with_2x() {
   assert_menu_bar_icon $ROOT/Resources
 }
@@ -64,6 +88,7 @@ test_make_icons_regenerates_everything_from_svg() {
   assert_rc 0
   assert_full_iconset $T/icons/AppIcon.icns
   assert_menu_bar_icon $T/icons
+  assert_same_pngs $T/icons
 }
 
 # 在 $T/repo 里运行 build-app.sh 的组装步骤：编译、合并架构、签名都换成假程序（只产生空文件），
@@ -95,9 +120,10 @@ test_built_app_contains_the_icon_named_by_info_plist() {
     fail "构建产物的 Contents/Resources/${icon%.icns}.icns 应与 Resources/AppIcon.icns 相同"
 }
 
-test_built_app_contains_the_menu_bar_icon_but_not_svg_sources() {
+test_built_app_contains_the_menu_bar_and_tool_icons_but_not_svg_sources() {
   run_build_app
   assert_menu_bar_icon $APP_RESOURCES
+  assert_same_pngs $APP_RESOURCES
   [[ ! -e $APP_RESOURCES/Icons ]] || fail "SVG 源文件不应打包进 App"
 }
 

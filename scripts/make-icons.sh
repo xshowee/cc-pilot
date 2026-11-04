@@ -4,6 +4,8 @@
 # 产物（随仓库提交，scripts/build-app.sh 只复制、不生成）：
 #   AppIcon.icns                          App 图标，16–512pt 各含 1x 与 @2x；Info.plist 的 CFBundleIconFile 指向它
 #   MenuBarIcon.png、MenuBarIcon@2x.png    菜单栏"只显示图标"用的模板图（18pt，单色）
+#   ClaudeIcon.png、ChatGPTIcon.png 与 @2x  工具图标（12pt，单色模板图）：面板分割线与菜单栏行首共用
+#                                         （chatgpt-profiles ticket 03）
 # 只用 macOS 自带的 swift（NSImage 解析 SVG，见 scripts/render-icons.swift）和 iconutil，不联网。
 # 改了 SVG 后运行本脚本，把源文件和产物一起提交。
 
@@ -20,6 +22,9 @@ mkdir -p -- $OUT $work/ModuleCache
 
 /usr/bin/swift -module-cache-path $work/ModuleCache $ROOT/scripts/render-icons.swift $ROOT/Resources/Icons $work
 /usr/bin/iconutil -c icns -o $work/AppIcon.icns $work/AppIcon.iconset
-mv -f -- $work/AppIcon.icns $work/MenuBarIcon.png $work/MenuBarIcon@2x.png $OUT/
+typeset -a made
+made=($work/AppIcon.icns $work/*.png)
+mv -f -- $made $OUT/
 
-print -r -- "已生成：$OUT/AppIcon.icns、$OUT/MenuBarIcon.png、$OUT/MenuBarIcon@2x.png"
+made=(${made:t})
+print -r -- "已生成（$OUT）：${(j:、:)made}"
