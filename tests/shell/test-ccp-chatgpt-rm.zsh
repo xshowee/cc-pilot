@@ -370,7 +370,7 @@ assert_not_contains_daemon_notice() {
   [[ $T_OUT != *守护进程* ]] || fail "没有本档案的守护进程时不应提到守护进程：$T_OUT"
 }
 
-# ---------- 还有别的进程在用这个档案（环境里的 CODEX_HOME 指向它）：询问之前拒绝 ----------
+# ---------- 还有 codex 进程或 ChatGPT 桌面 App 在用这个档案（环境里的 CODEX_HOME 指向它）：询问之前拒绝 ----------
 
 # 拒绝时：退出码 1、没有询问、没有登出、档案原样、只查了一次进程表
 assert_refused_in_use() {  # 档案名
@@ -395,6 +395,17 @@ test_codex_session_using_profile_blocks_removal() {
   [[ $T_ERR != *"TERM=xterm"* ]] || fail "不应列出进程的环境：$T_ERR"
 }
 
+test_other_codex_named_process_blocks_removal() {
+  # 名字以 codex 开头的都算（codex-acp 等），与 ChatGPTSessionWriters 的口径一致
+  t_signed_in_profile work
+  t_ps_process 4250 "/usr/local/bin/codex-acp --stdio HOME=$T_HOME CODEX_HOME=$(PROFILE work)"
+  t_stdin y
+  t_ccp chatgpt rm work
+  assert_refused_in_use work
+  assert_contains "$T_ERR" "4250" "应列出进程的 PID"
+  assert_contains "$T_ERR" "codex-acp" "应列出进程的命令名"
+}
+
 test_desktop_app_using_profile_blocks_removal_and_is_left_running() {
   t_signed_in_profile work
   local app
@@ -407,7 +418,40 @@ test_desktop_app_using_profile_blocks_removal_and_is_left_running() {
   assert_refused_in_use work
   assert_eq $alive 1 "不应停止在用这个档案的进程"
   assert_contains "$T_ERR" "$app" "应列出桌面 App 的 PID"
-  assert_contains "$T_ERR" "ChatGPT" "应列出桌面 App 的命令名"
+  assert_contains "$T_ERR" "ChatGPT" "应说明是 ChatGPT 桌面 App"
+}
+
+test_desktop_app_helper_blocks_removal() {
+  # Electron helper 的可执行文件也在 ChatGPT.app/ 里（路径带空格；App 装在别处也一样）
+  t_signed_in_profile work
+  t_ps_process 4251 "/Users/me/My Apps/ChatGPT.app/Contents/Frameworks/ChatGPT Helper (Renderer).app/Contents/MacOS/ChatGPT Helper (Renderer) --type=renderer HOME=$T_HOME CODEX_HOME=$(PROFILE work)"
+  t_stdin y
+  t_ccp chatgpt rm work
+  assert_refused_in_use work
+  assert_contains "$T_ERR" "4251" "应列出 helper 的 PID"
+  assert_contains "$T_ERR" "ChatGPT" "应说明是 ChatGPT 桌面 App"
+}
+
+test_programs_that_merely_inherited_codex_home_do_not_block() {
+  # 在 launchd 指向 work 期间从 Dock 打开的 iTerm、VS Code、其中的 shell，以及 node 包装进程、
+  # 守护进程派生的（不叫 codex 的）子进程：只是继承了 CODEX_HOME，并没有在用这个档案
+  t_signed_in_profile work
+  local -a lines=(
+    "/Applications/iTerm.app/Contents/MacOS/iTerm2 HOME=$T_HOME CODEX_HOME=$(PROFILE work)"
+    "-zsh HOME=$T_HOME CODEX_HOME=$(PROFILE work)"
+    "/opt/homebrew/bin/zsh -l HOME=$T_HOME CODEX_HOME=$(PROFILE work)"
+    "/Applications/Visual Studio Code.app/Contents/MacOS/Electron HOME=$T_HOME CODEX_HOME=$(PROFILE work)"
+    "node /opt/homebrew/bin/codex HOME=$T_HOME CODEX_HOME=$(PROFILE work)"
+    "/opt/homebrew/bin/node /Users/me/mcp/server.js HOME=$T_HOME CODEX_HOME=$(PROFILE work)"
+    "/Applications/ChatGPTHelper.app/Contents/MacOS/x HOME=$T_HOME CODEX_HOME=$(PROFILE work)"
+  )
+  local -i pid=4260
+  local line
+  for line in $lines; do t_ps_process $(( pid++ )) "$line"; done
+  t_stdin y
+  t_ccp chatgpt rm work
+  assert_rc 0
+  [[ ! -e $(PROFILE work) ]] || fail "档案目录应已删除"
 }
 
 test_in_use_process_blocks_even_with_a_running_daemon() {
@@ -438,17 +482,15 @@ test_process_with_codex_home_pointing_elsewhere_does_not_block() {
   [[ ! -e $(PROFILE work) ]] || fail "档案目录应已删除"
 }
 
-test_ccp_itself_running_with_profiles_codex_home_is_refused() {
-  # 在这个档案的 codex 会话里、或带着它的 CODEX_HOME 的终端里运行 ccp：
-  # ccp 自己和它启动的 ps 都带着这个 CODEX_HOME，直接说明，不去列这些进程
+test_ccp_run_with_profiles_codex_home_is_not_refused_for_that() {
+  # 带着从 launchd 继承来的旧 CODEX_HOME 的终端里运行 ccp：ccp 和它启动的 ps 不算在用
   t_signed_in_profile work
+  t_ps_process 4270 "/opt/homebrew/bin/zsh /Users/me/.cc-pilot/bin/ccp chatgpt rm work HOME=$T_HOME CODEX_HOME=$(PROFILE work)"
+  t_ps_process 4271 "ps -A -E -ww -o pid= -o command= HOME=$T_HOME CODEX_HOME=$(PROFILE work)"
   t_stdin y
   t_ccp CODEX_HOME="$(PROFILE work)" -- chatgpt rm work
-  assert_rc 1
-  [[ $T_OUT != *"[y/N]"* ]] || fail "拒绝时不应询问：$T_OUT"
-  assert_contains "$T_ERR" "CODEX_HOME" "应说明当前环境的 CODEX_HOME 指向这个档案"
-  assert_not_logged_out
-  assert_profile_intact work
+  assert_rc 0
+  [[ ! -e $(PROFILE work) ]] || fail "档案目录应已删除"
 }
 
 test_process_listing_failure_blocks_removal() {
