@@ -14,6 +14,7 @@ final class CodexSessionReaderChecks: CheckSuite {
             Check("只读新追加的完整行；写到一半的最后一行下次再读；模型等上下文接着用", readsIncrementally),
             Check("文件被重写（变短或换了 inode）时从头读", rereadsRewrittenFile),
             Check(".zst 会话记录整份解压读出；没变时不重读；写到一半（截断）时位置不动、下次再读", readsZst),
+            Check("损坏的 .zst（不是截断）不反复重读：记下位置跳过，文件变了才再读", skipsCorruptZst),
             Check("只读 ~/.codex 的 sessions 与 archived_sessions 各一次，不进档案里指向它们的软链接", readsSharedRootsOnce),
             Check("只扫描给出的目录：别处的位置原样保留；扫描过的目录里删掉的文件位置被忘掉", scansOnlyGivenDirectories),
             Check("fork 重放的父会话事件、重复写的同一事件去重键相同；之后的新事件去重键不同", deduplicationKeys),
@@ -162,6 +163,31 @@ final class CodexSessionReaderChecks: CheckSuite {
 
         let scan3 = reader.scan(scan2.cursors)
         try expect(scan3.events.isEmpty, "没变的 .zst 不重读")
+    }
+
+    static func skipsCorruptZst() throws {
+        let home = try TempHome()
+        defer { home.remove() }
+        let content = Data(CodexRollout.file([
+            CodexRollout.meta(id: sessionB, at: t0),
+            CodexRollout.tokenCount(at: t1, last: .init(input: 100, output: 10)),
+        ]).utf8)
+        let path = CodexRollout.path(sessionB, root: "archived_sessions", compressed: true)
+        let file = home.url.appendingPathComponent(path)
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        // 不是 zstd 帧
+        try Data("not a zstd frame at all".utf8).write(to: file)
+        let reader = CodexSessionReader(environment: home.environment)
+        let scan1 = reader.scan([:])
+        try expectEqual(scan1.deferred, [], "损坏不是\"稍后再试\"")
+        try expect(scan1.events.isEmpty, "损坏的文件读不出事件")
+        try expect(scan1.cursors[file.path] != nil, "记下位置，下次跳过")
+        try expectEqual(reader.scan(scan1.cursors).deferred, [])
+
+        // 文件被换成好的：再读
+        try RawZstdFrame.wrap(content).write(to: file)
+        let scan2 = reader.scan(scan1.cursors)
+        try expectEqual(scan2.events.map(\.usage?.input), [100])
     }
 
     // MARK: 目录

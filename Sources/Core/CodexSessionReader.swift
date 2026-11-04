@@ -8,7 +8,8 @@
 //   .jsonl     从上次的偏移读新追加的完整行（AppendedLines：写到一半的最后一行留到下次；文件被重写时从头读、
 //              上下文也重来）。
 //   .jsonl.zst 不能按偏移增量读：大小、inode、修改时间都没变就跳过，变了就整份解压重读（重读出的事件靠去重键
-//              不重复计入）。解压失败（正在写入、截断、损坏）时位置不动，记进 deferred，下次再试。
+//              不重复计入）。截断（正在写入）或读文件出错时位置不动，记进 deferred，下次再试；
+//              其他解压错误（损坏、要字典、超过上限）记下位置跳过，文件再变才重读。
 // 只扫描 under 给出的目录时，别处文件的位置原样保留；扫描过的目录里已不存在的文件，位置被忘掉。
 // 只读文件，不写任何东西；读不了的文件跳过。调用方负责在一个线程 / 串行队列上使用。
 
@@ -75,9 +76,16 @@ struct CodexSessionReader {
             if let previous, previous.offset == size, previous.inode == inode, previous.modified == modified {
                 return (previous, nil, [])
             }
-            let content = try Zstd.decompress(try Data(contentsOf: URL(fileURLWithPath: path)))
-            var parser = CodexSessionLogParser(cursor: CodexFileCursor(offset: size, inode: inode, modified: modified),
-                                               fileName: name)
+            let cursor = CodexFileCursor(offset: size, inode: inode, modified: modified)
+            let content: Data
+            do {
+                content = try Zstd.decompress(try Data(contentsOf: URL(fileURLWithPath: path)))
+            } catch let error as ZstdError where error != .truncated {
+                // 损坏、要字典、超过上限：不是"稍后再试"，记下位置跳过，文件变了才再读
+                NSLog("CC Pilot: 跳过无法解压的会话记录 %@：%@", path, String(describing: error))
+                return (cursor, nil, [])
+            }
+            var parser = CodexSessionLogParser(cursor: cursor, fileName: name)
             for line in content.split(separator: 0x0A) { parser.parse(line) }
             return (parser.cursor, parser.meta, parser.events)
         }
