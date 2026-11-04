@@ -294,7 +294,7 @@ chatgpt_app_calls() {
   done
 }
 
-# ---------- 假 ps 的进程表（ccp chatgpt rm 查找守护进程） ----------
+# ---------- 假 ps 的进程表（ccp chatgpt rm 查找在用档案的进程） ----------
 
 # 在假 ps 的进程表里加一行：t_ps_process PID 命令行与环境（格式见 tests/fakes/ps）
 t_ps_process() {

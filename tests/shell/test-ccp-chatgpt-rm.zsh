@@ -344,31 +344,111 @@ test_cancel_leaves_running_daemon_alone() {
   assert_profile_intact work
 }
 
-test_only_this_profiles_daemon_is_stopped() {
-  # 其他档案的守护进程、本档案的 codex 会话（不是 app-server）、CODEX_HOME 只是前缀相同的进程都不动
+test_other_profiles_processes_do_not_block_or_get_stopped() {
+  # 其他档案的守护进程、CODEX_HOME 只是前缀相同的进程（work2）都不算在用 work，也不动
   t_signed_in_profile work
   t_codex_profile work2
-  local other session prefix
+  local other prefix
   other=$(t_spawn 'exec /bin/sleep 60')
-  session=$(t_spawn 'exec /bin/sleep 60')
   prefix=$(t_spawn 'exec /bin/sleep 60')
   t_ps_process $other "$(daemon_line work2)"
-  t_ps_process $session "/opt/homebrew/bin/codex resume HOME=$T_HOME CODEX_HOME=$(PROFILE work)"
-  t_ps_process $prefix "$(daemon_line work "$(PROFILE work)2")"
+  t_ps_process $prefix "/opt/homebrew/bin/codex resume HOME=$T_HOME CODEX_HOME=$(PROFILE work)2"
   t_stdin y
   t_ccp chatgpt rm work
   local -a survivors=()
   local p
-  for p in $other $session $prefix; do
+  for p in $other $prefix; do
     process_alive $p && { survivors+=($p); kill -KILL $p 2>/dev/null }
   done
   assert_rc 0
-  assert_eq "${survivors[*]}" "$other $session $prefix" "其他进程都应继续运行"
+  assert_eq "${survivors[*]}" "$other $prefix" "其他进程都应继续运行"
   assert_not_contains_daemon_notice
+  [[ ! -e $(PROFILE work) ]] || fail "档案目录应已删除"
 }
 
 assert_not_contains_daemon_notice() {
   [[ $T_OUT != *守护进程* ]] || fail "没有本档案的守护进程时不应提到守护进程：$T_OUT"
+}
+
+# ---------- 还有别的进程在用这个档案（环境里的 CODEX_HOME 指向它）：询问之前拒绝 ----------
+
+# 拒绝时：退出码 1、没有询问、没有登出、档案原样、只查了一次进程表
+assert_refused_in_use() {  # 档案名
+  assert_rc 1
+  [[ $T_OUT != *"[y/N]"* ]] || fail "拒绝时不应询问：$T_OUT"
+  assert_not_logged_out
+  assert_profile_intact $1
+  assert_eq "$(ps_calls)" 1 "应只列一次进程"
+  assert_contains "$T_ERR" "没有删除" "应说明没有删除"
+  assert_contains "$T_ERR" "ccp chatgpt rm $1" "应提示退出这些进程后重新执行"
+}
+
+test_codex_session_using_profile_blocks_removal() {
+  t_signed_in_profile work
+  t_ps_process 4242 "/opt/homebrew/bin/codex resume HOME=$T_HOME CODEX_HOME=$(PROFILE work) TERM=xterm"
+  t_stdin y
+  t_ccp chatgpt rm work
+  assert_refused_in_use work
+  assert_contains "$T_ERR" "4242" "应列出进程的 PID"
+  assert_contains "$T_ERR" "codex" "应列出进程的命令名"
+  [[ $T_ERR != *"/opt/homebrew/bin/codex"* ]] || fail "只列命令名，不列完整路径：$T_ERR"
+  [[ $T_ERR != *"TERM=xterm"* ]] || fail "不应列出进程的环境：$T_ERR"
+}
+
+test_desktop_app_using_profile_blocks_removal_and_is_left_running() {
+  t_signed_in_profile work
+  local app
+  app=$(t_spawn 'exec /bin/sleep 60')
+  t_ps_process $app "/Applications/ChatGPT.app/Contents/MacOS/ChatGPT HOME=$T_HOME CODEX_HOME=$(PROFILE work)/"
+  t_stdin y
+  t_ccp chatgpt rm work
+  local alive=0
+  process_alive $app && { alive=1; kill -KILL $app 2>/dev/null }
+  assert_refused_in_use work
+  assert_eq $alive 1 "不应停止在用这个档案的进程"
+  assert_contains "$T_ERR" "$app" "应列出桌面 App 的 PID"
+  assert_contains "$T_ERR" "ChatGPT" "应列出桌面 App 的命令名"
+}
+
+test_in_use_process_blocks_even_with_a_running_daemon() {
+  # 守护进程照常能停，但别的进程还在用：仍在询问之前拒绝，守护进程也不动
+  t_signed_in_profile work
+  local daemon
+  daemon=$(t_spawn 'exec /bin/sleep 60')
+  t_ps_process $daemon "$(daemon_line work)"
+  t_ps_process 4243 "/opt/homebrew/bin/codex HOME=$T_HOME CODEX_HOME=$(PROFILE work)"
+  t_stdin y
+  t_ccp chatgpt rm work
+  local alive=0
+  process_alive $daemon && { alive=1; kill -KILL $daemon 2>/dev/null }
+  assert_refused_in_use work
+  assert_eq $alive 1 "拒绝时不应停止守护进程"
+  assert_contains "$T_ERR" "4243" "应列出在用的进程"
+}
+
+test_process_with_codex_home_pointing_elsewhere_does_not_block() {
+  t_signed_in_profile work
+  t_codex_profile other
+  t_ps_process 4244 "/opt/homebrew/bin/codex HOME=$T_HOME CODEX_HOME=$(PROFILE other)"
+  t_ps_process 4245 "/opt/homebrew/bin/node server.js HOME=$T_HOME CODEX_HOME=$T/somewhere/work"
+  t_ps_process 4246 "/opt/homebrew/bin/node $(PROFILE work)/script.js HOME=$T_HOME"
+  t_stdin y
+  t_ccp chatgpt rm work
+  assert_rc 0
+  [[ ! -e $(PROFILE work) ]] || fail "档案目录应已删除"
+}
+
+test_ccp_itself_running_with_profiles_codex_home_is_refused() {
+  # 在这个档案的 codex 会话里、或带着它的 CODEX_HOME 的终端里运行 ccp：
+  # ccp 自己和它启动的 ps 都带着这个 CODEX_HOME，直接说明，不去列这些进程
+  t_signed_in_profile work
+  t_stdin y
+  t_ccp CODEX_HOME="$(PROFILE work)" -- chatgpt rm work
+  assert_rc 1
+  [[ $T_OUT != *"[y/N]"* ]] || fail "拒绝时不应询问：$T_OUT"
+  assert_contains "$T_ERR" "CODEX_HOME" "应说明当前环境的 CODEX_HOME 指向这个档案"
+  assert_not_logged_out
+  assert_profile_intact work
 }
 
 test_process_listing_failure_blocks_removal() {

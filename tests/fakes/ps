@@ -1,5 +1,5 @@
 #!/bin/zsh -f
-# 假的 ps：给 ccp chatgpt rm 查找档案的 ChatGPT 守护进程（codex app-server）用，输出测试准备好的进程表，记录每次调用。
+# 假的 ps：给 ccp chatgpt rm 查找在用档案的进程（守护进程 codex app-server、桌面 App、codex 会话等）用，输出测试准备好的进程表，记录每次调用。
 # shell 测试（tests/shell/lib.zsh 的 t_run）把 tests/fakes/ 放在 PATH 最前面，所以 ccp 经 PATH 调用的 ps 是它。
 #
 # 配置：环境变量 FAKE_PS_DIR 指向一个目录（未设置时以 99 退出，绝不回退到真程序）。

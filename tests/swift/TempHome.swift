@@ -20,7 +20,7 @@
 // 运行的 ccp 绝不会改动真实的 launchd 环境、退出用户的 ChatGPT 或运行真的 codex。
 // 用 `setLaunchdEnv`、`launchdEnv`、`launchctlCalls`、`chatgptApp`、`chatgptAppCalls`、`codexCalls` 准备和读取。
 // `environment.launchctl`（App 核心自己读 launchd 环境，ticket 06）也是 root/bin/launchctl 这个包装。
-// ccp chatgpt rm 查找守护进程用的 ps 同样有包装（FAKE_PS_DIR = root/ps，进程表默认为空）。
+// ccp chatgpt rm 查找在用档案的进程用的 ps 同样有包装（FAKE_PS_DIR = root/ps，进程表默认为空）。
 
 import Foundation
 
