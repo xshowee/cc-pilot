@@ -69,7 +69,7 @@ CC Pilot 只访问下面三个地址：
 - **cc-pilot 从不写入、也从不续期凭据**。续期始终由 Claude Code 或 codex 自己完成。凭据只会在登出时由工具自己删除：Claude Code 由你执行 `/logout`（`ccp rm` 会为此打开 Claude Code）；`ccp chatgpt rm` 在你确认后，在该账号里执行 `codex logout`。凭据还在时，这两个命令都不会删除账号。
 - `ccp` 不读取凭据，只检查它们是否存在：`ccp rm` 检查该账号的钥匙串项是否还在（不读取内容），`ccp chatgpt add` 和 `ccp chatgpt rm` 检查该账号的 `auth.json` 是否还在。
 - 读取凭据不应该弹出钥匙串授权窗口。如果哪天出现了弹窗，请不要点"允许"：这说明 cc-pilot 与当前的 Claude Code 版本不兼容，App 也会这样提示你。
-- **进程**。为了判断正在进行的会话属于哪个 ChatGPT 账号，App 会查看你自己的、名字以 `codex` 开头的进程：每个进程读一次环境变量、只保留 `CODEX_HOME`，并列出它们打开的文件。用的是 `lsof` 所用的同一套系统接口（libproc、sysctl），不为此启动任何程序。`ccp chatgpt rm` 为了找出仍在使用某个账号的进程，执行一次 `ps -A -E`，只找这个账号的 `CODEX_HOME`。进程环境里的其他内容一概不保留。
+- **进程**。为了判断正在进行的会话属于哪个 ChatGPT 账号，App 会查看你自己的、名字以 `codex` 开头的进程：每个进程读一次环境变量、只保留 `CODEX_HOME`，并列出它们打开的文件。用的是 `lsof` 所用的同一套系统接口（libproc、sysctl），不为此启动任何程序。`ccp chatgpt rm` 为了确认账号是否仍在使用，执行一次 `ps -A -E`，只找 `CODEX_HOME` 是这个账号的 `codex` 进程和 ChatGPT 桌面 App。进程环境里的其他内容一概不保留。
 
 ## 它会碰哪些东西
 
