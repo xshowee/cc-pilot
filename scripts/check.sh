@@ -79,8 +79,13 @@ if (( ${#app_sources} )); then
   CHECK_BUILD=$ROOT/.build/checks
   mkdir -p -- $CHECK_BUILD
   sparkle=$(./scripts/fetch-sparkle.sh) || failed+=("准备 Sparkle 框架")
+  # 较新的 Xcode 把 SwiftUIMacros 等宏插件放在 MacOSX 平台目录下，命令行 swiftc 默认不搜索那里，
+  # @State 等宏会报 "plugin for module 'SwiftUIMacros' not found"；目录存在时显式加上。
+  typeset -a plugin_args
+  platform_plugins="$(xcode-select -p)/Platforms/MacOSX.platform/Developer/usr/lib/swift/host/plugins"
+  [[ -d $platform_plugins ]] && plugin_args=(-plugin-path "$platform_plugins")
   swiftc -typecheck -F "$sparkle" -parse-as-library -swift-version 5 \
-      -sdk "$(xcrun --show-sdk-path)" \
+      -sdk "$(xcrun --show-sdk-path)" $plugin_args \
       -target "$(uname -m)-apple-macos$(/usr/libexec/PlistBuddy -c 'Print LSMinimumSystemVersion' Resources/Info.plist)" \
       -module-cache-path $CHECK_BUILD/ModuleCache \
       $core_sources $app_sources || failed+=("App 类型检查")
