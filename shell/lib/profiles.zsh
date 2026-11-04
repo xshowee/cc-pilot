@@ -19,12 +19,6 @@ _ccp_profiles_root() {
   print -r -- "${HOME%%/##}/.claude-profiles"
 }
 
-# 输出当前档案记录文件的路径
-_ccp_active_file() {
-  emulate -L zsh
-  print -r -- "$(_ccp_profiles_root)/active"
-}
-
 # 档案名是否符合规则（不检查是否存在；default 也算合规）
 _ccp_valid_name() {
   emulate -L zsh
@@ -65,52 +59,103 @@ _ccp_profile_dir() {
   print -r -- "$(_ccp_profiles_root)/$1"
 }
 
-# 名为 $1 的档案目录是否存在：~/.claude-profiles/ 下有一个名字与 $1 逐字节相同的目录
-# （或指向目录的软链接）。macOS 的文件系统默认不分大小写，只用 [[ -d ]] 判断时 Work 也能找到
-# work 目录，但 CLAUDE_CONFIG_DIR 会是 .../Work，钥匙串 service 名随之不同，表现为未登录；
-# 所以档案名必须与目录名完全一致。不检查名字规则。
-_ccp_profile_exists() {
+# ---------- 按档案根目录参数化的通用部分（Claude Code 与 ChatGPT 两侧共用，chatgpt-profiles.zsh 也调用） ----------
+# 两侧的档案根目录、当前档案记录的格式与写法、档案名区分大小写的规则都一样，只是根目录不同
+# （~/.claude-profiles、~/.codex-profiles）。下面的 _in 函数第一个参数是根目录，两侧各包一层薄函数。
+
+# 根目录 $1 下是否有名为 $2 的档案目录：名字与某个目录（或指向目录的软链接）逐字节相同。
+# macOS 的文件系统默认不分大小写，只用 [[ -d ]] 判断时 Work 也能找到 work 目录，但传给工具的配置目录
+# 会是 .../Work（Claude 一侧钥匙串 service 名随之不同，表现为未登录）；所以档案名必须与目录名完全一致。
+# 不检查名字规则。
+_ccp_profile_exists_in() {
   emulate -L zsh
   local -a names
-  names=("$(_ccp_profiles_root)"/*(N-/:t))
-  (( ${names[(Ie)$1]} ))
+  names=("$1"/*(N-/:t))
+  (( ${names[(Ie)$2]} ))
 }
 
-# 与 $1 只差大小写的已有档案名（用于错误信息里的提示）；没有时什么都不输出
-_ccp_profile_case_variant() {
+# 根目录 $1 下与 $2 只差大小写的已有档案名（用于错误信息里的提示）；没有时什么都不输出
+_ccp_profile_case_variant_in() {
   emulate -L zsh
   setopt extended_glob
   local -a names
-  names=("$(_ccp_profiles_root)"/*(N-/:t))
+  names=("$1"/*(N-/:t))
   local n
   for n in $names; do
-    [[ ${(L)n} == ${(L)1} && $n != "$1" ]] && { print -r -- "$n"; return 0 }
+    [[ ${(L)n} == ${(L)2} && $n != "$2" ]] && { print -r -- "$n"; return 0 }
   done
   return 0
 }
 
-# 错误信息里"档案不存在"之后的补充：有只差大小写的档案时提醒档案名区分大小写
-_ccp_print_case_hint() {
+# 错误信息里"档案不存在"之后的补充：根目录 $1 下有与 $2 只差大小写的档案时提醒档案名区分大小写
+_ccp_print_case_hint_in() {
   emulate -L zsh
   local variant
-  variant=$(_ccp_profile_case_variant "$1")
+  variant=$(_ccp_profile_case_variant_in "$1" "$2")
   [[ -n $variant ]] && print -u2 -r -- "  档案名区分大小写：已有的档案是 \"$variant\"。"
   return 0
 }
 
-# 输出当前档案记录中的档案名；记录不存在、不可读或为空时输出 default。
+# 输出根目录 $1 下当前档案记录（$1/active）中的档案名；记录不存在、不可读或为空时输出 default。
 # 只取第一行，去掉首尾空白（含 \r）。不校验名字是否合规。
-_ccp_active_name() {
+_ccp_active_name_in() {
   emulate -L zsh
   setopt extended_glob
-  local f line=
-  f=$(_ccp_active_file)
+  local f=$1/active line=
   # 注意：$(<file) 在文件不存在时会往 stderr 报错，2>/dev/null 也拦不住，所以先判断
   if [[ -f $f && -r $f ]]; then
     IFS= read -r line < $f
   fi
   line=${${line##[[:space:]]#}%%[[:space:]]#}
   print -r -- "${line:-default}"
+}
+
+# 把档案名 $2 写进根目录 $1 下的当前档案记录 $1/active：内容是档案名加一个换行（UTF-8，无 BOM）。
+# 原子写入：在同一目录下用 mktemp 建临时文件 .active.XXXXXX，写完后 rename 到 active。
+# 失败时往 stderr 报错（以 $3 开头，例如 "ccp use"），返回 1，记录保持不变。
+_ccp_write_active_in() {
+  emulate -L zsh
+  local root=$1 name=$2 cmd=$3 record=$1/active tmp
+  # rename 到一个目录（或指向目录的软链接）会把文件移进目录里，必须先拦住
+  if [[ -d $record ]]; then
+    print -u2 -r -- "$cmd: 当前档案记录的位置 $record 是一个目录，请先手动处理它。"
+    return 1
+  fi
+  if ! /bin/mkdir -p -- "$root" || ! tmp=$(/usr/bin/mktemp "$root/.active.XXXXXX"); then
+    print -u2 -r -- "$cmd: 无法在 $root 里写入当前档案记录。"
+    return 1
+  fi
+  if ! print -r -- "$name" > "$tmp" || ! /bin/mv -f -- "$tmp" "$record"; then
+    /bin/rm -f -- "$tmp"
+    print -u2 -r -- "$cmd: 写入当前档案记录 $record 失败，记录保持不变。"
+    return 1
+  fi
+}
+
+# ---------- Claude Code 一侧 ----------
+
+# 名为 $1 的档案目录是否存在（规则见 _ccp_profile_exists_in）
+_ccp_profile_exists() {
+  emulate -L zsh
+  _ccp_profile_exists_in "$(_ccp_profiles_root)" "$1"
+}
+
+# 与 $1 只差大小写的已有档案名；没有时什么都不输出
+_ccp_profile_case_variant() {
+  emulate -L zsh
+  _ccp_profile_case_variant_in "$(_ccp_profiles_root)" "$1"
+}
+
+# 错误信息里"档案不存在"之后的补充：有只差大小写的档案时提醒档案名区分大小写
+_ccp_print_case_hint() {
+  emulate -L zsh
+  _ccp_print_case_hint_in "$(_ccp_profiles_root)" "$1"
+}
+
+# 输出当前档案记录中的档案名；记录不存在、不可读或为空时输出 default（读法见 _ccp_active_name_in）
+_ccp_active_name() {
+  emulate -L zsh
+  _ccp_active_name_in "$(_ccp_profiles_root)"
 }
 
 # 解析本次会话要用的档案（不考虑 CLAUDE_CONFIG_DIR，那由调用方先判断）：

@@ -1,6 +1,8 @@
 # cc-pilot 共享库（ChatGPT 工具）：ChatGPT 档案目录、当前档案记录、档案解析（ADR 0005）。
 #
 # 与 profiles.zsh（Claude Code 一侧）并列，规则相同：只定义 _ccp_ 开头的函数，不定义全局变量；
+# 两侧相同的部分（档案是否存在、只差大小写的提示、当前档案记录的读写）在 profiles.zsh 里按根目录参数化
+# （_ccp_*_in），这里只包一层，所以 profiles.zsh 必须也被 source（bin/ccp 与 cc-pilot.zsh 都会）；
 # 每个函数开头 `emulate -L zsh`；出错时只 return，绝不 exit。
 # bin/ccp 自动 source lib/ 下所有不以 cmd- 开头的文件，所以 ccp 的子命令里可以直接用这里的函数；
 # 交互 shell 的入口 cc-pilot.zsh 也 source 本文件（codex 包装函数要用这里的函数）。
@@ -18,12 +20,6 @@ _ccp_chatgpt_profiles_root() {
   print -r -- "${HOME%%/##}/.codex-profiles"
 }
 
-# 输出 ChatGPT 当前档案记录文件的路径
-_ccp_chatgpt_active_file() {
-  emulate -L zsh
-  print -r -- "$(_ccp_chatgpt_profiles_root)/active"
-}
-
 # 输出 ChatGPT 默认档案的目录：$HOME/.codex。
 # 启动默认档案时不设置 CODEX_HOME（codex 自己默认用它），这里只用于定位其中的文件。
 _ccp_chatgpt_default_dir() {
@@ -38,25 +34,22 @@ _ccp_chatgpt_profile_dir() {
   print -r -- "$(_ccp_chatgpt_profiles_root)/$1"
 }
 
-# 名为 $1 的 ChatGPT 档案目录是否存在：名字与 ~/.codex-profiles/ 下某个目录（或指向目录的软链接）
-# 逐字节相同（理由同 _ccp_profile_exists：文件系统不分大小写）。不检查名字规则。
+# 名为 $1 的 ChatGPT 档案目录是否存在（规则同 Claude 一侧，见 profiles.zsh 的 _ccp_profile_exists_in）。不检查名字规则。
 _ccp_chatgpt_profile_exists() {
   emulate -L zsh
-  local -a names
-  names=("$(_ccp_chatgpt_profiles_root)"/*(N-/:t))
-  (( ${names[(Ie)$1]} ))
+  _ccp_profile_exists_in "$(_ccp_chatgpt_profiles_root)" "$1"
 }
 
 # 与 $1 只差大小写的已有 ChatGPT 档案名；没有时什么都不输出
 _ccp_chatgpt_profile_case_variant() {
   emulate -L zsh
-  local -a names
-  names=("$(_ccp_chatgpt_profiles_root)"/*(N-/:t))
-  local n
-  for n in $names; do
-    [[ ${(L)n} == ${(L)1} && $n != "$1" ]] && { print -r -- "$n"; return 0 }
-  done
-  return 0
+  _ccp_profile_case_variant_in "$(_ccp_chatgpt_profiles_root)" "$1"
+}
+
+# 错误信息里"档案不存在"之后的补充：有只差大小写的 ChatGPT 档案时提醒档案名区分大小写
+_ccp_chatgpt_print_case_hint() {
+  emulate -L zsh
+  _ccp_print_case_hint_in "$(_ccp_chatgpt_profiles_root)" "$1"
 }
 
 # ~/.codex-profiles/ 下的 ChatGPT 档案名（不含 default），按字节序放进数组 reply：
@@ -73,18 +66,11 @@ _ccp_chatgpt_profile_names() {
   done
 }
 
-# 输出 ChatGPT 当前档案记录中的档案名；记录不存在、不可读或为空时输出 default。
-# 读法与 _ccp_active_name 相同：只取第一行，去掉首尾空白（含 \r）；不校验名字。
+# 输出 ChatGPT 当前档案记录中的档案名；记录不存在、不可读或为空时输出 default（读法同 Claude 一侧，
+# 见 _ccp_active_name_in）
 _ccp_chatgpt_active_name() {
   emulate -L zsh
-  setopt extended_glob
-  local f line=
-  f=$(_ccp_chatgpt_active_file)
-  if [[ -f $f && -r $f ]]; then
-    IFS= read -r line < $f
-  fi
-  line=${${line##[[:space:]]#}%%[[:space:]]#}
-  print -r -- "${line:-default}"
+  _ccp_active_name_in "$(_ccp_chatgpt_profiles_root)"
 }
 
 # 解析本次要用的 ChatGPT 档案：CODEX_PROFILE 非空时用它，否则用当前档案记录。
@@ -93,7 +79,7 @@ _ccp_chatgpt_active_name() {
 # 名字不合规或档案不存在时，往 stderr 输出错误和修复建议，返回 1。
 _ccp_chatgpt_resolve_home() {
   emulate -L zsh
-  local name origin dir source_kind variant
+  local name origin dir source_kind
   if [[ -n ${CODEX_PROFILE-} ]]; then
     name=$CODEX_PROFILE
     source_kind=env
@@ -115,8 +101,7 @@ _ccp_chatgpt_resolve_home() {
   dir=$(_ccp_chatgpt_profile_dir "$name")
   if ! _ccp_chatgpt_profile_exists "$name"; then
     print -u2 -r -- "cc-pilot: ${origin}档案 \"$name\" 不存在（$dir）。"
-    variant=$(_ccp_chatgpt_profile_case_variant "$name")
-    [[ -n $variant ]] && print -u2 -r -- "  档案名区分大小写：已有的档案是 \"$variant\"。"
+    _ccp_chatgpt_print_case_hint "$name"
     _ccp_chatgpt_print_fix_hint $source_kind
     return 1
   fi

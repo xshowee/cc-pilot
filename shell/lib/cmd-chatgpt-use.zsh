@@ -70,14 +70,13 @@ _ccp_cmd_chatgpt_use() {
     dir=$(_ccp_chatgpt_profile_dir "$name")
     if ! _ccp_chatgpt_profile_exists "$name"; then
       print -u2 -r -- "ccp chatgpt use: 档案 \"$name\" 不存在（$dir）。"
-      local variant=$(_ccp_chatgpt_profile_case_variant "$name")
-      [[ -n $variant ]] && print -u2 -r -- "  档案名区分大小写：已有的档案是 \"$variant\"。"
+      _ccp_chatgpt_print_case_hint "$name"
       print -u2 -r -- "  用 \`ccp chatgpt ls\` 查看已有档案，或用 \`ccp chatgpt add $name\` 新建档案。"
       return 1
     fi
   fi
 
-  _ccp_chatgpt_write_active "$name" || return 1
+  _ccp_write_active_in "$(_ccp_chatgpt_profiles_root)" "$name" "ccp chatgpt use" || return 1
 
   if [[ -z $dir ]]; then
     launchctl unsetenv CODEX_HOME
@@ -108,28 +107,6 @@ _ccp_cmd_chatgpt_use() {
   _ccp_chatgpt_restart_app "$name" && return 0
   (( report )) && return 3
   return 0
-}
-
-# 原子写入 ChatGPT 当前档案记录（与 ccp use 写 Claude 记录的方式相同）。失败时报错返回 1，记录不变。
-_ccp_chatgpt_write_active() {
-  emulate -L zsh
-  local root record tmp
-  root=$(_ccp_chatgpt_profiles_root)
-  record=$(_ccp_chatgpt_active_file)
-  # rename 到一个目录（或指向目录的软链接）会把文件移进目录里，必须先拦住
-  if [[ -d $record ]]; then
-    print -u2 -r -- "ccp chatgpt use: 当前档案记录的位置 $record 是一个目录，请先手动处理它。"
-    return 1
-  fi
-  if ! /bin/mkdir -p -- "$root" || ! tmp=$(/usr/bin/mktemp "$root/.active.XXXXXX"); then
-    print -u2 -r -- "ccp chatgpt use: 无法在 $root 里写入当前档案记录。"
-    return 1
-  fi
-  if ! print -r -- "$1" > "$tmp" || ! /bin/mv -f -- "$tmp" "$record"; then
-    /bin/rm -f -- "$tmp"
-    print -u2 -r -- "ccp chatgpt use: 写入当前档案记录 $record 失败，记录保持不变。"
-    return 1
-  fi
 }
 
 # ChatGPT 桌面 App 是否正在运行。查询本身不需要自动化授权；查询失败（例如没装 ChatGPT）按没在运行处理。

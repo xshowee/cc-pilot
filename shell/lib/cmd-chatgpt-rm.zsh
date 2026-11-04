@@ -33,7 +33,7 @@ _ccp_cmd_chatgpt_rm() {
     print -u2 -r -- "用法：ccp chatgpt rm <名字>"
     return 2
   fi
-  local name=$1 dir active launchd variant answer
+  local name=$1 dir active launchd answer
   local -a daemons users
 
   if [[ $name == default ]]; then
@@ -55,8 +55,7 @@ _ccp_cmd_chatgpt_rm() {
   fi
   if ! _ccp_chatgpt_profile_exists "$name"; then
     print -u2 -r -- "ccp chatgpt rm: 档案 \"$name\" 不存在（$dir）。可以用 \`ccp chatgpt ls\` 查看已有档案。"
-    variant=$(_ccp_chatgpt_profile_case_variant "$name")
-    [[ -n $variant ]] && print -u2 -r -- "  档案名区分大小写：已有的档案是 \"$variant\"。"
+    _ccp_chatgpt_print_case_hint "$name"
     return 1
   fi
 
