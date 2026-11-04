@@ -40,9 +40,11 @@ enum CodexRollout {
         }
     }
 
+    /// - forkedFrom: fork 出来的会话（forked_from_id）
+    /// - parentThread: 子代理会话（source.subagent.thread_spawn.parent_thread_id）
     static func meta(id: String, at timestamp: String, creatorAccountID: String? = "ws-team",
                      creatorUserID: String? = "user-a", originator: String = "codex_cli_rs",
-                     forkedFrom: String? = nil) -> String {
+                     forkedFrom: String? = nil, parentThread: String? = nil) -> String {
         var payload: [String: Any] = [
             "id": id, "timestamp": timestamp, "cwd": "/Users/tester/project", "originator": originator,
             "cli_version": "0.153.4", "source": "cli", "model_provider": "openai",
@@ -50,14 +52,24 @@ enum CodexRollout {
         if let creatorAccountID { payload["creator_account_id"] = creatorAccountID }
         if let creatorUserID { payload["creator_user_id"] = creatorUserID }
         if let forkedFrom { payload["forked_from_id"] = forkedFrom }
+        if let parentThread {
+            payload["source"] = ["subagent": ["thread_spawn": ["parent_thread_id": parentThread, "depth": 1]]]
+        }
         return line(timestamp, "session_meta", payload)
     }
 
-    static func turnContext(model: String, at timestamp: String) -> String {
+    /// turnID 缺省时是随机的 UUIDv4（老版本 codex 的样子，看不出回合开始的时间）
+    static func turnContext(model: String, at timestamp: String, turnID: String? = nil) -> String {
         line(timestamp, "turn_context", [
             "cwd": "/Users/tester/project", "approval_policy": "on-request", "model": model,
-            "summary": "auto", "turn_id": UUID().uuidString.lowercased(),
+            "summary": "auto", "turn_id": turnID ?? UUID().uuidString.lowercased(),
         ])
+    }
+
+    /// 一个 UUIDv7（codex 的会话 ID、回合 ID 都是）：前 48 位是创建时刻的 Unix 毫秒数，serial 区分同一时刻的几个
+    static func v7(ms: UInt64, serial: Int = 0) -> String {
+        let hex = String(format: "%012llx", ms)
+        return "\(hex.prefix(8))-\(hex.suffix(4))-7000-8000-\(String(format: "%012x", serial))"
     }
 
     static func userMessage(at timestamp: String, text: String = "你好") -> String {

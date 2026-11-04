@@ -9,14 +9,23 @@
 // 其他行不看（先按字节预筛，再 JSON 解析：会话记录里大行很多）。
 //
 // fork（以及带父会话历史的子代理）出来的会话记录：先写自己的 session_meta，再把父会话的记录重放一遍
-// （包括父会话的 session_meta 与 token_count，时间戳是重放时的），之后才是自己的事件。
-// 所以去重键不用时间戳，而用"范围 + 累计用量 + 本次用量"：
-//   范围 = 最近一行 session_meta 的 forked_from_id ?? 父线程 ID ?? id。父会话自己的文件与重放里的同一事件
-//         处在同一个范围（重放也带着父会话的 session_meta），累计用量相同 → 去重键相同。
+// （包括父会话的 session_meta 与 token_count，时间戳是重放时的），之后才是自己的事件。父会话本身是 fork 出来的时，
+// 重放里还套着祖父会话的 session_meta 与事件（父会话文件的原样）。
+// 去重键不用时间戳，而用"范围 + 累计用量 + 本次用量"，范围 = 事件原本所属的会话：
+//   - 读到 session_meta：范围切到它的 id（自己的会话 ID，或重放开始的父 / 祖父会话 ID），记进这份文件的会话链。
+//   - 读到 turn_context：回合 ID 与会话 ID 都是 UUIDv7（前 48 位是创建时刻）时，回合属于会话链里"在回合开始时
+//     已经存在的最新的那个会话"——范围切到它。fork 自己的回合晚于自己的会话 ID，于是重放到此结束，范围回到自己；
+//     重放里父会话自己的回合早于 fork、晚于父会话的创建，范围回到父会话（嵌套的重放）。
+//     看不出时刻（老版本的回合 ID 是 UUIDv4、或没有回合 ID）时范围不变：之后的事件仍算在重放的会话名下，
+//     与父会话之后的事件累计用量相同才会合并（之前的做法）。
+//   这样重放的事件与父会话自己文件里的同一事件处在同一个范围（同一会话），累计用量相同 → 去重键相同；
+//   fork / 子代理自己的事件在自己的范围里，不会与父会话、兄弟会话用量恰好相同的事件合并。
 //   累计用量（total_token_usage）在一个会话里只增不减，同一范围里不同的事件累计用量不同；
 //   同一个事件写了两遍（只更新 rate_limits 时会重发相同的 info）去重键也相同。
+// 范围不是自己的会话 ID 的事件标为重放（replayed）：它们是父会话的旧事件，rate_limits 不是新鲜的实时额度。
 // 没有 total_token_usage 的事件退回用时间戳。重放的事件在新文件里的会话 ID 是新会话的（写这份文件的会话），
-// 先读到哪份就按哪份记（文件按路径排序读，父会话的文件更早）。待真机验证（ticket 13）。
+// 先读到哪份就按哪份记（文件按路径排序读，父会话的文件更早）。
+// 待真机验证（ticket 13）：fork 重放父会话的 session_meta；会话 ID、回合 ID 是 UUIDv7；嵌套 fork 的重放形状。
 
 import Foundation
 
@@ -45,8 +54,6 @@ struct CodexSessionMeta: Equatable, Codable {
         self.parentThreadID = parentThreadID
     }
 
-    /// 去重键的范围（见文件头）
-    var deduplicationScope: String { forkedFromID ?? parentThreadID ?? id }
 }
 
 /// token_count 的 last_token_usage，原样保存（四类映射由账本做：输入 = input − cachedInput 等，spec）
@@ -88,6 +95,8 @@ struct CodexTokenCountEvent: Equatable {
     let rateLimits: CodexRateLimits?
     /// 跨文件去重键（见文件头）：resume、fork 重放的同一事件相同
     let deduplicationKey: String
+    /// fork / 带历史的子代理把父会话的记录重放进这份文件时的事件（不是这个会话自己的，见文件头）
+    var replayed = false
 }
 
 /// 一份会话记录读到哪里，以及接着读下去需要的上下文。下次扫描原样传回；可编码，09 可存进账本
@@ -99,8 +108,10 @@ struct CodexFileCursor: Equatable, Codable {
     var modified: Double?
     /// 文件自己的会话 ID（首行 session_meta）
     var sessionID: String?
-    /// 当前的去重范围（最近一行 session_meta）
+    /// 当前的去重范围：接下来的事件原本所属的会话（见文件头）
     var scope: String?
+    /// 这份文件里出现过的 session_meta 的 id，按出现顺序（第一个是文件自己的会话）
+    var lineage: [String]?
     /// 当前的模型（最近一次 turn_context）
     var model: String?
 }
@@ -136,9 +147,13 @@ struct CodexSessionLogParser {
                 cursor.sessionID = id
                 meta = parsed
             }
-            cursor.scope = parsed.deduplicationScope
+            var lineage = cursor.lineage ?? []
+            if !lineage.contains(id) { lineage.append(id) }
+            cursor.lineage = lineage
+            cursor.scope = id
         case "turn_context":
             if let model = Self.nonEmpty(payload["model"]) { cursor.model = model }
+            if let turn = Self.nonEmpty(payload["turn_id"]), let owner = owner(ofTurn: turn) { cursor.scope = owner }
         case "event_msg":
             guard payload["type"] as? String == "token_count",
                   let text = object["timestamp"] as? String, let timestamp = TranscriptLine.parseTimestamp(text)
@@ -149,12 +164,33 @@ struct CodexSessionLogParser {
             let limits = Self.rateLimits(payload["rate_limits"], at: timestamp)
             guard last != nil || limits != nil else { return }
             let sessionID = cursor.sessionID ?? fallbackSessionID
+            let scope = cursor.scope ?? sessionID
             events.append(CodexTokenCountEvent(
                 sessionID: sessionID, timestamp: timestamp, model: cursor.model, usage: last, rateLimits: limits,
-                deduplicationKey: Self.key(scope: cursor.scope ?? sessionID, total: total, last: last, timestamp: text)))
+                deduplicationKey: Self.key(scope: scope, total: total, last: last, timestamp: text),
+                replayed: scope != sessionID))
         default:
             return
         }
+    }
+
+    /// 回合所属的会话：会话链里创建时刻不晚于回合开始时刻的最新的那个（都按 UUIDv7 的时刻）；看不出时为 nil
+    private func owner(ofTurn turn: String) -> String? {
+        guard let started = Self.uuidV7Time(turn), let lineage = cursor.lineage else { return nil }
+        var best: (id: String, created: UInt64)?
+        for id in lineage {
+            guard let created = Self.uuidV7Time(id), created <= started else { continue }
+            if best == nil || created > best!.created { best = (id, created) }
+        }
+        return best?.id
+    }
+
+    /// UUIDv7 的创建时刻（前 48 位，Unix 毫秒）；不是 UUIDv7 时为 nil
+    static func uuidV7Time(_ id: String) -> UInt64? {
+        guard let uuid = UUID(uuidString: id) else { return nil }
+        let b = uuid.uuid
+        guard b.6 >> 4 == 7 else { return nil }
+        return [b.0, b.1, b.2, b.3, b.4, b.5].reduce(0) { $0 << 8 | UInt64($1) }
     }
 
     /// rollout-2026-11-04T10-00-00-<UUID>.jsonl[.zst] 里的会话 ID（最后 36 个字符）

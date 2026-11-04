@@ -20,6 +20,7 @@ final class ChatGPTTokenLedgerChecks: CheckSuite {
             Check("增量读：读取位置与明细一起存进账本，重新打开账本后只读新追加的完整行", readsIncrementallyAcrossReopen),
             Check(".zst 压缩的会话记录也记；没变时不重读", ingestsZst),
             Check("resume、fork 把旧事件带进另一份文件：只记一次；之后的新事件照常记", dedupsResumeAndFork),
+            Check("fork 自己的事件、子代理的事件与别的会话用量恰好相同也各记一次；重放的只记一次", keepsDistinctEventsApart),
             Check("ChatGPT 账号的保留期汇总、窗口、累计、清空规则同 Claude，互不影响", sameRulesAsClaude),
         ]
     }
@@ -265,6 +266,38 @@ final class ChatGPTTokenLedgerChecks: CheckSuite {
         let messages = try ledger.messages()
         try expectEqual(messages.map(\.tokens.input), [10, 20, 40])
         try expectEqual(messages.map(\.sessionID), [sessionA, sessionA, sessionB])
+    }
+
+    static func keepsDistinctEventsApart() throws {
+        let home = try TempHome()
+        defer { home.remove() }
+        let base: UInt64 = 1_793_786_400_000
+        let parent = CodexRollout.v7(ms: base), fork = CodexRollout.v7(ms: base + 5_000, serial: 1)
+        let subagents = [CodexRollout.v7(ms: base + 6_000, serial: 2), CodexRollout.v7(ms: base + 6_000, serial: 3)]
+        let parentTurn = CodexRollout.turnContext(model: "m", at: t0, turnID: CodexRollout.v7(ms: base + 1_000, serial: 4))
+        let first = CodexRollout.tokenCount(at: t1, last: .init(input: 10, output: 1))
+        let same = { (at: String) in
+            CodexRollout.tokenCount(at: at, last: .init(input: 20, output: 2), total: .init(input: 30, output: 3))
+        }
+        try home.write(CodexRollout.path(parent), CodexRollout.file([
+            CodexRollout.meta(id: parent, at: t0), parentTurn, first,
+            CodexRollout.turnContext(model: "m", at: t2, turnID: CodexRollout.v7(ms: base + 9_000, serial: 5)), same(t2),
+        ]))
+        try home.write(CodexRollout.path(fork), CodexRollout.file([
+            CodexRollout.meta(id: fork, at: t3, forkedFrom: parent),
+            CodexRollout.meta(id: parent, at: t3), parentTurn, first,
+            CodexRollout.turnContext(model: "m", at: t3, turnID: CodexRollout.v7(ms: base + 7_000, serial: 6)), same(t3),
+        ]))
+        for subagent in subagents {
+            try home.write(CodexRollout.path(subagent), CodexRollout.file([
+                CodexRollout.meta(id: subagent, at: t3, parentThread: parent),
+                CodexRollout.turnContext(model: "m", at: t3), first,
+            ]))
+        }
+        let ledger = try openLedger(home)
+        // 父会话 2 + fork 自己 1 + 两个子代理各 1；fork 重放的那一次不再记
+        try expectEqual(try ingest(home, ledger), 5)
+        try expectEqual(try ledger.messages().filter { $0.sessionID == fork }.map(\.tokens.input), [20])
     }
 
     // MARK: - 保留期、窗口、累计、清空

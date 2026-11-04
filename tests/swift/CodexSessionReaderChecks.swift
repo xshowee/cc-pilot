@@ -19,6 +19,10 @@ final class CodexSessionReaderChecks: CheckSuite {
             Check("只扫描给出的目录：别处的位置原样保留；扫描过的目录里删掉的文件位置被忘掉", scansOnlyGivenDirectories),
             Check("给出的目录互相包含（同一批变化报告了父目录与子目录）时每份文件只读一次", readsNestedDirectoriesOnce),
             Check("fork 重放的父会话事件、重复写的同一事件去重键相同；之后的新事件去重键不同", deduplicationKeys),
+            Check("没带历史的子代理按自己的会话去重：两个子代理首轮用量相同也不合并", subagentsKeyedByOwnSession),
+            Check("fork 重放结束（自己的回合开始）后按自己的会话去重：与父会话之后用量相同的事件不合并；重放的标为重放",
+                  forkOwnEventsKeyedByOwnSession),
+            Check("fork 的 fork：重放里套着的祖父会话、父会话的事件各与原文件的去重键相同", nestedForkReplay),
             Check("窗口按 window_minutes 识别（不按 primary / secondary）；其他长度、其他 limit_id 不算", identifiesWindows),
         ]
     }
@@ -336,6 +340,100 @@ final class CodexSessionReaderChecks: CheckSuite {
         try expect(!parentKeys.contains(childKeys[2]), "fork 之后自己的新事件去重键不同")
         try expectEqual(scan.sessions.map(\.id).sorted(), [parent, child].sorted())
         try expectEqual(scan.sessions.first { $0.id == child }?.forkedFromID, parent)
+    }
+
+    static func subagentsKeyedByOwnSession() throws {
+        let home = try TempHome()
+        defer { home.remove() }
+        let parent = CodexRollout.v7(ms: 1_793_786_400_000)
+        let children = [CodexRollout.v7(ms: 1_793_786_460_000, serial: 1), CodexRollout.v7(ms: 1_793_786_460_000, serial: 2)]
+        for child in children {
+            try home.write(CodexRollout.path(child), CodexRollout.file([
+                CodexRollout.meta(id: child, at: t1, parentThread: parent),
+                CodexRollout.turnContext(model: "gpt-5.3-codex", at: t1),
+                CodexRollout.tokenCount(at: t1, last: .init(input: 100, output: 10)),
+            ]))
+        }
+        let events = CodexSessionReader(environment: home.environment).scan([:]).events
+        try expectEqual(events.count, 2)
+        try expect(events[0].deduplicationKey != events[1].deduplicationKey,
+                   "两个子代理的事件去重键相同：\(events.map(\.deduplicationKey))")
+        try expect(!events.contains { $0.replayed }, "子代理自己的事件不是重放")
+    }
+
+    static func forkOwnEventsKeyedByOwnSession() throws {
+        let home = try TempHome()
+        defer { home.remove() }
+        let base: UInt64 = 1_793_786_400_000
+        let parent = CodexRollout.v7(ms: base), child = CodexRollout.v7(ms: base + 5_000)
+        let parentTurn = CodexRollout.v7(ms: base + 1_000, serial: 1)
+        let e1 = CodexRollout.tokenCount(at: t1, last: .init(input: 100, output: 10))
+        let e2 = CodexRollout.tokenCount(at: t2, last: .init(input: 50, output: 5), total: .init(input: 150, output: 15))
+        // 父会话 fork 之后、fork 出来的会话自己：恰好一样的一轮
+        let next = { (at: String) in
+            CodexRollout.tokenCount(at: at, last: .init(input: 30, output: 3), total: .init(input: 180, output: 18))
+        }
+        try home.write(CodexRollout.path(parent), CodexRollout.file([
+            CodexRollout.meta(id: parent, at: t0),
+            CodexRollout.turnContext(model: "gpt-5.3-codex", at: t0, turnID: parentTurn),
+            e1, e2,
+            CodexRollout.turnContext(model: "gpt-5.3-codex", at: t3, turnID: CodexRollout.v7(ms: base + 10_000, serial: 2)),
+            next(t3),
+        ]))
+        try home.write(CodexRollout.path(child), CodexRollout.file([
+            CodexRollout.meta(id: child, at: t3, forkedFrom: parent),
+            CodexRollout.meta(id: parent, at: t3),
+            CodexRollout.turnContext(model: "gpt-5.3-codex", at: t3, turnID: parentTurn),
+            CodexRollout.tokenCount(at: t3, last: .init(input: 100, output: 10)),
+            CodexRollout.tokenCount(at: t3, last: .init(input: 50, output: 5), total: .init(input: 150, output: 15)),
+            CodexRollout.turnContext(model: "gpt-5.3-codex", at: t3, turnID: CodexRollout.v7(ms: base + 5_000, serial: 3)),
+            next(t3),
+        ]))
+        let events = CodexSessionReader(environment: home.environment).scan([:]).events
+        let parentKeys = events.filter { $0.sessionID == parent }.map(\.deduplicationKey)
+        let childEvents = events.filter { $0.sessionID == child }
+        try expectEqual(childEvents.count, 3)
+        try expectEqual(childEvents.map(\.replayed), [true, true, false])
+        try expectEqual(Array(childEvents.prefix(2).map(\.deduplicationKey)), Array(parentKeys.prefix(2)),
+                        "重放的事件与父会话的去重键相同")
+        try expect(!parentKeys.contains(childEvents[2].deduplicationKey),
+                   "fork 自己的事件与父会话之后用量相同的事件去重键相同：\(childEvents[2].deduplicationKey)")
+        try expect(!events.filter { $0.sessionID == parent }.contains { $0.replayed }, "父会话自己的事件不是重放")
+    }
+
+    static func nestedForkReplay() throws {
+        let home = try TempHome()
+        defer { home.remove() }
+        let base: UInt64 = 1_793_786_400_000
+        let grand = CodexRollout.v7(ms: base), parent = CodexRollout.v7(ms: base + 10_000)
+        let child = CodexRollout.v7(ms: base + 20_000)
+        let grandTurn = CodexRollout.turnContext(model: "m", at: t0, turnID: CodexRollout.v7(ms: base + 1_000, serial: 1))
+        let parentTurn = CodexRollout.turnContext(model: "m", at: t1, turnID: CodexRollout.v7(ms: base + 11_000, serial: 2))
+        let childTurn = CodexRollout.turnContext(model: "m", at: t2, turnID: CodexRollout.v7(ms: base + 21_000, serial: 3))
+        let g1 = CodexRollout.tokenCount(at: t0, last: .init(input: 100, output: 10))
+        let p1 = CodexRollout.tokenCount(at: t1, last: .init(input: 20, output: 2), total: .init(input: 120, output: 12))
+        let c1 = CodexRollout.tokenCount(at: t2, last: .init(input: 30, output: 3), total: .init(input: 150, output: 15))
+        try home.write(CodexRollout.path(grand), CodexRollout.file([CodexRollout.meta(id: grand, at: t0), grandTurn, g1]))
+        try home.write(CodexRollout.path(parent), CodexRollout.file([
+            CodexRollout.meta(id: parent, at: t1, forkedFrom: grand),
+            CodexRollout.meta(id: grand, at: t1), grandTurn, g1,
+            parentTurn, p1,
+        ]))
+        try home.write(CodexRollout.path(child), CodexRollout.file([
+            CodexRollout.meta(id: child, at: t2, forkedFrom: parent),
+            CodexRollout.meta(id: parent, at: t2, forkedFrom: grand),
+            CodexRollout.meta(id: grand, at: t2), grandTurn, g1,
+            parentTurn, p1,
+            childTurn, c1,
+        ]))
+        let events = CodexSessionReader(environment: home.environment).scan([:]).events
+        func keys(_ id: String) -> [String] { events.filter { $0.sessionID == id }.map(\.deduplicationKey) }
+        try expectEqual(keys(parent).count, 2)
+        try expectEqual(keys(child).count, 3)
+        try expectEqual(keys(parent)[0], keys(grand)[0], "父会话里重放的祖父会话事件")
+        try expectEqual(Array(keys(child).prefix(2)), keys(parent), "子会话里重放的祖父、父会话事件")
+        try expectEqual(Set(keys(grand) + keys(parent) + keys(child)).count, 3, "三个不同的事件")
+        try expectEqual(events.filter { $0.sessionID == child }.map(\.replayed), [true, true, false])
     }
 
     // MARK: 窗口
