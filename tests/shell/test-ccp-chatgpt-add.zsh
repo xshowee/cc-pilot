@@ -212,6 +212,43 @@ model = \"gpt-5\"
 sqlite_home = \"/not-top-level\"" "顶层的 sqlite_home 被覆盖，表里的同名键不动"
 }
 
+# 顶层多行数组、多行字符串里形如表头的行不是表头：其后的顶层 sqlite_home 仍要去掉（否则出现两个，TOML 无效）
+test_config_toml_lines_inside_multiline_values_are_not_table_headers() {
+  t_codex_default
+  print -r -- 'notify = [
+  ["a", "b"]
+]
+instructions = """
+[not-a-table]
+"""
+note = '"'''"'
+[[also-not]]
+'"'''"'
+mixed = [ "]", # ] 注释里的括号不算
+  [1, 2] ]
+sqlite_home = "/elsewhere"
+
+[tui]
+sqlite_home = "/not-top-level"' > "$T_HOME/.codex/config.toml"
+  t_ccp chatgpt add work
+  assert_rc 0
+  assert_eq "$(< "$T_HOME/.codex-profiles/work/config.toml")" "$(sqlite_line)
+notify = [
+  [\"a\", \"b\"]
+]
+instructions = \"\"\"
+[not-a-table]
+\"\"\"
+note = '''
+[[also-not]]
+'''
+mixed = [ \"]\", # ] 注释里的括号不算
+  [1, 2] ]
+
+[tui]
+sqlite_home = \"/not-top-level\"" "只去掉顶层的 sqlite_home，多行值里的行不当表头"
+}
+
 test_config_toml_copies_target_when_default_is_a_symlink() {
   t_codex_default
   mkdir -p -- "$T_HOME/dotfiles"
