@@ -93,7 +93,7 @@ struct PanelView: View {
             .fixedSize(horizontal: false, vertical: true)
 
             if let pending = actions.pending {
-                PendingChangeBanner(change: pending) { actions.dismissPending() }
+                PendingChangeBanner(change: pending.change) { actions.dismissPending() }
             }
             if tokenStats.confirmingClearAll {
                 ClearAllBanner(onCancel: { tokenStats.confirmingClearAll = false },
@@ -101,7 +101,7 @@ struct PanelView: View {
             }
             if addingProfile {
                 Divider()
-                AddProfileForm(actions: actions, isPresented: $addingProfile)
+                AddProfileForm(actions: actions, isPresented: $addingProfile, offersChatGPT: chatgpt.isVisible)
             }
             Divider()
             PanelFooter(addDisabled: addingProfile || actions.isOpening) { addingProfile = true }
@@ -113,7 +113,7 @@ struct PanelView: View {
         })
         .onAppear {
             profiles.reload(); current.reload(); actions.update(with: profiles.profiles)
-            chatgpt.reload()
+            chatgpt.reload(); actions.update(withChatGPT: chatgpt.profiles)
             // 终端里可能 ccp init / ccp uninstall 过（ticket 25 的提示随之更新）
             shellIntegration.refresh()
             flyout.install(StatsFlyoutRoot(controller: flyout, profiles: profiles, usage: usage, stats: tokenStats))
@@ -126,6 +126,7 @@ struct PanelView: View {
             actions.update(with: list)
             flyout.rowsChanged(Set(list.filter { StatsFlyoutTarget(profile: $0) != nil }.map(\.name)))
         }
+        .onChange(of: chatgpt.profiles) { list in actions.update(withChatGPT: list) }
     }
 
     /// ChatGPT 一段：分割线 + 档案卡片（ticket 02 只显示；切换、刷新、删除由后续 ticket 接上）

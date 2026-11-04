@@ -92,7 +92,8 @@ struct ProfileCommands {
     /// 一行 shell 命令（用户在终端里看到的、也是给用户复制的就是它）。
     /// 已安装 ~/.cc-pilot 时用 `~/.cc-pilot/bin/ccp`（简短，zsh、bash、fish 都会展开 ~）；
     /// 否则用 App 内置的 ccp 的绝对路径。不依赖终端里的 PATH 里有没有 ccp。
-    private func ccpCommand(_ arguments: [String]) -> String {
+    /// ChatGPT 档案的命令（ChatGPTProfileCommands）也用它拼。
+    func ccpCommand(_ arguments: [String]) -> String {
         let installed = paths.homePath + "/.cc-pilot/bin/ccp"
         let ccp: String
         if FileManager.default.isExecutableFile(atPath: installed) || bundledCcp == nil {

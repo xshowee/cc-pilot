@@ -1,6 +1,8 @@
 // 面板里添加与删除档案（ticket 09）。App 自己不实现添加和删除：打开"终端"执行 ccp add / ccp rm，
 // 档案列表由 ProfileWatcher 跟着文件变化自动更新（新档案登录后显示邮箱，删除后消失）。
 // 检查档案名、删除入口是否可用、拼命令在 App 核心 ProfileCommands；打开终端在 TerminalLauncher。
+// ChatGPT 档案（chatgpt-profiles ticket 05）同样打开终端执行 ccp chatgpt add，命令与名字检查在
+// ChatGPTProfileCommands；进行中的变化记着属于哪个工具，只用该工具的档案列表判断是否完成。
 //
 // 打开终端要用 Apple 事件控制"终端"，macOS 会请求自动化授权：
 // - 系统即将弹窗询问（或者查不到状态、又从没说明过）时，先说明为什么需要、会执行什么命令；
@@ -15,31 +17,41 @@ final class ProfileActionsModel: ObservableObject {
     /// UserDefaults 键：是否已经说明过自动化授权
     static let explainedKey = "terminalAutomationExplained"
 
-    /// 已在终端里开始、还没完成的添加或删除；完成后（见 update(with:)）自动清除
-    @Published private(set) var pending: ProfileCommands.PendingChange?
+    /// 已在终端里开始、还没完成的添加或删除；完成后（见 update(with:) / update(withChatGPT:)）自动清除
+    @Published private(set) var pending: PendingProfileChange?
     /// 正在打开终端（查询授权、等待系统弹窗或 Terminal 启动）
     @Published private(set) var isOpening = false
 
     private let commands: ProfileCommands
+    private let chatgptCommands: ChatGPTProfileCommands
     private let launcher: TerminalLauncher
 
     init(environment: CoreEnvironment = .live) {
         let ccp = Bundle.main.resourceURL?.appendingPathComponent("shell/bin/ccp")
         let bundled = ccp.flatMap { FileManager.default.isExecutableFile(atPath: $0.path) ? $0 : nil }
         commands = ProfileCommands(environment: environment, bundledCcp: bundled)
+        chatgptCommands = ChatGPTProfileCommands(environment: environment, bundledCcp: bundled)
         launcher = TerminalLauncher(environment: environment)
     }
 
-    /// 新档案名的问题（空、不合规、保留名、已存在）；没有问题时为 nil
-    func problem(forNewName name: String) -> ProfileCommands.NewNameProblem? {
-        commands.newNameProblem(name)
+    /// 某个工具的新档案名的问题（空、不合规、保留名、已存在）；没有问题时为 nil
+    func problem(forNewName name: String, tool: Tool = .claudeCode) -> ProfileCommands.NewNameProblem? {
+        switch tool {
+        case .claudeCode: return commands.newNameProblem(name)
+        case .chatgpt: return chatgptCommands.newNameProblem(name)
+        }
     }
 
-    /// 打开终端执行 ccp add。名字有问题时不打开终端，返回 false。
+    /// 打开终端执行 ccp add（ChatGPT 是 ccp chatgpt add）。名字有问题时不打开终端，返回 false。
     @discardableResult
-    func add(_ name: String) -> Bool {
-        guard !isOpening, problem(forNewName: name) == nil else { return false }
-        open(commands.addCommand(name), pending: .adding(name))
+    func add(_ name: String, tool: Tool = .claudeCode) -> Bool {
+        guard !isOpening, problem(forNewName: name, tool: tool) == nil else { return false }
+        let command: String
+        switch tool {
+        case .claudeCode: command = commands.addCommand(name)
+        case .chatgpt: command = chatgptCommands.addCommand(name)
+        }
+        open(command, pending: PendingProfileChange(tool: tool, change: .adding(name)))
         return true
     }
 
@@ -47,7 +59,7 @@ final class ProfileActionsModel: ObservableObject {
     func remove(_ name: String, currentProfile: String) {
         guard !isOpening, removalBlocker(profile: name, currentProfile: currentProfile) == nil
         else { return }
-        open(commands.removeCommand(name), pending: .removing(name))
+        open(commands.removeCommand(name), pending: PendingProfileChange(tool: .claudeCode, change: .removing(name)))
     }
 
     /// 删除入口是否可用（默认档案、当前档案不能删除，规则与 ccp rm 相同）
@@ -55,16 +67,21 @@ final class ProfileActionsModel: ObservableObject {
         commands.removalBlocker(profile: profile, currentProfile: currentProfile)
     }
 
-    /// 档案列表变化时调用：进行中的添加或删除完成了就清除
+    /// Claude 档案列表变化时调用：进行中的 Claude 档案添加或删除完成了就清除
     func update(with profiles: [Profile]) {
-        if let pending, pending.isFinished(in: profiles) { self.pending = nil }
+        if let pending, pending.tool == .claudeCode, pending.change.isFinished(in: profiles) { self.pending = nil }
+    }
+
+    /// ChatGPT 档案列表变化时调用：进行中的 ChatGPT 档案添加完成了就清除
+    func update(withChatGPT profiles: [ChatGPTProfile]) {
+        if let pending, pending.tool == .chatgpt, pending.change.isFinished(inChatGPT: profiles) { self.pending = nil }
     }
 
     func dismissPending() { pending = nil }
 
     // MARK: 打开终端
 
-    private func open(_ command: String, pending change: ProfileCommands.PendingChange) {
+    private func open(_ command: String, pending change: PendingProfileChange) {
         isOpening = true
         Task {
             defer { isOpening = false }
@@ -160,4 +177,10 @@ final class ProfileActionsModel: ObservableObject {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(command, forType: .string)
     }
+}
+
+/// 已在终端里开始、还没完成的添加或删除，以及它属于哪个工具（两个工具可以有同名档案）
+struct PendingProfileChange: Equatable {
+    let tool: Tool
+    let change: ProfileCommands.PendingChange
 }

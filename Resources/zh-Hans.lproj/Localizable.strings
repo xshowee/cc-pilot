@@ -80,6 +80,7 @@
 /* 添加与删除档案（ticket 09） */
 "Add Profile…" = "添加账号…";
 "Profile name" = "账号名称";
+"Tool" = "工具";
 "Add" = "添加";
 "Use only letters, digits, “.”, “_” and “-”, starting with a letter or digit." = "只能包含字母、数字、“.”、“_”和“-”，且以字母或数字开头。";
 "“%@” is reserved and can’t be used as a profile name." = "“%@”是保留名，不能用作账号名称。";
