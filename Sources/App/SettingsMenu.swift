@@ -1,5 +1,6 @@
 // 面板底部的设置菜单（齿轮图标）：顶部是"关于 CC Pilot"（ticket 27），然后是"登录时启动"、
-// "菜单栏只显示图标"、zsh 接入（ticket 08）、"实时额度"开关（token-usage ticket 04）、
+// "菜单栏只显示图标"、菜单栏分别显示 Claude Code / ChatGPT（chatgpt-profiles ticket 11，有 ChatGPT 默认档案时才出现；
+// 不能把两个都关掉：只剩一个显示时它的开关不可用）、zsh 接入（ticket 08）、"实时额度"开关（token-usage ticket 04）、
 // "清空全部账号的累计…"（token-usage ticket 07：在面板里显示确认条，不弹系统对话框）、"自动检查更新"、"检查更新…"。
 // 定时检查发现新版本时，图标换成下载箭头，菜单项变成"有可用更新…"。
 // Updater 和 LaunchAtLoginModel 在 App 启动时创建（CCPilotApp），通过 environmentObject 传进来。
@@ -11,7 +12,10 @@ struct SettingsMenu: View {
     @EnvironmentObject private var launchAtLogin: LaunchAtLoginModel
     @EnvironmentObject private var shellIntegration: ShellIntegrationModel
     @EnvironmentObject private var tokenStats: TokenStatsModel
+    @EnvironmentObject private var chatgpt: ChatGPTProfileListModel
     @AppStorage(MenuBarPreferences.iconOnlyKey) private var menuBarIconOnly = false
+    @AppStorage(MenuBarPreferences.hidesClaudeCodeKey) private var menuBarHidesClaudeCode = false
+    @AppStorage(MenuBarPreferences.hidesChatGPTKey) private var menuBarHidesChatGPT = false
     /// 状态栏转发开关：存在 ~/.claude-profiles/.live-quota/disabled 里（包装函数读它），菜单打开时重读
     @State private var liveQuotaOn = LiveQuotaFiles().isForwardingEnabled
 
@@ -24,6 +28,18 @@ struct SettingsMenu: View {
                 set: { launchAtLogin.setEnabled($0) }
             ))
             Toggle("Show only an icon in the menu bar", isOn: $menuBarIconOnly)
+            if chatgpt.isVisible {
+                Toggle("Show Claude Code in the menu bar", isOn: Binding(
+                    get: { !menuBarHidesClaudeCode },
+                    set: { menuBarHidesClaudeCode = !$0 }
+                ))
+                .disabled(menuBarHidesChatGPT && !menuBarHidesClaudeCode)
+                Toggle("Show ChatGPT in the menu bar", isOn: Binding(
+                    get: { !menuBarHidesChatGPT },
+                    set: { menuBarHidesChatGPT = !$0 }
+                ))
+                .disabled(menuBarHidesClaudeCode && !menuBarHidesChatGPT)
+            }
             if shellIntegration.isAvailable {
                 if shellIntegration.isConnected {
                     Button("Remove zsh Integration…") { shellIntegration.disconnectWithConfirmation() }

@@ -6,6 +6,8 @@
 //           颜色与列表相同：按剩余百分比的内置阈值，数据超过 30 分钟变灰（见 UsageReading）。
 //
 // 带额度的摘要由 UsageBoard.menuBarSummary(currentProfile:profiles:now:) 生成。
+// 只显示 ChatGPT 一个工具时（chatgpt-profiles ticket 11）也用这两行：上一行是 ChatGPT 的套餐（chatgptPlan），
+// 不知道时同样退回档案名。两个工具都显示时改为每行一个工具，见 MenuBarContent。
 
 import Foundation
 
@@ -16,24 +18,38 @@ struct MenuBarSummary: Equatable {
     var fiveHour: UsageReading = .unavailable
     /// 当前档案的订阅等级（凭据优先，见 Profile.displayTier）；不知道时为 nil
     var tier: SubscriptionTier? = nil
+    /// 这两行说的是哪个工具的当前档案
+    var tool: Tool = .claudeCode
+    /// ChatGPT 当前档案的套餐（chatgpt_plan_type 原样，最近一次刷新响应里的优先）；Claude Code 或不知道时为 nil
+    var chatgptPlan: String? = nil
 
-    /// 第一行的文字。tierName 是订阅等级的本地化写法（由界面传入，核心不含界面文字）。
-    func titleLine(tierName: (SubscriptionTier) -> String) -> String {
-        tier.map(tierName) ?? profileName
+    /// 第一行的文字。tierName / planName 是 Claude 订阅等级 / ChatGPT 套餐的显示写法（由界面传入，核心不含界面文字）。
+    func titleLine(tierName: (SubscriptionTier) -> String, planName: (String) -> String = { $0 }) -> String {
+        tier.map(tierName) ?? chatgptPlan.map(planName) ?? profileName
     }
 
     /// 第二行的文字。resetText 是"已重置"的本地化写法（由界面传入，核心不含界面文字）。
     func quotaLine(resetText: String) -> String {
-        switch fiveHour {
+        fiveHour.menuBarText(resetText: resetText)
+    }
+
+    /// 第二行的颜色；没有数字时不着色
+    var quotaTint: UsageTint { fiveHour.menuBarTint }
+}
+
+extension UsageReading {
+    /// 菜单栏上额度的写法：没有数据"—"（不能显示成 0），已过重置时间显示 resetText，否则"N%"
+    func menuBarText(resetText: String) -> String {
+        switch self {
         case .unavailable: return "—"
         case .resetPendingRefresh: return resetText
         case .remaining(let percent, _): return "\(percent)%"
         }
     }
 
-    /// 第二行的颜色；没有数字时不着色
-    var quotaTint: UsageTint {
-        if case .remaining(_, let tint) = fiveHour { return tint }
+    /// 菜单栏上额度的颜色；没有数字时不着色
+    var menuBarTint: UsageTint {
+        if case .remaining(_, let tint) = self { return tint }
         return .plain
     }
 }

@@ -45,6 +45,12 @@
 "Current profile: %@" = "当前账号：%@";
 "Show only an icon in the menu bar" = "菜单栏只显示图标";
 
+/* 菜单栏同时显示两个工具（chatgpt-profiles ticket 11） */
+"Current ChatGPT profile: %@" = "ChatGPT 当前账号：%@";
+"Current profiles: Claude Code %@, ChatGPT %@" = "当前账号：Claude Code %1$@，ChatGPT %2$@";
+"Show Claude Code in the menu bar" = "菜单栏显示 Claude Code";
+"Show ChatGPT in the menu bar" = "菜单栏显示 ChatGPT";
+
 /* 设置菜单：登录时启动与自动更新 */
 "Settings" = "设置";
 "About CC Pilot" = "关于 CC Pilot";

@@ -16,6 +16,8 @@ struct CCPilotApp: App {
     @StateObject private var actions = ProfileActionsModel()
     @StateObject private var chatgpt: ChatGPTProfileListModel
     @AppStorage(MenuBarPreferences.iconOnlyKey) private var menuBarIconOnly = false
+    @AppStorage(MenuBarPreferences.hidesClaudeCodeKey) private var menuBarHidesClaudeCode = false
+    @AppStorage(MenuBarPreferences.hidesChatGPTKey) private var menuBarHidesChatGPT = false
     // Sparkle、"登录时启动"与 ccp 的安装（见 AppDelegate.swift）
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
@@ -39,9 +41,15 @@ struct CCPilotApp: App {
                 .environmentObject(appDelegate.launchAtLogin)
                 .environmentObject(appDelegate.shellIntegration)
                 .environmentObject(appDelegate.tokenStats)
+                .environmentObject(chatgpt)
         } label: {
-            MenuBarLabel(summary: usage.board.menuBarSummary(currentProfile: current.name, profiles: profiles.profiles,
-                                                             now: usage.now),
+            MenuBarLabel(content: usage.board.menuBarContent(
+                            claudeCode: current.name, profiles: profiles.profiles,
+                            chatgpt: chatgpt.currentName, chatgptProfiles: chatgpt.profiles,
+                            reportedPlans: usage.reportedPlans,
+                            preferences: MenuBarToolPreferences(hidesClaudeCode: menuBarHidesClaudeCode,
+                                                                hidesChatGPT: menuBarHidesChatGPT),
+                            now: usage.now),
                          iconOnly: menuBarIconOnly)
         }
         .menuBarExtraStyle(.window)
