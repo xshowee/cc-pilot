@@ -193,11 +193,14 @@ extension TokenLedgerIngestChecks {
             TranscriptFixture.assistant(id: "msg_b", session: "s-1", at: t0, output: 5),
         ])
         try env.ledger.ingest(projectsRoot: env.projects)
-        // 做成旧版读过之后的样子：没有 advisor 那条，读取位置已到文件末尾
+        // 做成旧版读过之后的样子：没有 advisor 那条，读取位置已到文件末尾；也没有 v5 加的工具维度
         do {
             let db = try SQLiteDatabase(path: env.ledgerURL.path)
             try db.execute("""
                 DELETE FROM messages WHERE message_id = 'msg_a#advisor0';
+                ALTER TABLE messages DROP COLUMN tool;
+                DROP TABLE chatgpt_files;
+                DROP TABLE chatgpt_sessions;
                 PRAGMA user_version = 3;
                 """)
         }

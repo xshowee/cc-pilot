@@ -6,8 +6,8 @@
 // （根目录本身、需要重新扫描、事件丢失）时全量扫描。上次读不了的文件（.zst 正在写入）所在目录下次一并扫描。
 // 两个目录启动时可以不存在，之后创建也能收到。
 //
-// 读取位置（CodexFileCursor）只在内存里：App 重启后从头读一遍（实时额度按合并规则重复并入不改变结果）。
-// 09 若要把位置与账本放进同一事务，可以在这里换成从账本读取、写回位置。
+// 读取位置（CodexFileCursor）在内存里跟着扫描前进；启动时从 cursors 取初值（ticket 09：TokenUsageRecorder 给的是
+// 账本里记着的位置，App 重启后接着读，不重读历史会话记录；不给时从头读）。
 // 所有状态只在 queue 上访问；onScan 在 queue 上调用，界面需要自己切回主线程。
 
 import CoreServices
@@ -29,8 +29,13 @@ final class CodexSessionMonitor: @unchecked Sendable {
     /// 上次读不了的文件所在的目录
     private var retry: Set<String> = []
 
+    private let initialCursors: () -> [String: CodexFileCursor]
+
+    /// - queue: 监听、扫描、onScan 所在的串行队列（可以与使用者共用一个）
+    /// - cursors: 启动时的读取位置，在 queue 上调用一次
     init(environment: CoreEnvironment, latency: TimeInterval = 1,
          queue: DispatchQueue = DispatchQueue(label: "com.ccpilot.codex-sessions", qos: .utility),
+         cursors: @escaping () -> [String: CodexFileCursor] = { [:] },
          onScan: @escaping (CodexSessionScan) -> Void) {
         // 路径按解析过软链接的主目录算（FSEvents 按真实路径上报，例如 /var → /private/var）。
         // 只换 home，不新建 CoreEnvironment：其他注入（进程查询等）保持调用方给的
@@ -41,6 +46,7 @@ final class CodexSessionMonitor: @unchecked Sendable {
         self.latency = latency
         self.queue = queue
         self.onScan = onScan
+        initialCursors = cursors
         queue.setSpecific(key: queueKey, value: true)
     }
 
@@ -51,6 +57,7 @@ final class CodexSessionMonitor: @unchecked Sendable {
         queue.async { [self] in
             guard !running else { return }
             running = true
+            cursors = initialCursors()
             stream = makeStream()
             if stream == nil { NSLog("CC Pilot: 无法监听 ChatGPT 会话目录") }
             sync(under: nil)

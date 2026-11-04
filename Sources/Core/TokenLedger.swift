@@ -1,9 +1,12 @@
 // cc-pilot 自己的 Token 用量账本（spec 决策 11）：~/Library/Application Support/cc-pilot/token-usage.sqlite。
-// 只读 Claude Code 的会话记录，从不改动它们；会话记录被删除不影响账本。
+// 只读 Claude Code 与 ChatGPT（Codex）的会话记录，从不改动它们；会话记录被删除不影响账本。
+// ChatGPT 的部分（读入、读取位置、会话的观察记录）在 TokenLedger+ChatGPT.swift。
 //
-// 数据（SQLite，PRAGMA user_version = 4）：
+// 数据（SQLite，PRAGMA user_version = 5）：
 //   messages  逐条明细：每条 assistant 消息一行，message.id 唯一（没有 id 的行各占一行）。
 //             attribution 是归属状态（见 LedgerAttribution），由 ticket 02 填写；读入时一律是"待归属"。
+//             tool 是工具（Tool.rawValue：claudeCode / chatgpt；v5 加，旧明细都是 claudeCode）。ChatGPT 的明细
+//             message_id 是 "codex:" 开头的去重键，account 是 "chatgpt:" 开头的账号键，与 Claude 的不会相撞。
 //   daily     超过保留期的明细合并成的"每账号、每模型、每天"汇总；account 为空串表示未归属。
 //   rolled_message_ids  已合并进汇总的 message.id 及消息时间。resume/fork 出来的会话记录会原样带上旧消息，
 //             这些旧消息的明细已经删掉了，靠它防止再记一次。只记两个保留期：更早的忘掉，
@@ -12,7 +15,10 @@
 //   meta      键值：forgotten_before（见上）；origin_all（"清空全部账号"的时刻，见下）。
 //   origins   每个账号的起算点（ticket 03）：清空这个账号时的时刻；account 为空串表示未归属。
 //   files     每份会话记录读到的位置（字节偏移）和 inode。与明细在同一个事务里写入，
-//             中途退出也不会重复计入或漏记。
+//             中途退出也不会重复计入或漏记。只放 Claude 的（读入时会忘掉不在 projects/ 下的位置）。
+//   chatgpt_files     ChatGPT 会话记录的读取位置（CodexFileCursor 的 JSON），同样与明细同事务写入（v5）。
+//   chatgpt_sessions  ChatGPT 会话：session_meta 里的 creator_user_id、子代理的父线程（只在读首行那次读到），
+//             以及观察到的写入档案和观察时刻（v5，见 ChatGPTSessionAttribution）。
 //
 // 读取规则：
 //   - 会话记录是 projects/<项目>/<会话>.jsonl 和 projects/<项目>/<父会话>/subagents/*.jsonl。
@@ -51,6 +57,8 @@ struct LedgerMessage: Equatable, Sendable {
     let model: String
     let tokens: TokenCounts
     let attribution: LedgerAttribution
+    /// 哪个工具的会话
+    var tool: Tool = .claudeCode
 
     /// 归属时用来查 history.jsonl 的会话 ID：子代理用父会话
     var attributionSessionID: String { parentSessionID ?? sessionID }
@@ -70,11 +78,15 @@ struct LedgerDailyUsage: Equatable, Sendable {
 }
 
 final class TokenLedger {
-    private let db: SQLiteDatabase
+    /// TokenLedger+ChatGPT.swift 的扩展也用
+    let db: SQLiteDatabase
 
-    /// 明细、归属或汇总每变化一次就加一（只在内存里，从 0 开始）；读取位置、起算点的变化不算。
-    /// TokenUsageRecorder 据此判断一次同步有没有带来变化。
-    private(set) var revision = 0
+    /// 明细、归属或汇总每变化一次就加一（只在内存里，从 0 开始）；读取位置、起算点、会话观察记录的变化不算。
+    /// TokenUsageRecorder 据此判断一次同步有没有带来变化。只由账本自己（含扩展）修改
+    var revision = 0
+
+    /// 账本里记着的 ChatGPT 会话记录读取位置（TokenLedger+ChatGPT.swift）；第一次用时从 chatgpt_files 读出
+    var chatgptCursorCache: [String: CodexFileCursor]?
 
     /// 真实位置：<HOME>/Library/Application Support/cc-pilot/token-usage.sqlite。
     /// 从 environment.home 算出（不用 FileManager 的 applicationSupportDirectory，它不看 HOME，检查时会写到真实目录）。
@@ -125,6 +137,7 @@ final class TokenLedger {
                     """)
             }
         }
+        if current < 5 { try migrateToVersion5() }
     }
 
     private func createVersion1() throws {
@@ -287,7 +300,7 @@ final class TokenLedger {
     private func messages(where condition: String, _ values: [SQLiteValue]) throws -> [LedgerMessage] {
         let statement = try db.prepare("""
             SELECT message_id, ts, session_id, parent_session_id, model,
-                   input, output, cache_write, cache_read, attribution, profile, account
+                   input, output, cache_write, cache_read, attribution, profile, account, tool
             FROM messages WHERE \(condition) ORDER BY ts, id
             """)
         try statement.bind(values)
@@ -298,7 +311,8 @@ final class TokenLedger {
                 sessionID: statement.text(2) ?? "", parentSessionID: statement.text(3), model: statement.text(4) ?? "",
                 tokens: statement.tokenCounts(from: 5),
                 attribution: Self.attribution(state: statement.int(9), profile: statement.text(10),
-                                              account: statement.text(11))))
+                                              account: statement.text(11)),
+                tool: Tool(rawValue: statement.text(12) ?? "") ?? .claudeCode))
         }
         return result
     }
@@ -322,14 +336,15 @@ final class TokenLedger {
 
     // MARK: - 归属（ticket 02）
 
-    /// 还有待归属明细的会话，用归属用的会话 ID（子代理取父会话）表示，按字节序排列；
-    /// 附带其中最新一条待归属明细的时间
-    func pendingSessions() throws -> [(sessionID: String, latest: Date)] {
+    /// 一个工具还有待归属明细的会话，用归属用的会话 ID（子代理取父会话）表示，按字节序排列；
+    /// 附带其中最新一条待归属明细的时间。两个工具的归属器各管各的：Claude 的归属器找不到 ChatGPT 的会话，
+    /// 不能把它们记成未归属
+    func pendingSessions(tool: Tool) throws -> [(sessionID: String, latest: Date)] {
         let statement = try db.prepare("""
-            SELECT coalesce(parent_session_id, session_id), max(ts) FROM messages WHERE attribution = ?1
+            SELECT coalesce(parent_session_id, session_id), max(ts) FROM messages WHERE attribution = ?1 AND tool = ?2
             GROUP BY 1
             """)
-        try statement.bind([.int(Self.pendingState)])
+        try statement.bind([.int(Self.pendingState), .text(tool.rawValue)])
         var sessions: [(sessionID: String, latest: Date)] = []
         while try statement.step() {
             sessions.append((statement.text(0) ?? "", Date(timeIntervalSince1970: statement.double(1))))
@@ -337,8 +352,9 @@ final class TokenLedger {
         return sessions.sorted { $0.sessionID.utf8.lexicographicallyPrecedes($1.sessionID.utf8) }
     }
 
-    /// 给一个会话（含它的子代理）的待归属明细定下归属。已经归属过的明细不改：档案之后换登录，旧记录仍算原账号。
-    func attribute(sessionID: String, as attribution: LedgerAttribution) throws {
+    /// 给一个工具的一个会话（含它的子代理）的待归属明细定下归属。已经归属过的明细不改：档案之后换登录，
+    /// 旧记录仍算原账号。
+    func attribute(sessionID: String, as attribution: LedgerAttribution, tool: Tool = .claudeCode) throws {
         let values: [SQLiteValue]
         switch attribution {
         case .pending: return
@@ -349,8 +365,8 @@ final class TokenLedger {
         }
         try db.run("""
             UPDATE messages SET attribution = ?1, profile = ?2, account = ?3
-            WHERE attribution = ?4 AND coalesce(parent_session_id, session_id) = ?5
-            """, values + [.int(Self.pendingState), .text(sessionID)])
+            WHERE attribution = ?4 AND coalesce(parent_session_id, session_id) = ?5 AND tool = ?6
+            """, values + [.int(Self.pendingState), .text(sessionID), .text(tool.rawValue)])
         if db.changes > 0 { revision += 1 }
     }
 
@@ -496,7 +512,7 @@ final class TokenLedger {
 
     // MARK: - 归属状态的存储形式
 
-    private static let pendingState = 0, attributedState = 1, unattributedState = 2
+    static let pendingState = 0, attributedState = 1, unattributedState = 2
 
     private static func attribution(state: Int, profile: String?, account: String?) -> LedgerAttribution {
         switch state {
@@ -507,7 +523,7 @@ final class TokenLedger {
     }
 }
 
-private extension TokenCounts {
+extension TokenCounts {
     /// 按 input、output、cache_write、cache_read 的顺序绑定
     var sqlValues: [SQLiteValue] { [.int(input), .int(output), .int(cacheWrite), .int(cacheRead)] }
 }

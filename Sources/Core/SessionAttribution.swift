@@ -44,7 +44,7 @@ final class SessionAttribution {
 
     /// 给账本里所有待归属的会话定归属（TokenUsageRecorder 的归属钩子）
     func attribute(_ ledger: TokenLedger) throws {
-        let pending = try ledger.pendingSessions()
+        let pending = try ledger.pendingSessions(tool: .claudeCode)
         guard !pending.isEmpty else { return }
         let paths = ProfilePaths(environment: environment)
         let store = ProfileStore(environment: environment)

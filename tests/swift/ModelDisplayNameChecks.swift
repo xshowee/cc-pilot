@@ -6,6 +6,7 @@ final class ModelDisplayNameChecks: CheckSuite {
     override class var checks: [Check] {
         [
             Check("模型 ID 合并成显示名，带日期后缀的也能认，不同版本分开", namesModels),
+            Check("ChatGPT 的模型 ID 也合并成显示名（chatgpt-profiles ticket 09）", namesChatGPTModels),
             Check("认不出的模型 ID 原样显示", passesUnknownThrough),
         ]
     }
@@ -28,8 +29,23 @@ final class ModelDisplayNameChecks: CheckSuite {
         }
     }
 
+    static func namesChatGPTModels() throws {
+        let cases: [(String, String)] = [
+            ("gpt-5.3-codex", "GPT-5.3-Codex"),
+            ("gpt-5.1-codex-max", "GPT-5.1-Codex-Max"),
+            ("gpt-5-codex", "GPT-5-Codex"),
+            ("gpt-5", "GPT-5"),
+            ("gpt-5-2025-08-07", "GPT-5"),
+            ("gpt-5.1-codex-mini-latest", "GPT-5.1-Codex-Mini"),
+            ("gpt-4o", "GPT-4o"),
+        ]
+        for (id, name) in cases {
+            try expectEqual(ModelDisplayName.name(for: id), name, id)
+        }
+    }
+
     static func passesUnknownThrough() throws {
-        for id in ["gpt-4o", "claude-instant", "mystery"] {
+        for id in ["o3", "gpt-", "gpt-codex", "claude-instant", "mystery", ""] {
             try expectEqual(ModelDisplayName.name(for: id), id, id)
         }
     }

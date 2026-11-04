@@ -14,6 +14,16 @@
 // 需要重新扫描、事件丢失、根目录变了）全量扫描；启动时的同步也是全量。
 // 增量读取本身只读有变化的部分。projects/ 启动时可以不存在，之后创建也能收到。
 //
+// ChatGPT（chatgpt-profiles ticket 09，followsChatGPT 为 true 时）：ChatGPT 会话记录的唯一读取器与监视器
+// （CodexSessionMonitor，ticket 08）也由它带着，跑在同一个队列上。每次扫描依次：记入账本（事件、session_meta、
+// 读取位置同一事务，见 TokenLedger+ChatGPT.swift）→ 归属钩子 → 汇总 → 有变化时 onUpdate → 同一批事件交给
+// 实时额度（ChatGPTLiveQuotaTracker），各账号的实时额度交给 onChatGPTLiveQuota。监视器启动时从账本记着的位置
+// 接着读：App 重启后不重读历史会话记录，进行中的会话要等它写下一次事件才有实时额度。
+// 默认的归属钩子先归属 Claude 的（SessionAttribution）、再归属 ChatGPT 的（ChatGPTSessionAttribution），
+// 所以 Claude 一侧的同步也会重试 ChatGPT 的归属（等待期是否已过、history.jsonl 是否已写出）。
+// 归属与实时额度共用一个"写入进程"查询（ChatGPTSessionWriters，只能在一个队列上用，所以都在 `queue` 上）。
+// 记入失败时这一批的事件留到 App 下次启动再读（账本里的位置没前进）。
+//
 // 账本只在 `queue`（默认是一个后台串行队列）上访问：同步、归属钩子、onUpdate 和 `read` 的 body
 // 都在它上面执行，界面需要自己切回主线程。start / stop / read 可以在任意线程调用。
 // 账本打不开、读入出错时跳过这一次，下次变化（不管在哪个项目）时全量再试。
@@ -36,6 +46,10 @@ final class TokenUsageRecorder: @unchecked Sendable {
     private let onUpdate: () -> Void
     private let createStream: (() -> FSEventStreamRef?) -> FSEventStreamRef?
     private var historyWatcher: ProfileWatcher?
+    /// ChatGPT 会话记录的监视器（followsChatGPT 时才有）
+    private var chatgptSessions: CodexSessionMonitor?
+    private let chatgptLiveQuota: ChatGPTLiveQuotaTracker
+    private let onChatGPTLiveQuota: ([UsageAccount: LiveQuota]) -> Void
 
     // 以下只在 queue 上访问
     private var ledger: TokenLedger?
@@ -50,13 +64,18 @@ final class TokenUsageRecorder: @unchecked Sendable {
     /// - ledgerURL: 账本文件，默认是 TokenLedger.defaultURL
     /// - latency: FSEvents 合并事件的时间窗口（秒）
     /// - calendar: 按天汇总用的日历和时区
-    /// - attribute: 归属钩子，每次读入之后、汇总之前调用；nil（默认）是按 history.jsonl 归属的 SessionAttribution
+    /// - attribute: 归属钩子，每次读入之后、汇总之前调用；nil（默认）是 SessionAttribution（Claude，按 history.jsonl）
+    ///   接着 ChatGPTSessionAttribution
     /// - createStream: 建立 projects/ 的 FSEvents 流，参数是真正建立它的函数（检查用它模拟建立失败）
+    /// - followsChatGPT: 是否也跟着 ChatGPT 会话记录（App 里是；Claude 一侧的检查不需要）
+    /// - onChatGPTLiveQuota: ChatGPT 实时额度（各账号这批事件里最新的一份），在 queue 上调用
     init(environment: CoreEnvironment, ledgerURL: URL? = nil, latency: TimeInterval = 2,
          queue: DispatchQueue = DispatchQueue(label: "com.ccpilot.token-usage", qos: .utility),
          calendar: Calendar = .autoupdatingCurrent, now: @escaping () -> Date = Date.init,
          attribute: ((TokenLedger) throws -> Void)? = nil,
          createStream: @escaping (() -> FSEventStreamRef?) -> FSEventStreamRef? = { $0() },
+         followsChatGPT: Bool = false,
+         onChatGPTLiveQuota: @escaping ([UsageAccount: LiveQuota]) -> Void = { _ in },
          onUpdate: @escaping () -> Void = {}) {
         self.environment = environment
         self.ledgerURL = ledgerURL ?? TokenLedger.defaultURL(environment: environment)
@@ -67,12 +86,32 @@ final class TokenUsageRecorder: @unchecked Sendable {
         self.queue = queue
         self.calendar = calendar
         self.now = now
-        self.attribute = attribute ?? SessionAttribution(environment: environment, now: now).attribute
+        let writers = ChatGPTSessionWriters(environment: environment)
+        if let attribute {
+            self.attribute = attribute
+        } else {
+            let claude = SessionAttribution(environment: environment, now: now)
+            let chatgpt = ChatGPTSessionAttribution(environment: environment, writers: writers, now: now)
+            self.attribute = { ledger in
+                // 一边出错不影响另一边
+                let result = Result { try claude.attribute(ledger) }
+                try chatgpt.attribute(ledger)
+                try result.get()
+            }
+        }
+        chatgptLiveQuota = ChatGPTLiveQuotaTracker(environment: environment, writers: writers)
+        self.onChatGPTLiveQuota = onChatGPTLiveQuota
         self.onUpdate = onUpdate
         self.createStream = createStream
         queue.setSpecific(key: queueKey, value: true)
         historyWatcher = ProfileWatcher(environment: environment, latency: latency, watching: .history) {
             [weak self] in self?.syncIfRunning()
+        }
+        if followsChatGPT {
+            chatgptSessions = CodexSessionMonitor(
+                environment: environment, latency: latency, queue: queue,
+                cursors: { [weak self] in (try? self?.openLedger().chatgptCursors()) ?? [:] },
+                onScan: { [weak self] in self?.record(chatgpt: $0) })
         }
     }
 
@@ -88,6 +127,7 @@ final class TokenUsageRecorder: @unchecked Sendable {
             if stream == nil { NSLog("CC Pilot: 无法监听 %@，会话记录只在 history.jsonl 变化时读入", projectsRoot.path) }
             historyWatcher?.start()
             sync()
+            chatgptSessions?.start()
         }
     }
 
@@ -96,6 +136,7 @@ final class TokenUsageRecorder: @unchecked Sendable {
         onQueue {
             running = false
             historyWatcher?.stop()
+            chatgptSessions?.stop()
             if let s = stream { FSEventsSupport.destroy(s) }
             stream = nil
         }
@@ -161,6 +202,12 @@ final class TokenUsageRecorder: @unchecked Sendable {
             needsFullScan = (try? ledger.ingest(projectsRoot: projectsRoot, projects: scope)) == nil
         }
         try? attribute(ledger)
+        rollUpIfNewDay(ledger)
+        if ledger.revision != revision { onUpdate() }
+    }
+
+    /// 启动后第一次、本地日期变了之后汇总
+    private func rollUpIfNewDay(_ ledger: TokenLedger) {
         let current = now()
         let day = calendar.dateComponents([.year, .month, .day], from: current)
         if day != rolledUpDay,
@@ -168,7 +215,24 @@ final class TokenUsageRecorder: @unchecked Sendable {
                                calendar: calendar)) != nil {
             rolledUpDay = day
         }
-        if ledger.revision != revision { onUpdate() }
+    }
+
+    /// ChatGPT 会话记录监视器的一次扫描（在 queue 上）：记账、归属、汇总、通知，再交给实时额度
+    private func record(chatgpt scan: CodexSessionScan) {
+        guard running else { return }
+        if let ledger = try? openLedger() {
+            let revision = ledger.revision
+            do {
+                try ledger.ingest(chatgpt: scan)
+            } catch {
+                NSLog("CC Pilot: 记入 ChatGPT 会话记录失败，下次启动时重读：%@", String(describing: error))
+            }
+            try? attribute(ledger)
+            rollUpIfNewDay(ledger)
+            if ledger.revision != revision { onUpdate() }
+        }
+        let quotas = chatgptLiveQuota.update(with: scan.events)
+        if !quotas.isEmpty { onChatGPTLiveQuota(quotas) }
     }
 
     private func makeStream() -> FSEventStreamRef? {

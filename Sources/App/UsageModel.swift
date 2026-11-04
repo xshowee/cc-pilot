@@ -12,8 +12,9 @@
 // 由 ChatGPTUsageRefresher 刷新，同一个后台队列逐个账号进行；"刷新全部"同时刷新两段。
 // 响应里的套餐（plan_type）按账号记在 reportedPlans，ChatGPT 行用它更新套餐标记。
 //
-// ChatGPT 实时额度（chatgpt-profiles ticket 08）：CodexSessionMonitor 在后台跟着 ~/.codex 的会话记录，
-// ChatGPTLiveQuotaTracker 把进行中会话的 rate_limits 归属到账号，回到主线程按账号并入 board
+// ChatGPT 实时额度（chatgpt-profiles ticket 08）：ChatGPT 会话记录的唯一读取器与监视器由 Token 用量记录器带着
+// （AppDelegate 里的 TokenUsageRecorder，ticket 09：同一次扫描先记账再算实时额度），ChatGPTLiveQuotaTracker 把
+// 进行中会话的 rate_limits 归属到账号，经 chatgptLiveQuotaDidUpdate 通知在主线程按账号并入 board
 // （UsageBoard.recordLive(_:for:)）。同样只读本地文件，不发请求，不碰刷新的状态。
 //
 // now 是界面用的时钟：每 15 秒前进一次，只用来重算"N 分钟前获取"、变灰、已重置、还要等多久，
@@ -22,6 +23,14 @@
 import Combine
 import Foundation
 import SwiftUI
+
+extension Notification.Name {
+    /// ChatGPT 实时额度（在主线程上发出）；userInfo[chatgptLiveQuotaKey] 是 [UsageAccount: LiveQuota]
+    static let chatgptLiveQuotaDidUpdate = Notification.Name("CCPilotChatGPTLiveQuotaDidUpdate")
+}
+
+/// chatgptLiveQuotaDidUpdate 的 userInfo 键
+let chatgptLiveQuotaKey = "quotas"
 
 @MainActor
 final class UsageModel: ObservableObject {
@@ -46,8 +55,7 @@ final class UsageModel: ObservableObject {
     private var profiles: [Profile] = []
     private var profilesSubscription: AnyCancellable?
     private var liveGeneration = 0
-    /// ChatGPT 会话记录的监视器（实时额度）
-    private var chatgptSessions: CodexSessionMonitor?
+    private var chatgptLiveObserver: NSObjectProtocol?
 
     init(environment: CoreEnvironment = .live, changes: ProfileChangeFeed) {
         refresher = UsageRefresher(environment: environment)
@@ -59,14 +67,11 @@ final class UsageModel: ObservableObject {
         changes.subscribeLiveQuota { [weak self] in self?.reloadLiveQuota() }
         // 文件监听只报告之后的变化，App 启动前写下的文件要先读一次
         reloadLiveQuota()
-        // 跟踪器只在监视器的队列上使用
-        let tracker = ChatGPTLiveQuotaTracker(environment: environment)
-        chatgptSessions = CodexSessionMonitor(environment: environment) { [weak self] scan in
-            let quotas = tracker.update(with: scan.events)
-            guard !quotas.isEmpty else { return }
+        chatgptLiveObserver = NotificationCenter.default.addObserver(
+            forName: .chatgptLiveQuotaDidUpdate, object: nil, queue: .main) { [weak self] note in
+            guard let quotas = note.userInfo?[chatgptLiveQuotaKey] as? [UsageAccount: LiveQuota] else { return }
             Task { @MainActor in self?.applyChatGPTLiveQuota(quotas) }
         }
-        chatgptSessions?.start()
     }
 
     /// 并入 ChatGPT 实时额度；board 没变时不发布
