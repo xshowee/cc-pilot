@@ -1,5 +1,6 @@
-// 档案相关文件变化的通知（App 核心 ProfileWatcher 的界面一侧）。整个 App 只有一个：
-// 档案列表（ProfileListModel）和当前档案（CurrentProfileModel）都订阅它，同一次变化只监听、处理一次。
+// 档案相关文件变化的通知（App 核心 ProfileWatcher 的界面一侧）。每个工具一个：
+// Claude Code 的档案列表（ProfileListModel）和当前档案（CurrentProfileModel）都订阅同一个，同一次变化只监听、处理一次；
+// ChatGPT 的档案列表（ChatGPTProfileListModel）订阅另一个（watching: .chatgptAuth）。
 // 实时额度文件的变化（ProfileWatcher.onLiveQuotaChange）另走 subscribeLiveQuota，额度界面状态（UsageModel）订阅。
 // 通知在主线程上发出。
 
@@ -11,8 +12,10 @@ final class ProfileChangeFeed {
     private var liveQuotaSubscribers: [() -> Void] = []
     private var watcher: ProfileWatcher?
 
-    init(environment: CoreEnvironment = .live) {
-        let watcher = ProfileWatcher(environment: environment, onLiveQuotaChange: { [weak self] in
+    /// watching：监听哪个工具的档案。Claude Code 一侧用默认值；ChatGPT 一侧另建一个 `.chatgptAuth` 的实例，
+    /// 两个工具的文件变化互不触发对方的重读。
+    init(environment: CoreEnvironment = .live, watching: ProfileWatcher.Watched = .accountConfigs) {
+        let watcher = ProfileWatcher(environment: environment, watching: watching, onLiveQuotaChange: { [weak self] in
             Task { @MainActor in self?.notifyLiveQuota() }
         }) { [weak self] in
             Task { @MainActor in self?.notify() }

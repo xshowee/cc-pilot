@@ -3,6 +3,9 @@
 // 底栏（添加档案、设置菜单、退出）。"菜单栏只显示图标"在设置菜单里。
 // 鼠标停在已登录的档案卡片上时，左侧弹出它所在账号的统计面板（token-usage ticket 07，StatsFlyoutController）；
 // 设置菜单里点"清空全部账号的累计…"后，底栏上方出现确认条（ClearAllBanner）。
+// 档案分 Claude Code、ChatGPT 上下两段（chatgpt-profiles ticket 02）；两段都显示时，每段前面是带工具标识的
+// 分割线（ToolSectionDivider）；没有 ChatGPT 默认档案 ~/.codex 时不显示 ChatGPT 一段（也就没有分割线）。
+// Claude Code 一段总是显示（保持原有行为）。
 // 打开面板只重读档案列表、当前档案和 zsh 接入状态，不刷新额度。
 // 打开时面板若离开了菜单栏（过夜后可能往下掉），PanelPositionGuard 把它挪回菜单栏下。
 
@@ -13,6 +16,7 @@ struct PanelView: View {
     @ObservedObject var current: CurrentProfileModel
     @ObservedObject var usage: UsageModel
     @ObservedObject var actions: ProfileActionsModel
+    @ObservedObject var chatgpt: ChatGPTProfileListModel
     @EnvironmentObject private var shellIntegration: ShellIntegrationModel
     @EnvironmentObject private var tokenStats: TokenStatsModel
     @StateObject private var flyout = StatsFlyoutController()
@@ -44,6 +48,9 @@ struct PanelView: View {
 
             ScrollView {
                 VStack(spacing: 6) {
+                    if chatgpt.isVisible {
+                        ToolSectionDivider(tool: .claudeCode)
+                    }
                     ForEach(profiles.profiles) { profile in
                         SwitchableProfileRow(
                             profile: profile,
@@ -67,6 +74,9 @@ struct PanelView: View {
                         ) {
                             current.switchTo(profile.name)
                         }
+                    }
+                    if chatgpt.isVisible {
+                        chatgptSection
                     }
                 }
                 .padding(.horizontal, 8)
@@ -103,6 +113,7 @@ struct PanelView: View {
         })
         .onAppear {
             profiles.reload(); current.reload(); actions.update(with: profiles.profiles)
+            chatgpt.reload()
             // 终端里可能 ccp init / ccp uninstall 过（ticket 25 的提示随之更新）
             shellIntegration.refresh()
             flyout.install(StatsFlyoutRoot(controller: flyout, profiles: profiles, usage: usage, stats: tokenStats))
@@ -114,6 +125,15 @@ struct PanelView: View {
         .onChange(of: profiles.profiles) { list in
             actions.update(with: list)
             flyout.rowsChanged(Set(list.filter { StatsFlyoutTarget(profile: $0) != nil }.map(\.name)))
+        }
+    }
+
+    /// ChatGPT 一段：分割线 + 档案卡片（ticket 02 只显示；切换、刷新、删除由后续 ticket 接上）
+    @ViewBuilder private var chatgptSection: some View {
+        ToolSectionDivider(tool: .chatgpt)
+            .padding(.top, 4)
+        ForEach(chatgpt.profiles) { profile in
+            ChatGPTProfileCard(profile: profile, isCurrent: profile.name == chatgpt.currentName)
         }
     }
 

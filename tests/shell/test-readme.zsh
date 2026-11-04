@@ -29,11 +29,12 @@ test_both_readmes_exist_and_link_to_each_other() {
 
 test_command_tables_match_the_ccp_subcommands() {
   local -a files
-  # statusline 是 claude 包装函数挂到状态栏上的内部命令（token-usage ticket 04），不给用户用，不进命令表
-  files=($ROOT/shell/lib/cmd-^statusline.zsh)
+  # statusline 是 claude 包装函数挂到状态栏上的内部命令（token-usage ticket 04），不给用户用，不进命令表；
+  # cmd-chatgpt-<子命令>.zsh 是 ccp chatgpt 的第二级子命令，命令表里归在 chatgpt 名下
+  files=($ROOT/shell/lib/cmd-^(statusline|chatgpt-*).zsh)
   local expected=${(F)${(o)${files:t:r}#cmd-}}
-  # 与 spec 一致：给用户用的共七个子命令
-  assert_eq "${#files}" 7 "shell/lib/cmd-*.zsh 的个数"
+  # 给用户用的共八个子命令：原有七个加上 chatgpt（chatgpt-profiles ticket 02）
+  assert_eq "${#files}" 8 "shell/lib/cmd-*.zsh 的个数"
   local readme
   for readme in $READMES; do
     assert_eq "$(readme_commands $readme)" "$expected" "${readme:t} 命令表里的 ccp 子命令"

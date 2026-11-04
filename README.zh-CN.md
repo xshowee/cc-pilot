@@ -130,6 +130,7 @@ CLAUDE_PROFILE=work claude   # 只在这一次、这个终端里临时使用 wor
 | `ccp use <名字>` | 切换当前账号；`ccp use default` 切回默认账号。只影响之后新启动的会话。 |
 | `ccp add <名字>` | 新建账号，并直接进入它的 Claude Code 完成首次引导和登录。不改变当前账号。Claude Code 在账号目录里的专用空目录 `.ccp-workdir` 中启动，而不是在你的当前目录；如果它询问是否信任这个目录，放心选 Yes，之后对这个账号执行 `ccp rm` 时不会再问。 |
 | `ccp rm <名字>` | 删除账号：先请你确认，然后打开该账号的 Claude Code，请你在里面执行 `/logout` 并退出；确认已经登出后才删除。默认账号和当前账号不能删除。Claude Code 同样在账号的 `.ccp-workdir` 中启动，删除账号时一并删除。 |
+| `ccp chatgpt ls` | 列出所有 ChatGPT 账号（`~/.codex` 是 `default`，其他在 `~/.codex-profiles/` 下），当前账号前面标 `*`。`ccp codex ls` 与之相同。 |
 | `ccp init [--yes]` | 接入 zsh：征得同意后在 `~/.zshrc` 末尾加上接入行；`--yes` 不询问。已经接入时什么都不改。 |
 | `ccp uninstall` | 从 `~/.zshrc` 里删除 `ccp init` 加的那一行，其他内容不动。 |
 

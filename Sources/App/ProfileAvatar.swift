@@ -1,10 +1,21 @@
 // 档案行左边的圆形头像：邮箱（未登录时用档案名）的首字母。当前档案用强调色填充，其他档案用中性色。
+// Claude 与 ChatGPT 两种档案行共用：ChatGPT 档案用 init(source:isCurrent:)。
 
 import SwiftUI
 
 struct ProfileAvatar: View {
-    let profile: Profile
+    /// 取首字母的文字：邮箱，没有时用档案名
+    let source: String
     let isCurrent: Bool
+
+    init(source: String, isCurrent: Bool) {
+        self.source = source
+        self.isCurrent = isCurrent
+    }
+
+    init(profile: Profile, isCurrent: Bool) {
+        self.init(source: profile.account.account?.email ?? profile.name, isCurrent: isCurrent)
+    }
 
     var body: some View {
         ZStack {
@@ -19,7 +30,6 @@ struct ProfileAvatar: View {
     }
 
     private var initial: String {
-        let source = profile.account.account?.email ?? profile.name
-        return source.first.map { String($0).uppercased() } ?? "?"
+        source.first.map { String($0).uppercased() } ?? "?"
     }
 }

@@ -166,3 +166,12 @@
 "Clear" = "清空";
 "Clear Cumulative Usage for All Accounts…" = "清空全部账号的累计…";
 "Clear cumulative token usage for all accounts?" = "清空全部账号的累计 Token 用量？";
+
+/* ChatGPT 档案（chatgpt-profiles ticket 02） */
+"Incompatible with the current ChatGPT version" = "与当前 ChatGPT 版本不兼容";
+"Open codex or ChatGPT in this profile once to restore it." = "在该账号中打开一次 codex 或 ChatGPT 即可恢复。";
+"Signed in with an API key" = "使用 API key 登录";
+"Usage isn’t shown for API key sign-ins." = "使用 API key 登录时不显示额度。";
+"This profile’s auth.json can’t be opened." = "无法打开这个账号的 auth.json。";
+"This profile’s auth.json is in an unrecognized format." = "这个账号的 auth.json 格式无法识别。";
+"Please update cc-pilot." = "请更新 cc-pilot。";

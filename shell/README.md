@@ -13,7 +13,10 @@
     ├── keychain.zsh    共享库：钥匙串 service 名计算 _ccp_service_name
     ├── zshrc.zsh       共享库（只给 ccp 用）：~/.zshrc 的接入行与读写辅助
     ├── launch.zsh      共享库（只给 ccp 用）：以某个档案启动 Claude Code（ccp add / rm）
-    └── cmd-<命令>.zsh  ccp 每个子命令一个文件，定义 _ccp_cmd_<命令>（cmd-statusline.zsh 是状态栏转发，见下文）
+    ├── chatgpt-profiles.zsh  共享库：ChatGPT 档案目录、当前档案记录、档案解析（ADR 0005）
+    ├── cmd-<命令>.zsh  ccp 每个子命令一个文件，定义 _ccp_cmd_<命令>（cmd-statusline.zsh 是状态栏转发，见下文）
+    ├── cmd-chatgpt.zsh ccp chatgpt / ccp codex 的第二级分派与用法说明
+    └── cmd-chatgpt-<子命令>.zsh  ccp chatgpt 每个子命令一个文件，定义 _ccp_cmd_chatgpt_<子命令>
 ```
 
 - 安装根目录固定为 `~/.cc-pilot/`，不能放在 `~/.claude-profiles/` 下（那里的每个目录都会被当成档案）。
@@ -58,6 +61,12 @@ source "$HOME/.cc-pilot/cc-pilot.zsh"  # cc-pilot
 档案名区分大小写：`ccp use`、`ccp rm`、包装函数（以及 App 的切换）都要求名字与 `~/.claude-profiles/` 下的目录名逐字节相同（`_ccp_profile_exists`）。macOS 的文件系统默认不分大小写，只用 `[[ -d ]]` 判断时 `Work` 也能找到 `work` 目录，但 `CLAUDE_CONFIG_DIR` 会变成 `.../Work`，钥匙串 service 名随之不同，表现为未登录。`ccp rm` 判断"是不是当前档案"时比较的是目录本身（`-ef`），所以记录里写的是 `Work` 时也删不掉 `work`。
 
 `ccp ls` 第一行总是 `default`，之后按字节序列出 `~/.claude-profiles/` 下名字合规的目录（含指向目录的软链接）；当前档案前面是 `* `，其他是两个空格。`ccp current` 只看当前档案记录，不看 `CLAUDE_PROFILE`。
+
+## ChatGPT 档案（`ccp chatgpt`）
+
+`ccp chatgpt <子命令>` 与 `ccp codex <子命令>` 完全相同。ChatGPT 档案与 Claude 档案互相独立（各有当前档案，可以同名）：默认档案是 `~/.codex`（不设置 `CODEX_HOME`），其他档案是 `~/.codex-profiles/<名字>/`（即它的 `CODEX_HOME`），当前档案记录是 `~/.codex-profiles/active`，格式和档案名规则都与 Claude 一侧相同。共享库函数在 `lib/chatgpt-profiles.zsh`，都以 `_ccp_chatgpt_` 开头。
+
+`ccp chatgpt ls` 的输出格式与 `ccp ls` 相同：第一行总是 `default`（不论 `~/.codex` 是否存在），之后按字节序列出 `~/.codex-profiles/` 下名字合规的目录；只显示名字，不读 `auth.json`。
 
 ## claude 包装函数的行为
 

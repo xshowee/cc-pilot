@@ -79,22 +79,13 @@ struct ProfileRow: View {
                 .lineLimit(1)
                 .truncationMode(.middle)
             if isCurrent {
-                currentBadge
+                CurrentBadge()
             }
             if let tier = AccountText.tier(for: profile) {
                 TierBadge(name: tier)
             }
         }
         .font(.caption)
-    }
-
-    private var currentBadge: some View {
-        Label("Current", systemImage: "checkmark.circle.fill")
-            .labelStyle(.titleAndIcon)
-            .font(.caption.weight(.semibold))
-            .foregroundColor(.accentColor)
-            .fixedSize()
-            .layoutPriority(1)
     }
 
     @ViewBuilder private var title: some View {
@@ -118,20 +109,5 @@ struct ProfileRow: View {
             .foregroundColor(StatusColor.red)
             .help(AccountText.explanation(error))
         }
-    }
-}
-
-/// 订阅等级的小标签（Pro、Max 5x 等）
-private struct TierBadge: View {
-    let name: String
-
-    var body: some View {
-        Text(verbatim: name)
-            .font(.caption2.weight(.semibold))
-            .foregroundColor(.secondary)
-            .padding(.horizontal, 5)
-            .padding(.vertical, 1)
-            .background(Capsule().fill(Color.primary.opacity(0.08)))
-            .fixedSize()
     }
 }

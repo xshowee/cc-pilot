@@ -14,6 +14,7 @@ struct CCPilotApp: App {
     @StateObject private var current: CurrentProfileModel
     @StateObject private var usage: UsageModel
     @StateObject private var actions = ProfileActionsModel()
+    @StateObject private var chatgpt: ChatGPTProfileListModel
     @AppStorage(MenuBarPreferences.iconOnlyKey) private var menuBarIconOnly = false
     // Sparkle、"登录时启动"与 ccp 的安装（见 AppDelegate.swift）
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
@@ -27,11 +28,13 @@ struct CCPilotApp: App {
         _profiles = StateObject(wrappedValue: profiles)
         _current = StateObject(wrappedValue: CurrentProfileModel(changes: changes))
         _usage = StateObject(wrappedValue: usage)
+        // ChatGPT 的档案另用一个文件监听（~/.codex-profiles 与各档案 auth.json），与 Claude 一侧互不触发
+        _chatgpt = StateObject(wrappedValue: ChatGPTProfileListModel(changes: ProfileChangeFeed(watching: .chatgptAuth)))
     }
 
     var body: some Scene {
         MenuBarExtra {
-            PanelView(profiles: profiles, current: current, usage: usage, actions: actions)
+            PanelView(profiles: profiles, current: current, usage: usage, actions: actions, chatgpt: chatgpt)
                 .environmentObject(appDelegate.updater)
                 .environmentObject(appDelegate.launchAtLogin)
                 .environmentObject(appDelegate.shellIntegration)
