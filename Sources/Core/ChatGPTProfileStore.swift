@@ -43,9 +43,9 @@ struct ChatGPTProfileStore: Sendable {
     /// 拿到的凭据只在这一次请求里用，用完即丢。
     func usageAuthorization(for profile: ChatGPTProfile, now: Date = Date()) -> ChatGPTUsageAuthorization {
         let reading = ChatGPTAuthReader.read(at: paths.authJSON(forProfileNamed: profile.name), now: now)
+        // 判定为"可以请求额度"时一定带着凭据（见 ChatGPTAuthReader）
         guard reading.status == .canRequestUsage, let credential = reading.credential else {
-            // 能请求额度却没有工作区 ID 时无法发请求，按读不懂处理
-            return .denied(reading.status == .canRequestUsage ? .incompatible(.malformed) : reading.status)
+            return .denied(reading.status)
         }
         return .granted(credential)
     }

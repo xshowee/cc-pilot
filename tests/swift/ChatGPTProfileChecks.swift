@@ -16,7 +16,7 @@ final class ChatGPTProfileChecks: CheckSuite {
             Check("没有 auth.json → 未登录", missingAuthIsNotLoggedIn),
             Check("auth_mode 为 apikey → API key，不读账号、不能请求额度", apiKeyMode),
             Check("没有 auth_mode 但有 ChatGPT 令牌时按 ChatGPT 登录处理", missingAuthModeWithTokens),
-            Check("auth.json 读不懂或打不开 → 版本不兼容", unreadableAuthIsIncompatible),
+            Check("auth.json 读不懂、打不开或没有工作区 ID → 版本不兼容", unreadableAuthIsIncompatible),
             Check("同一用户 + 同一工作区才是同一账号；同一工作区的不同用户不是", marksSameAccount),
             Check("只有能请求额度时才给出令牌和工作区 ID", usageAuthorization),
             Check("auth.json 里的令牌不出现在返回值、错误和输出里", noTokenLeaks),
@@ -187,12 +187,14 @@ final class ChatGPTProfileChecks: CheckSuite {
         badID["tokens"] = ["id_token": "garbage", "access_token": "x.y.z", "account_id": "ws"]
         try home.makeCodexProfile("badjwt", auth: badID)
         try home.makeCodexProfile("unknownmode", auth: chatgptAuth(authMode: "something-new"))
+        // 没有工作区 ID（tokens.account_id 和载荷里的 chatgpt_account_id 都没有）：发不了额度请求
+        try home.makeCodexProfile("noworkspace", auth: chatgptAuth(workspaceID: nil))
         try home.makeCodexProfile("isdir")
         try FileManager.default.createDirectory(
             at: home.codexProfilesRoot.appendingPathComponent("isdir/auth.json"), withIntermediateDirectories: true)
 
         let byName = Dictionary(uniqueKeysWithValues: store(home).listProfiles(now: fixedNow).map { ($0.name, $0) })
-        for name in ["default", "array", "notokens", "badjwt", "unknownmode"] {
+        for name in ["default", "array", "notokens", "badjwt", "unknownmode", "noworkspace"] {
             try expectEqual(byName[name]?.status, .incompatible(.malformed), name)
             try expectEqual(byName[name]?.account, nil, name)
         }

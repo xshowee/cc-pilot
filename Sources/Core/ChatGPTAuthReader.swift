@@ -4,7 +4,7 @@
 // - auth_mode 为 apikey → API key（不读令牌）
 // - auth_mode 为 chatgpt，或没有 auth_mode 但有 tokens（早期版本）→ 解析令牌：
 //     id_token 载荷：email、https://api.openai.com/auth 的 chatgpt_plan_type、chatgpt_user_id
-//     tokens.account_id：工作区 ID（没有时用载荷里的 chatgpt_account_id）
+//     tokens.account_id：工作区 ID（没有时用载荷里的 chatgpt_account_id；两者都没有 → 版本不兼容）
 //     access_token 的 exp（秒）≤ 现在 → 待续期；没有 exp 按未过期（同 Claude 一侧）
 // - 其他（打不开、不是 JSON、缺 tokens、令牌不是 JWT、auth_mode 是不认识的值）→ 版本不兼容
 //   （不认识的 auth_mode 不当作 API key：宁可提示更新 cc-pilot，也不给出可能错误的说法）
@@ -18,7 +18,7 @@ enum ChatGPTAuthReader {
         let status: ChatGPTLoginStatus
         let account: ChatGPTAccount?
         /// 只在 status 为可以请求额度时有值
-        fileprivate(set) var credential: ChatGPTUsageCredential? = nil
+        var credential: ChatGPTUsageCredential? = nil
     }
 
     static let claimsKey = "https://api.openai.com/auth"
@@ -57,14 +57,14 @@ enum ChatGPTAuthReader {
             userID: nonEmpty(auth["chatgpt_user_id"]) ?? nonEmpty(auth["user_id"]),
             workspaceID: nonEmpty(tokens["account_id"]) ?? nonEmpty(auth["chatgpt_account_id"]))
 
+        // 没有工作区 ID 就发不了额度请求（ChatGPT-Account-Id 头），也无从判断账号：按读不懂处理
+        guard let workspace = account.workspaceID else { return malformed }
+
         if let exp = accessClaims["exp"] as? NSNumber, Date(timeIntervalSince1970: exp.doubleValue) <= now {
             return Reading(status: .needsRenewal, account: account)
         }
-        var reading = Reading(status: .canRequestUsage, account: account)
-        if let workspace = account.workspaceID {
-            reading.credential = ChatGPTUsageCredential(accessToken: accessToken, accountID: workspace)
-        }
-        return reading
+        return Reading(status: .canRequestUsage, account: account,
+                       credential: ChatGPTUsageCredential(accessToken: accessToken, accountID: workspace))
     }
 
     private static var malformed: Reading { Reading(status: .incompatible(.malformed), account: nil) }
