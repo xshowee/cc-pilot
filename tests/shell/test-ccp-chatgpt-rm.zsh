@@ -366,6 +366,45 @@ test_other_profiles_processes_do_not_block_or_get_stopped() {
   [[ ! -e $(PROFILE work) ]] || fail "档案目录应已删除"
 }
 
+test_daemon_is_recognized_by_its_install_path_even_without_codex_home() {
+  # 守护进程按可执行文件在 <档案>/packages/app-server-daemon/ 下识别；读不到它的 CODEX_HOME 也照样确认后停止
+  t_signed_in_profile work
+  local pid
+  pid=$(t_spawn 'exec /bin/sleep 60')
+  t_ps_process $pid "$(PROFILE work)/packages/app-server-daemon/0.166.0/codex app-server --listen stdio://"
+  t_stdin y
+  t_ccp chatgpt rm work
+  local alive=0
+  process_alive $pid && { alive=1; kill -KILL $pid 2>/dev/null }
+  assert_rc 0
+  assert_eq $alive 0 "守护进程应已停止"
+  assert_contains "$T_OUT" "$pid" "应列出守护进程的 PID"
+  [[ ! -e $(PROFILE work) ]] || fail "档案目录应已删除"
+}
+
+test_other_app_server_processes_block_removal_and_are_left_running() {
+  # VS Code / IDE 的 Codex 扩展也跑 codex app-server，其他程序也可能带 app-server 参数：都不是桌面 App 的
+  # 守护进程，算"在用"——询问之前拒绝，不停止
+  t_signed_in_profile work
+  local ide tool
+  ide=$(t_spawn 'exec /bin/sleep 60')
+  tool=$(t_spawn 'exec /bin/sleep 60')
+  t_ps_process $ide "/Users/me/.vscode/extensions/openai.chatgpt-26.5.0/bin/macos-aarch64/codex app-server --analytics-default-enabled HOME=$T_HOME CODEX_HOME=$(PROFILE work)"
+  t_ps_process $tool "/opt/tools/agent-bridge app-server --port 9 HOME=$T_HOME CODEX_HOME=$(PROFILE work)"
+  t_stdin y
+  t_ccp chatgpt rm work
+  local -a survivors=()
+  local p
+  for p in $ide $tool; do
+    process_alive $p && { survivors+=($p); kill -KILL $p 2>/dev/null }
+  done
+  assert_refused_in_use work
+  assert_eq "${survivors[*]}" "$ide $tool" "不应停止它们"
+  assert_contains "$T_ERR" "$ide" "应列出 IDE 扩展的 app-server"
+  assert_contains "$T_ERR" "$tool" "应列出其他 app-server 进程"
+  assert_contains "$T_ERR" "agent-bridge" "应列出命令名"
+}
+
 assert_not_contains_daemon_notice() {
   [[ $T_OUT != *守护进程* ]] || fail "没有本档案的守护进程时不应提到守护进程：$T_OUT"
 }

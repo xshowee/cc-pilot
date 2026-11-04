@@ -84,7 +84,7 @@ CC Pilot 只访问下面三个地址：
 | `~/.codex/`（ChatGPT 默认账号） | cc-pilot 不修改默认账号的登录、设置和其中的文件。`ccp chatgpt add` 在 `~/.codex/` 或其中的共享目录（`sessions`、`archived_sessions`、`thread-writer-locks`、`.tmp`、`skills`、`plugins`、`rules`）不存在时创建它们，并把其中的 `config.toml` 复制到新账号。之后，在其他账号里运行的 codex 也会写入这里：会话数据库经账号 `config.toml` 里的 `sqlite_home`，会话文件经软链接。App 读取 `sessions`、`archived_sessions` 里的会话记录，以及每个 ChatGPT 账号的 `auth.json` 和 `history.jsonl`。 |
 | launchd 环境变量 `CODEX_HOME` | `ccp chatgpt use` 用 `launchctl setenv` 把它设为 ChatGPT 当前账号的目录，之后打开的 App 都使用这个账号；切回 `default` 时用 `launchctl unsetenv` 删除它。它在注销或重启前一直有效；App 每次启动时按 ChatGPT 当前账号重新设置一次（只在 `~/.codex-profiles/` 存在时）。不安装 LaunchAgent。 |
 | ChatGPT 桌面 App | 它正在运行时切换 ChatGPT 账号，cc-pilot 先询问，你同意后才正常退出它并重新打开。第一次会由 macOS 询问是否允许控制 ChatGPT（"自动化"）；不允许时账号照样切换，并告诉你怎么自己重启 ChatGPT。 |
-| ChatGPT 后台服务 | `ccp chatgpt rm` 在你确认后，用普通的终止信号停止该账号的 `codex app-server`（桌面 App 退出后它仍在运行）。不会停止其他任何进程。 |
+| ChatGPT 后台服务 | `ccp chatgpt rm` 在你确认后，用普通的终止信号停止桌面 App 为该账号运行的后台服务（桌面 App 装在账号目录 `packages/app-server-daemon/` 下的 `codex app-server`，App 退出后它仍在运行）。不会停止其他任何进程：其他 `app-server`（例如 IDE 的 Codex 扩展运行的）算作账号仍在使用。 |
 | `~/Library/Application Support/cc-pilot/` | App 的 Token 用量账本（`token-usage.sqlite`）：按账号和模型的 token 数、每份会话记录读到了哪里、每个会话属于哪个账号。不含对话内容。 |
 | "终端" | 在 App 里添加或删除账号时，App 打开一个新的终端窗口执行 `ccp add` / `ccp rm`（或 `ccp chatgpt add` / `ccp chatgpt rm`）。第一次会由 macOS 询问是否允许 CC Pilot 控制"终端"；不允许也没关系，App 会给出命令让你自己复制执行。 |
 
@@ -173,7 +173,7 @@ ccp chatgpt use default      # 切回 ~/.codex
 | `ccp chatgpt ls` | 列出所有 ChatGPT 账号（`~/.codex` 是 `default`，其他在 `~/.codex-profiles/` 下），当前账号前面标 `*`。`ccp codex ls` 与之相同。 |
 | `ccp chatgpt use <名字>` | 切换 ChatGPT 当前账号：之后新启动的 `codex` 和之后打开的 App（ChatGPT、Zed 等，经 `launchctl setenv CODEX_HOME`）都用它；ChatGPT 桌面 App 正在运行时询问是否重启它，`--restart` / `--no-restart` 不询问。只在一个终端里临时使用：`CODEX_PROFILE=<名字> codex`。 |
 | `ccp chatgpt add <名字>` | 新建 ChatGPT 账号，并在其中运行 `codex login`。它的 `config.toml` 从 `~/.codex/config.toml` 复制一份（`sqlite_home` 指向 `~/.codex`），会话、`AGENTS.md`、技能、插件和规则是指向 `~/.codex` 的软链接，所有账号共享；登录和设置每个账号一份。登录没有完成时保留账号，并给出之后登录的命令。不改变当前 ChatGPT 账号。 |
-| `ccp chatgpt rm <名字>` | 删除 ChatGPT 账号。默认账号、当前账号、`launchctl` 里仍指向的账号不能删除；仍在使用中的账号也不能删除：只要有 `codex` 进程或 ChatGPT 桌面 App 带着这个账号的 `CODEX_HOME` 在运行，就列出它们，不询问直接停下。否则先请你确认；它的 ChatGPT 后台服务（`codex app-server`）在运行时先停止它，然后在其中执行 `codex logout`，确认 `auth.json` 已不在才删除。只删除账号自己的文件，`~/.codex` 里共享的会话、技能等保持不变。 |
+| `ccp chatgpt rm <名字>` | 删除 ChatGPT 账号。默认账号、当前账号、`launchctl` 里仍指向的账号不能删除；仍在使用中的账号也不能删除：只要有 `codex` 进程、其他 `app-server` 进程（例如 IDE 的 Codex 扩展）或 ChatGPT 桌面 App 带着这个账号的 `CODEX_HOME` 在运行，就列出它们，不询问直接停下。否则先请你确认；桌面 App 为它运行的后台服务（账号目录 `packages/app-server-daemon/` 下的 `codex app-server`）在运行时先停止它，然后在其中执行 `codex logout`，确认 `auth.json` 已不在才删除。只删除账号自己的文件，`~/.codex` 里共享的会话、技能等保持不变。 |
 | `ccp init [--yes]` | 接入 zsh：征得同意后在 `~/.zshrc` 末尾加上接入行；`--yes` 不询问。已经接入时什么都不改。 |
 | `ccp uninstall` | 从 `~/.zshrc` 里删除 `ccp init` 加的那一行，其他内容不动。 |
 

@@ -93,9 +93,9 @@ source "$HOME/.cc-pilot/cc-pilot.zsh"  # cc-pilot
 ### `ccp chatgpt rm <名字>`
 
 1. 拒绝（都在询问之前，什么都不做，退出码 1；参数个数不对 2）：`default`；名字不合规或是保留名；当前档案（与 `ccp rm` 一样按是否同一个目录判断）；档案不存在（给出只差大小写的已有档案名）；`launchctl getenv CODEX_HOME` 等于档案目录（允许结尾多一个 `/`，或 `-ef` 为同一目录）——之后从 Dock 等打开的 ChatGPT 还会用它，提示 `ccp chatgpt use <当前档案>` 让 launchd 跟上；还有 codex 进程或 ChatGPT 桌面 App 在用这个档案（见第 2 条）；`launchctl` 失败或 `ps` 失败时无法确认，同样拒绝。
-2. 在用这个档案的进程：先找 `ps -A -E -ww -o pid= -o command=`（只调用一次）的每一行里，有 ` CODEX_HOME=<档案目录>`（或结尾多一个 `/`）后跟空格或行尾的进程（ccp 自己除外）。`-E` 把进程的环境以空格连接追加在命令行后面、不转义，所以按整行子串匹配，不拆分。系统自带的程序看不到环境，codex、ChatGPT 桌面 App 不是系统程序，看得到。其中只有下面两类算在用：
-   - 守护进程：命令行里还有 ` app-server ` 这个参数（桌面 App 的 `codex app-server`），按第 3、4 条确认后停止。
-   - codex 进程（命令行第一个词的最后一段以 `codex` 开头，不分大小写，与 App 的 `ChatGPTSessionWriters` 口径一致；npm 装的 `node …/codex` 包装进程不算，算它启动的 codex），以及 ChatGPT 桌面 App 本体及其 helper（可执行文件在 `ChatGPT.app/` 里：命令行以 `/` 开头，第一个 `/ChatGPT.app/` 之前没有 `=`，路径本身可以带空格）：有任何一个就在询问之前拒绝，在 stderr 逐行列出 `PID <pid>  <命令名>`（App 的进程记作"ChatGPT 桌面 App"），请用户退出它们后重新执行；ccp 不停止它们，守护进程也不动。App 的"删除"不为此单独禁用：它在终端里运行同一条命令，拒绝信息显示在终端里。
+2. 在用这个档案的进程：看 `ps -A -E -ww -o pid= -o command=` 的每一行（ccp 自己除外）。`-E` 把进程的环境以空格连接追加在命令行后面、不转义，所以按整行前缀 / 子串匹配，不拆分。系统自带的程序看不到环境，codex、ChatGPT 桌面 App 不是系统程序，看得到。
+   - 守护进程：可执行文件在 `<档案目录>/packages/app-server-daemon/` 下（命令行以这个路径开头，路径本身可以带空格；桌面 App 把它的 `codex app-server` 装在那里，App 退出后仍在运行）。不看环境。按第 3、4 条确认后停止。
+   - 其余的只看环境里有 ` CODEX_HOME=<档案目录>`（或结尾多一个 `/`）后跟空格或行尾的进程，其中下面几类算在用：codex 进程（命令行第一个词的最后一段以 `codex` 开头，不分大小写，与 App 的 `ChatGPTSessionWriters` 口径一致；npm 装的 `node …/codex` 包装进程不算，算它启动的 codex）；其他命令行里有 ` app-server ` 参数的进程（VS Code 等 IDE 的 Codex 扩展也跑 `codex app-server`，它们不是桌面 App 的守护进程，不能停）；以及 ChatGPT 桌面 App 本体及其 helper（可执行文件在 `ChatGPT.app/` 里：命令行以 `/` 开头，第一个 `/ChatGPT.app/` 之前没有 `=`，路径本身可以带空格）：有任何一个就在询问之前拒绝，在 stderr 逐行列出 `PID <pid>  <命令名>`（App 的进程记作"ChatGPT 桌面 App"），请用户退出它们后重新执行；ccp 不停止它们，守护进程也不动。App 的"删除"不为此单独禁用：它在终端里运行同一条命令，拒绝信息显示在终端里。
    - 其他进程即使带着这个 `CODEX_HOME` 也不算：在 launchd 指向这个档案期间从 Dock 等打开的 iTerm、VS Code 和其中的 shell（包括 ccp 自己和它启动的 `ps`）只是继承了它（codex 包装函数同样把继承来的值当作过期的，见下文），守护进程派生的不叫 codex 的子进程随守护进程处理。
 3. 询问一次 `[y/N]`（只认 `y`/`yes`，读不到算否）；有守护进程时先在同一段提示里列出 PID、说明确认后会先停止它。
 4. 停止守护进程：`kill -TERM`，每 0.2 秒检查一次，最多等 `CCP_CHATGPT_DAEMON_TIMEOUT` 秒（默认 10）；还在运行就不登出、不删除，不发 KILL。先停守护进程再登出，免得它在登出后又写回凭据。

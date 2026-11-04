@@ -5,12 +5,13 @@
 #   1. 拒绝（都在询问之前，什么都不做）：默认档案、名字不合规、当前档案（按是否同一个目录判断，同 ccp rm）、
 #      档案不存在（给出大小写提示）、launchd 里的 CODEX_HOME 仍指向它（之后从 Dock 等打开的 ChatGPT 还会用它；
 #      launchctl 失败时无法确认，同样拒绝）、无法列出进程（无法确认有没有进程在用它）。
-#   2. 在环境里 CODEX_HOME 是该档案目录的进程中找真正在用它的：
-#      - 桌面 App 的守护进程：命令行里还有 app-server 这个参数（装在 CODEX_HOME/packages/app-server-daemon/ 下，
-#        App 退出后仍在运行）。按下面的流程确认后停止。
-#      - codex 进程（命令名以 codex 开头，同 App 的 ChatGPTSessionWriters）和 ChatGPT 桌面 App 本体及其 helper
-#        （可执行文件在 ChatGPT.app/ 里）：有任何一个就拒绝删除，列出 PID 和命令名，请用户退出它们后重试；
-#        ccp 不停止它们。
+#   2. 找真正在用这个档案的进程：
+#      - 桌面 App 的守护进程：可执行文件在 <档案目录>/packages/app-server-daemon/ 下（桌面 App 把 codex app-server
+#        装在那里，App 退出后仍在运行；不看环境）。按下面的流程确认后停止。
+#      - 在环境里 CODEX_HOME 是该档案目录的进程中：codex 进程（命令名以 codex 开头，同 App 的
+#        ChatGPTSessionWriters）、其他带 app-server 参数的进程（VS Code 等 IDE 的 Codex 扩展也跑 codex app-server，
+#        它们不是桌面 App 的守护进程）、ChatGPT 桌面 App 本体及其 helper（可执行文件在 ChatGPT.app/ 里）：
+#        有任何一个就拒绝删除，列出 PID 和命令名，请用户退出它们后重试；ccp 不停止它们。
 #      其他进程即使带着这个 CODEX_HOME 也不算：在 launchd 指向该档案期间从 Dock 等打开的 iTerm、VS Code、
 #      其中的 shell（包括 ccp 自己和它启动的 ps）只是继承了它（codex 包装函数也把继承来的值当作过期的），
 #      守护进程派生的不叫 codex 的子进程随守护进程处理。
@@ -120,11 +121,13 @@ _ccp_cmd_chatgpt_rm() {
   print -r -- "已删除 ChatGPT 档案 \"$name\"。"
 }
 
-# 在环境里 CODEX_HOME 等于档案目录 $1（允许结尾多一个 /）的进程（不含 ccp 自己）中找在用它的，填进调用方的两个数组：
-#   daemons  桌面 App 守护进程的 PID（命令行里还有 app-server 这个参数）
-#   users    其他在用的进程，每个元素是 "PID 命令名"：
+# 找在用档案目录 $1 的进程（不含 ccp 自己），填进调用方的两个数组：
+#   daemons  桌面 App 守护进程的 PID：可执行文件在 $1/packages/app-server-daemon/ 下（命令行以这个路径开头；
+#            路径本身可以带空格，所以按前缀比较，不按空格拆分）。不要求环境里有 CODEX_HOME
+#   users    环境里 CODEX_HOME 等于 $1（允许结尾多一个 /）的进程中，其他在用的，每个元素是 "PID 命令名"：
 #            - codex 进程：命令行第一个词的最后一段（命令名）以 codex 开头（不分大小写），同 ChatGPTSessionWriters；
 #              npm 装的 node 包装进程不算（真正用档案的是它启动的 codex）
+#            - 其他命令行里有 app-server 参数的进程（IDE 的 Codex 扩展等，不是桌面 App 的守护进程）
 #            - ChatGPT 桌面 App 本体及其 helper：可执行文件在 ChatGPT.app/ 里，即命令行里第一个 /ChatGPT.app/
 #              之前没有 =（还没到参数里的 --x=y 和追加的环境变量；路径本身可以带空格），命令名记作"ChatGPT 桌面 App"
 #            其他进程只是继承了这个 CODEX_HOME，不算（见文件头）。ps 失败时返回 1。
@@ -140,11 +143,13 @@ _ccp_chatgpt_profile_processes() {
     pid=${line%%[[:space:]]*}
     rest=" ${line#*[[:space:]]} "
     [[ $pid == <-> && $pid != $$ ]] || continue
+    if [[ $rest == " $dir/packages/app-server-daemon/"* ]]; then
+      daemons+=($pid)
+      continue
+    fi
     [[ $rest == *" CODEX_HOME=$dir "* || $rest == *" CODEX_HOME=$dir/ "* ]] || continue
     word=${${rest# }%% *}
-    if [[ $rest == *" app-server "* ]]; then
-      daemons+=($pid)
-    elif [[ ${(L)word:t} == codex* ]]; then
+    if [[ ${(L)word:t} == codex* || $rest == *" app-server "* ]]; then
       users+=("$pid ${word:t}")
     elif [[ $rest == " /"*"/ChatGPT.app/"* && ${rest%%/ChatGPT.app/*} != *=* ]]; then
       users+=("$pid ChatGPT 桌面 App")
