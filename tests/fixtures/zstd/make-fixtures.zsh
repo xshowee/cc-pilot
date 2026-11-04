@@ -11,10 +11,10 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 z() { "$zstd" -q --single-thread "$@"; }
 
-# 合成的类 JSONL 文本：固定种子的伪随机词表拼行（awk 的 srand 固定种子，结果可重复）
+# 合成的类 JSONL 文本：固定种子的伪随机词表拼行
 synth() { # <行数> <种子>
   awk -v n="$1" -v seed="$2" 'BEGIN {
-    srand(seed)
+    srand(seed)  # 同一台 macOS（BSD awk）上可重复；换 awk 实现后内容会变，但 .zst 与 expected.tsv 仍一致
     split("alpha beta gamma delta tokens input output cached reasoning shell patch apply read write " \
           "function_call message assistant user tool result summary file path line column error ok " \
           "rate_limits primary secondary window used percent resets session turn context", w, " ")
