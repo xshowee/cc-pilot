@@ -133,6 +133,7 @@ CLAUDE_PROFILE=work claude   # 只在这一次、这个终端里临时使用 wor
 | `ccp chatgpt ls` | 列出所有 ChatGPT 账号（`~/.codex` 是 `default`，其他在 `~/.codex-profiles/` 下），当前账号前面标 `*`。`ccp codex ls` 与之相同。 |
 | `ccp chatgpt use <名字>` | 切换 ChatGPT 当前账号：之后新启动的 `codex` 和之后打开的 App（ChatGPT、Zed 等，经 `launchctl setenv CODEX_HOME`）都用它；ChatGPT 桌面 App 正在运行时询问是否重启它，`--restart` / `--no-restart` 不询问。只在一个终端里临时使用：`CODEX_PROFILE=<名字> codex`。 |
 | `ccp chatgpt add <名字>` | 新建 ChatGPT 账号，并在其中运行 `codex login`。它的 `config.toml` 从 `~/.codex/config.toml` 复制一份（`sqlite_home` 指向 `~/.codex`），会话、`AGENTS.md`、技能、插件和规则是指向 `~/.codex` 的软链接，所有账号共享；登录和设置每个账号一份。登录没有完成时保留账号，并给出之后登录的命令。不改变当前 ChatGPT 账号。 |
+| `ccp chatgpt rm <名字>` | 删除 ChatGPT 账号：先请你确认；它的 ChatGPT 后台服务（`codex app-server`）在运行时先停止它，然后在其中执行 `codex logout`，确认 `auth.json` 已不在才删除。只删除账号自己的文件，`~/.codex` 里共享的会话、技能等保持不变。默认账号、当前账号，以及 `launchctl` 里仍指向的账号不能删除。 |
 | `ccp init [--yes]` | 接入 zsh：征得同意后在 `~/.zshrc` 末尾加上接入行；`--yes` 不询问。已经接入时什么都不改。 |
 | `ccp uninstall` | 从 `~/.zshrc` 里删除 `ccp init` 加的那一行，其他内容不动。 |
 

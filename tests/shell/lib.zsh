@@ -14,8 +14,9 @@
 #   $T_SECURITY    假 security 的钥匙串内容和调用记录（即 FAKE_SECURITY_DIR，格式见 tests/fakes/security）
 #   $T_LAUNCHD     假 launchctl 模拟的 launchd 环境与调用记录（即 FAKE_LAUNCHCTL_DIR，见 tests/fakes/launchctl）
 #   $T_CHATGPT_APP 假 ChatGPT 桌面 App 的状态与调用记录（即 FAKE_CHATGPT_APP_DIR，假 osascript 与假 open 共用）
+#   $T_PS          假 ps 输出的进程表与调用记录（即 FAKE_PS_DIR，见 tests/fakes/ps）
 # 被测程序一律通过 t_run / t_claude / t_zsh / t_ccp / t_ccp_in 启动：`env -i` 清空环境，
-# PATH 最前面是 tests/fakes/（假 claude、security、codex、launchctl、osascript、open），然后才是 /usr/bin:/bin:/usr/sbin:/sbin。
+# PATH 最前面是 tests/fakes/（假 claude、security、codex、launchctl、osascript、open、ps），然后才是 /usr/bin:/bin:/usr/sbin:/sbin。
 # 标准输入默认是 /dev/null；用 t_stdin 准备输入（例如回答确认提示）。
 # 运行结果在 $T_OUT、$T_ERR、$T_RC 里。
 
@@ -89,6 +90,7 @@ t_run() {
     FAKE_SECURITY_DIR=$T_SECURITY \
     FAKE_LAUNCHCTL_DIR=$T_LAUNCHD \
     FAKE_CHATGPT_APP_DIR=$T_CHATGPT_APP \
+    FAKE_PS_DIR=$T_PS \
     "${extra[@]}" \
     "$@" > $T/out 2> $T/err < ${T_STDIN:-/dev/null}
   T_RC=$?
@@ -292,6 +294,27 @@ chatgpt_app_calls() {
   done
 }
 
+# ---------- 假 ps 的进程表（ccp chatgpt rm 查找守护进程） ----------
+
+# 在假 ps 的进程表里加一行：t_ps_process PID 命令行与环境（格式见 tests/fakes/ps）
+t_ps_process() {
+  mkdir -p -- $T_PS || exit 1
+  print -r -- "$1 $2" >> $T_PS/output || exit 1
+}
+
+ps_calls() { _fake_calls $T_PS/calls }
+
+# 在后台启动一个真进程（交给 launchd 收养，测试结束前要自己停掉），输出它的 PID。
+# 参数：zsh 代码（例如 'trap "" TERM; while :; do /bin/sleep 0.1; done' 模拟不肯退出的进程）
+t_spawn() {
+  local pidfile=$T/spawn.$RANDOM
+  ( /bin/zsh -f -c "$1" < /dev/null > /dev/null 2>&1 & print -r -- $! > $pidfile )
+  print -r -- "$(< $pidfile)"
+}
+
+# 进程是否还在运行
+process_alive() { kill -0 $1 2> /dev/null }
+
 # ---------- 断言（失败即结束当前用例） ----------
 
 fail() {
@@ -428,6 +451,7 @@ t_main() {
     T_SECURITY=$T/security
     T_LAUNCHD=$T/launchd
     T_CHATGPT_APP=$T/chatgpt-app
+    T_PS=$T/ps
     mkdir -p -- $T_HOME && cp -R -- $SHELL_SRC $T_HOME/.cc-pilot || exit 1
     ( unset T_RC T_OUT T_ERR T_STDIN; $name )
     rc=$?

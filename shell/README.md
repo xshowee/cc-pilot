@@ -29,7 +29,7 @@
 - `cc-pilot.zsh` 只 source `lib/profiles.zsh` 和 `lib/chatgpt-profiles.zsh`（包装函数要用的辅助函数必须放在这两个文件里）；`bin/ccp` source `lib/` 下所有不以 `cmd-` 开头的 `.zsh` 文件，再只 source 被调用的那个 `cmd-<命令>.zsh`。新增共享库直接放进 `lib/` 即可。
 - `lib/` 里的代码会进入用户的交互 shell：只定义 `_ccp_` 开头的函数，不定义全局变量；函数开头写 `emulate -L zsh`；出错只 `return`，不 `exit`。
 - 输出位置：询问（如 `[y/N]`）、进度和结果写 stdout；错误（以 `ccp <命令>:` 开头）、用法说明和警告写 stderr。
-- 系统工具用绝对路径（`/usr/bin/osascript`、`/usr/bin/shasum`）；`claude`、`codex`、`security` 按 PATH 查找，测试会在 PATH 最前面放假程序。例外：`ccp chatgpt` 用来改 launchd 环境、控制 ChatGPT 桌面 App 的 `launchctl`、`osascript`、`open` 也按 PATH 查找（spec 要求可被测试替换，`tests/fakes/` 里有同名假程序）；做 JSON 和 NFC 的 `/usr/bin/osascript` 仍用绝对路径。
+- 系统工具用绝对路径（`/usr/bin/osascript`、`/usr/bin/shasum`）；`claude`、`codex`、`security` 按 PATH 查找，测试会在 PATH 最前面放假程序。例外：`ccp chatgpt` 用来改 launchd 环境、控制 ChatGPT 桌面 App 的 `launchctl`、`osascript`、`open`，以及 `ccp chatgpt rm` 查找守护进程用的 `ps` 也按 PATH 查找（spec 要求可被测试替换，`tests/fakes/` 里有同名假程序）；做 JSON 和 NFC 的 `/usr/bin/osascript` 仍用绝对路径。
 
 ## 接入 zsh（`ccp init` / `ccp uninstall`）
 
@@ -72,7 +72,7 @@ source "$HOME/.cc-pilot/cc-pilot.zsh"  # cc-pilot
 
 `ccp chatgpt add <名字>` 先做与 `ccp add` 相同的检查（名字规则、保留名、任何类型的同名项都算已存在），任何一项不通过都不改磁盘。然后在 `~/.codex-profiles/<名字>/` 里只放两类东西：
 
-- 共享资源的软链接，各自指向 `~/.codex/` 中的同名项（绝对路径）。目录：`sessions`、`archived_sessions`、`thread-writer-locks`、`.tmp`、`skills`、`plugins`、`rules`，`~/.codex` 里还没有时先创建（`~/.codex` 本身不存在也一并创建）；文件：`AGENTS.md`，`~/.codex` 里没有时不建链接。清单和建立方式集中在 `chatgpt-profiles.zsh` 的 `_ccp_chatgpt_shared_dirs` / `_ccp_chatgpt_shared_files` / `_ccp_chatgpt_share_resources`（`ccp chatgpt rm` 也据此认出哪些是链接）。
+- 共享资源的软链接，各自指向 `~/.codex/` 中的同名项（绝对路径）。目录：`sessions`、`archived_sessions`、`thread-writer-locks`、`.tmp`、`skills`、`plugins`、`rules`，`~/.codex` 里还没有时先创建（`~/.codex` 本身不存在也一并创建）；文件：`AGENTS.md`，`~/.codex` 里没有时不建链接。清单和建立方式集中在 `chatgpt-profiles.zsh` 的 `_ccp_chatgpt_shared_dirs` / `_ccp_chatgpt_shared_files` / `_ccp_chatgpt_share_resources`（`ccp chatgpt rm` 删除时只删这些链接本身，不跟随它们）。
 - `config.toml`：第一行是 `sqlite_home = "<~/.codex 的绝对路径>"`（TOML 基本字符串，转义 `\` 和 `"`；必须是顶层键，所以放第一行），之后是默认档案 `~/.codex/config.toml` 的原样内容（是软链接时取它指向的内容），只去掉其中顶层（第一个 `[表]` 之前）已有的 `sqlite_home`。默认档案没有时只有这一行；读不出时也只有这一行并给出提示。会话数据库靠 `sqlite_home` 落在 `~/.codex`。
 
 不创建、不复制：`auth.json`、`installation_id`、`.codex-global-state.json`、`history.jsonl`、`sqlite/`（桌面 App 自己的库，issue 01 实测每个档案一份即可）。建链接或写 `config.toml` 失败时删除整个新档案目录（只删链接本身）。
@@ -89,6 +89,14 @@ source "$HOME/.cc-pilot/cc-pilot.zsh"  # cc-pilot
 4. ChatGPT 桌面 App（`com.openai.codex`）正在运行时询问"重启 ChatGPT？[y/N]"（只认 `y`/`yes`，读不到算否；`--restart`/`--no-restart` 不询问）。重启：`osascript -e 'tell application id "com.openai.codex" to quit'`，每 0.2 秒查一次是否还在运行（`… is running`，不需要自动化授权），最多等 `CCP_CHATGPT_QUIT_TIMEOUT` 秒（默认 15），退出后 `open -b com.openai.codex`。
    - 退出被拒（macOS 自动化授权，`(-1743)`）、超时、重新打开失败：档案照样已经切换，在 stderr 说明怎么手动完成（附可复制的 `ccp chatgpt use <名字> --restart`），退出码仍是 0。所以带 `--restart` 时 stderr 非空就表示桌面 App 没有重启，App 据此提示。
    - 桌面 App 在 `CODEX_HOME/packages/` 下的 `codex app-server` 守护进程退出后仍在运行；重启时是否一并停止旧档案的守护进程待真机实测，目前不停止。
+
+### `ccp chatgpt rm <名字>`
+
+1. 拒绝（都在询问之前，什么都不做，退出码 1；参数个数不对 2）：`default`；名字不合规或是保留名；当前档案（与 `ccp rm` 一样按是否同一个目录判断）；档案不存在（给出只差大小写的已有档案名）；`launchctl getenv CODEX_HOME` 等于档案目录（允许结尾多一个 `/`，或 `-ef` 为同一目录）——之后从 Dock 等打开的 ChatGPT 还会用它，提示 `ccp chatgpt use <当前档案>` 让 launchd 跟上；`launchctl` 失败或 `ps` 失败时无法确认，同样拒绝。
+2. 守护进程：`ps -A -E -ww -o pid= -o command=` 的每一行里，命令行有 ` app-server ` 这个参数、并且有 ` CODEX_HOME=<档案目录>`（或结尾多一个 `/`）后跟空格或行尾的进程。`-E` 把进程的环境以空格连接追加在命令行后面、不转义，所以按整行子串匹配，不拆分。只认 app-server：在这个档案里运行的 `codex` 会话不动。系统自带的程序看不到环境，codex 不是系统程序，看得到。
+3. 询问一次 `[y/N]`（只认 `y`/`yes`，读不到算否）；有守护进程时先在同一段提示里列出 PID、说明确认后会先停止它。
+4. 停止守护进程：`kill -TERM`，每 0.2 秒检查一次，最多等 `CCP_CHATGPT_DAEMON_TIMEOUT` 秒（默认 10）；还在运行就不登出、不删除，不发 KILL。先停守护进程再登出，免得它在登出后又写回凭据。
+5. `CODEX_HOME=<档案目录> command codex logout`（不经过包装函数，也不看 `CODEX_PROFILE`）。不看退出码：之后 `auth.json` 仍在（包括悬空的软链接）就不删除，说明原因；不在就 `/bin/rm -rf -- <档案目录>`（不带结尾的 `/`）：`rm` 不跟随软链接，共享项只删链接本身，`~/.codex` 里的内容不受影响；档案目录本身是软链接时也只删这个链接。
 
 ## codex 包装函数的行为
 

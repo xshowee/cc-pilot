@@ -1,0 +1,144 @@
+# ccp chatgpt rm <名字>（别名 ccp codex rm）：删除 ChatGPT 档案（chatgpt-profiles ticket 06）。
+# lib/cmd-chatgpt.zsh 分派到 rm 时 source 本文件并调用 _ccp_cmd_chatgpt_rm；返回值即 ccp 的退出码。
+#
+# 流程（spec "共享资源 / 删除档案"）：
+#   1. 拒绝（都在询问之前，什么都不做）：默认档案、名字不合规、当前档案（按是否同一个目录判断，同 ccp rm）、
+#      档案不存在（给出大小写提示）、launchd 里的 CODEX_HOME 仍指向它（之后从 Dock 等打开的 ChatGPT 还会用它；
+#      launchctl 失败时无法确认，同样拒绝）、无法列出进程（无法确认守护进程是否在运行）。
+#   2. 查找该档案的桌面 App 守护进程：命令行里有 app-server 这个参数、环境里 CODEX_HOME 是该档案目录的进程
+#      （桌面 App 装在 CODEX_HOME/packages/app-server-daemon/ 下，App 退出后仍在运行）。只认这两条都满足的，
+#      在这个档案里运行的 codex 会话等其他进程不动。
+#   3. 询问一次 [y/N]（有守护进程时在同一个问题里说明会先停止它）；y / yes 才继续。
+#   4. 停止守护进程：kill -TERM，每 0.2 秒看一次，最多等 CCP_CHATGPT_DAEMON_TIMEOUT 秒（默认 10）；
+#      还在运行就不登出、不删除（不强制结束）。
+#   5. CODEX_HOME=<目录> command codex logout（由 codex 自己撤销凭据；不经过包装函数，也不看 CODEX_PROFILE）。
+#   6. <目录>/auth.json 仍存在（登出失败）时不删除；否则 rm -rf <目录>：rm 不跟随软链接，共享项只删链接本身，
+#      ~/.codex 里的内容不受影响（档案目录本身是软链接时也只删这个链接）。
+#
+# 进程列表用 `ps -A -E -ww -o pid= -o command=`（-E 在命令行后面追加进程的环境变量，以空格分隔；
+# 系统自带的程序看不到环境，codex 不是系统程序，看得到——见 notes）。ps 按 PATH 查找，测试换成假的。
+
+_ccp_cmd_chatgpt_rm() {
+  emulate -L zsh
+  if (( $# != 1 )); then
+    print -u2 -r -- "用法：ccp chatgpt rm <名字>"
+    return 2
+  fi
+  local name=$1 dir active launchd variant answer out
+  local -a daemons
+
+  if [[ $name == default ]]; then
+    print -u2 -r -- "ccp chatgpt rm: 默认档案（~/.codex）不能删除。"
+    return 1
+  fi
+  if ! _ccp_valid_name "$name" || _ccp_reserved_name "$name"; then
+    print -u2 -r -- "ccp chatgpt rm: 档案名 $(_ccp_invalid_name_reason "$name")。"
+    return 1
+  fi
+  dir=$(_ccp_chatgpt_profile_dir "$name")
+  active=$(_ccp_chatgpt_active_name)
+  # 记录里的名字可能只与目录名差在大小写：按是否同一个目录判断（同 ccp rm）
+  if [[ $name == "$active" ]] \
+      || { [[ $active != default ]] && _ccp_valid_name "$active" \
+           && [[ $(_ccp_chatgpt_profile_dir "$active") -ef $dir ]] }; then
+    print -u2 -r -- "ccp chatgpt rm: \"$name\" 是 ChatGPT 的当前档案，不能删除。请先用 \`ccp chatgpt use <其他档案>\` 切换（例如 \`ccp chatgpt use default\`）。"
+    return 1
+  fi
+  if ! _ccp_chatgpt_profile_exists "$name"; then
+    print -u2 -r -- "ccp chatgpt rm: 档案 \"$name\" 不存在（$dir）。可以用 \`ccp chatgpt ls\` 查看已有档案。"
+    variant=$(_ccp_chatgpt_profile_case_variant "$name")
+    [[ -n $variant ]] && print -u2 -r -- "  档案名区分大小写：已有的档案是 \"$variant\"。"
+    return 1
+  fi
+
+  if ! launchd=$(launchctl getenv CODEX_HOME 2>/dev/null); then
+    print -u2 -r -- "ccp chatgpt rm: 无法用 launchctl 读取 launchd 里的 CODEX_HOME，不能确认之后打开的 ChatGPT 不再使用档案 \"$name\"，没有删除。"
+    return 1
+  fi
+  if [[ -n $launchd ]] && { [[ ${launchd%/} == "$dir" ]] || [[ $launchd -ef $dir ]] }; then
+    print -u2 -r -- "ccp chatgpt rm: launchd 里的 CODEX_HOME 仍指向档案 \"$name\"（之后从 Dock、Spotlight 打开的 ChatGPT 等会使用它），不能删除。"
+    print -u2 -r -- "  请执行 \`ccp chatgpt use $(_ccp_chatgpt_active_name)\` 让 launchd 跟上当前档案，或用 \`ccp chatgpt use <其他档案>\` 切换后再删除。"
+    return 1
+  fi
+
+  out=$(_ccp_chatgpt_daemon_pids "$dir") || {
+    print -u2 -r -- "ccp chatgpt rm: 无法列出进程（ps 失败），不能确认档案 \"$name\" 的 ChatGPT 守护进程是否在运行，没有删除。"
+    return 1
+  }
+  daemons=(${(f)out})
+
+  if (( ${#daemons} )); then
+    print -r -- "档案 \"$name\" 的 ChatGPT 守护进程（codex app-server，PID ${(j:, :)daemons}）正在运行，确认后会先停止它。"
+  fi
+  print -rn -- "确定要删除 ChatGPT 档案 \"$name\"（$dir）吗？会先在其中执行 codex logout。[y/N] "
+  if ! IFS= read -r answer || [[ $answer != ([yY]|[yY][eE][sS]) ]]; then
+    print -r -- "已取消，没有删除任何东西。"
+    return 1
+  fi
+
+  if (( ${#daemons} )); then
+    print -r -- "正在停止守护进程……"
+    if ! _ccp_chatgpt_stop_processes $daemons; then
+      print -u2 -r -- "ccp chatgpt rm: 档案 \"$name\" 的 ChatGPT 守护进程（PID ${(j:, :)reply}）在 ${CCP_CHATGPT_DAEMON_TIMEOUT:-10} 秒内没有退出，没有登出，也没有删除。"
+      print -u2 -r -- "  请退出 ChatGPT 或结束这些进程后重新执行 \`ccp chatgpt rm $name\`。"
+      return 1
+    fi
+  fi
+
+  print -r -- "正在档案 \"$name\" 里执行 codex logout……"
+  local -i rc
+  CODEX_HOME=$dir command codex logout
+  rc=$?
+  if [[ -e $dir/auth.json || -L $dir/auth.json ]]; then
+    if (( rc == 127 )) && (( ! $+commands[codex] )); then
+      print -u2 -r -- "ccp chatgpt rm: 没有找到 codex 命令，无法登出。请先安装 Codex CLI。"
+    fi
+    print -u2 -r -- "ccp chatgpt rm: 登出没有成功（codex 退出码 $rc），档案 \"$name\" 的凭据 $dir/auth.json 仍在，没有删除。"
+    print -u2 -r -- "  请处理后重新执行 \`ccp chatgpt rm $name\`。"
+    return 1
+  fi
+
+  # 不带结尾的 /：rm 只删除软链接本身，不跟随它删除 ~/.codex 里的共享内容
+  /bin/rm -rf -- "$dir" || {
+    print -u2 -r -- "ccp chatgpt rm: 删除 $dir 失败。"
+    return 1
+  }
+  print -r -- "已删除 ChatGPT 档案 \"$name\"。"
+}
+
+# 输出档案目录 $1 的 ChatGPT 守护进程的 PID，每行一个：命令行里有 app-server 这个参数、
+# 环境里 CODEX_HOME 等于 $1（允许结尾多一个 /）。ps 失败时返回 1。
+# ps 的命令行与环境以空格连接、不转义，所以按整行匹配 " CODEX_HOME=<目录>" 后面紧跟空格或行尾，不按空格拆分。
+_ccp_chatgpt_daemon_pids() {
+  emulate -L zsh
+  setopt extended_glob
+  local dir=$1 out line pid rest
+  out=$(ps -A -E -ww -o pid= -o command= 2>/dev/null) || return 1
+  for line in ${(f)out}; do
+    line=${line##[[:space:]]#}
+    pid=${line%%[[:space:]]*}
+    rest=" ${line#*[[:space:]]} "
+    [[ $pid == <-> && $pid != $$ ]] || continue
+    [[ $rest == *" app-server "* ]] || continue
+    [[ $rest == *" CODEX_HOME=$dir "* || $rest == *" CODEX_HOME=$dir/ "* ]] || continue
+    print -r -- $pid
+  done
+  return 0
+}
+
+# 正常停止进程（参数：PID…）：发 TERM，每 0.2 秒检查一次，最多等 CCP_CHATGPT_DAEMON_TIMEOUT 秒（默认 10）。
+# 全部退出返回 0；否则把还在运行的 PID 放进 reply，返回 1。不发 KILL。
+_ccp_chatgpt_stop_processes() {
+  emulate -L zsh
+  local pid timeout=${CCP_CHATGPT_DAEMON_TIMEOUT:-10}
+  [[ $timeout == <-> ]] || timeout=10
+  local -i tries=$(( timeout * 5 ))
+  kill -TERM "$@" 2>/dev/null
+  while :; do
+    reply=()
+    for pid in "$@"; do kill -0 $pid 2>/dev/null && reply+=($pid); done
+    (( ${#reply} == 0 )) && return 0
+    (( tries-- > 0 )) || return 1
+    /bin/sleep 0.2
+  done
+}

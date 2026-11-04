@@ -146,7 +146,7 @@ _ccp_chatgpt_print_fix_hint() {
 }
 
 # ---------- 共享资源（ADR 0006） ----------
-# 共享资源的清单和建立方式只在这里定义（ccp chatgpt add 建立，ccp chatgpt rm 据此认出哪些是软链接）。
+# 共享资源的清单和建立方式只在这里定义（ccp chatgpt add 建立；ccp chatgpt rm 用不跟随软链接的 rm -rf 只删链接本身）。
 # 每一项在非默认档案里都是指向 ~/.codex 下同名项的软链接（绝对路径）：
 #   目录   ~/.codex 里还没有时先创建，再建链接（codex 往链接里写，内容落在 ~/.codex）
 #   文件   AGENTS.md：~/.codex 里没有时不建链接（codex 不会写它，悬空链接没有意义）

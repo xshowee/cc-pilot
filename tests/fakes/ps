@@ -1,0 +1,41 @@
+#!/bin/zsh -f
+# 假的 ps：给 ccp chatgpt rm 查找档案的 ChatGPT 守护进程（codex app-server）用，输出测试准备好的进程表，记录每次调用。
+# shell 测试（tests/shell/lib.zsh 的 t_run）把 tests/fakes/ 放在 PATH 最前面，所以 ccp 经 PATH 调用的 ps 是它。
+#
+# 配置：环境变量 FAKE_PS_DIR 指向一个目录（未设置时以 99 退出，绝不回退到真程序）。
+#
+#   $FAKE_PS_DIR/output         进程表，原样输出。每行的格式同真 ps：PID、空格、命令行，命令行后面跟着
+#                               以空格分隔的环境变量（真 ps 的 -E 就是这样追加的，值里的空格不转义）
+#   $FAKE_PS_DIR/calls/1、2……   每次调用：argc=<参数个数>，然后每个参数一行 arg=<参数>
+#   $FAKE_PS_DIR/exit           存在时：记录后以其中的数字退出，不输出进程表（模拟失败）
+#
+# 只支持 ccp 用的那一种调用：ps -A -E -ww -o pid= -o command=。其他用法以 2 退出，让测试发现意外的调用。
+# 进程本身可以是测试启动的真进程（输出里写它的 PID），ccp 用 kill 停止它时作用在真进程上。
+
+emulate -R zsh
+
+if [[ -z ${FAKE_PS_DIR-} ]]; then
+  print -u2 -r -- "fake ps: FAKE_PS_DIR 未设置"
+  exit 99
+fi
+mkdir -p -- $FAKE_PS_DIR/calls || exit 99
+
+integer n=1
+while [[ -e $FAKE_PS_DIR/calls/$n ]]; do (( n++ )); done
+{
+  print -r -- "argc=$#"
+  for a in "$@"; do print -r -- "arg=$a"; done
+} > $FAKE_PS_DIR/calls/$n
+
+if [[ -f $FAKE_PS_DIR/exit ]]; then
+  integer rc=1
+  read -r rc < $FAKE_PS_DIR/exit
+  exit $rc
+fi
+
+if [[ "$*" != "-A -E -ww -o pid= -o command=" ]]; then
+  print -u2 -r -- "fake ps: 不支持的用法：$*"
+  exit 2
+fi
+[[ -f $FAKE_PS_DIR/output ]] && /bin/cat -- $FAKE_PS_DIR/output
+exit 0
