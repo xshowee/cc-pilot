@@ -33,11 +33,7 @@ final class ChatGPTSwitchModel: ObservableObject {
     /// 切换到 name。已是当前档案或正在切换时什么都不做。finished：ccp 结束后（无论结果）在主线程调用。
     func switchTo(_ name: String, currentName: String, finished: @escaping () -> Void = {}) {
         guard !isSwitching, name != currentName else { return }
-        var restart = false
-        if Self.desktopAppIsRunning {
-            guard let choice = askToRestart(name) else { return }
-            restart = choice
-        }
+        let restart = Self.desktopAppIsRunning && askToRestart(name)
         isSwitching = true
         let switcher = switcher
         Task {
@@ -78,8 +74,8 @@ final class ChatGPTSwitchModel: ObservableObject {
             withBundleIdentifier: ChatGPTProfileSwitcher.desktopAppBundleID).isEmpty
     }
 
-    /// 桌面 App 正在运行：问要不要现在重启。返回 true 重启、false 以后再说（档案照样切换）、nil 取消切换。
-    private func askToRestart(_ name: String) -> Bool? {
+    /// 桌面 App 正在运行：问要不要现在重启。返回 true 重启，false 以后再说（档案照样切换，桌面 App 下次打开时生效）。
+    private func askToRestart(_ name: String) -> Bool {
         let alert = NSAlert()
         alert.messageText = String(localized: "Restart ChatGPT?")
         alert.informativeText = String(localized: """
@@ -89,13 +85,8 @@ final class ChatGPTSwitchModel: ObservableObject {
             """)
         alert.addButton(withTitle: String(localized: "Restart ChatGPT"))
         alert.addButton(withTitle: String(localized: "Later"))
-        alert.addButton(withTitle: String(localized: "Cancel"))
         NSApp.activate(ignoringOtherApps: true)
-        switch alert.runModal() {
-        case .alertFirstButtonReturn: return true
-        case .alertSecondButtonReturn: return false
-        default: return nil
-        }
+        return alert.runModal() == .alertFirstButtonReturn
     }
 
     /// 档案已切换，但没能重启桌面 App：说明怎么手动完成，给出可以复制到终端执行的命令
