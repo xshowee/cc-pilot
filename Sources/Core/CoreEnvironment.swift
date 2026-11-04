@@ -31,6 +31,9 @@ struct CoreEnvironment: Sendable {
     /// 系统的 launchctl 程序（读取 launchd 里的 CODEX_HOME，判断 ChatGPT 档案能否删除）。
     /// 测试换成假程序，绝不能读写真实的 launchd 环境。App 只读不写：切换由 ccp chatgpt use 做。
     var launchctl: URL
+    /// 运行中的 codex 进程查询（ChatGPT 会话由哪个档案的进程写入，见 ChatGPTSessionWriters）。
+    /// 测试换成假的，绝不能让检查程序查看用户真实的进程。
+    var codexProcesses: CodexProcessQuery
 
     init(home: URL = CoreEnvironment.userHome(),
          security: URL = URL(fileURLWithPath: "/usr/bin/security"),
@@ -40,7 +43,8 @@ struct CoreEnvironment: Sendable {
          transport: UsageTransport = URLSessionUsageTransport.shared,
          appVersion: String = CoreEnvironment.bundleVersion(),
          osascript: URL = URL(fileURLWithPath: "/usr/bin/osascript"),
-         launchctl: URL = URL(fileURLWithPath: "/bin/launchctl")) {
+         launchctl: URL = URL(fileURLWithPath: "/bin/launchctl"),
+         codexProcesses: CodexProcessQuery = LiveCodexProcessQuery()) {
         self.home = home
         self.security = security
         self.userName = userName
@@ -50,6 +54,7 @@ struct CoreEnvironment: Sendable {
         self.appVersion = appVersion
         self.osascript = osascript
         self.launchctl = launchctl
+        self.codexProcesses = codexProcesses
     }
 
     /// 真实环境

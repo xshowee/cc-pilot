@@ -12,6 +12,10 @@
 // 由 ChatGPTUsageRefresher 刷新，同一个后台队列逐个账号进行；"刷新全部"同时刷新两段。
 // 响应里的套餐（plan_type）按账号记在 reportedPlans，ChatGPT 行用它更新套餐标记。
 //
+// ChatGPT 实时额度（chatgpt-profiles ticket 08）：CodexSessionMonitor 在后台跟着 ~/.codex 的会话记录，
+// ChatGPTLiveQuotaTracker 把进行中会话的 rate_limits 归属到账号，回到主线程按账号并入 board
+// （UsageBoard.recordLive(_:for:)）。同样只读本地文件，不发请求，不碰刷新的状态。
+//
 // now 是界面用的时钟：每 15 秒前进一次，只用来重算"N 分钟前获取"、变灰、已重置、还要等多久，
 // 让菜单栏和面板随时间更新；它不触发任何请求。拿到新数据时 now 也会拨到此刻。
 
@@ -42,6 +46,8 @@ final class UsageModel: ObservableObject {
     private var profiles: [Profile] = []
     private var profilesSubscription: AnyCancellable?
     private var liveGeneration = 0
+    /// ChatGPT 会话记录的监视器（实时额度）
+    private var chatgptSessions: CodexSessionMonitor?
 
     init(environment: CoreEnvironment = .live, changes: ProfileChangeFeed) {
         refresher = UsageRefresher(environment: environment)
@@ -53,6 +59,23 @@ final class UsageModel: ObservableObject {
         changes.subscribeLiveQuota { [weak self] in self?.reloadLiveQuota() }
         // 文件监听只报告之后的变化，App 启动前写下的文件要先读一次
         reloadLiveQuota()
+        // 跟踪器只在监视器的队列上使用
+        let tracker = ChatGPTLiveQuotaTracker(environment: environment)
+        chatgptSessions = CodexSessionMonitor(environment: environment) { [weak self] scan in
+            let quotas = tracker.update(with: scan.events)
+            guard !quotas.isEmpty else { return }
+            Task { @MainActor in self?.applyChatGPTLiveQuota(quotas) }
+        }
+        chatgptSessions?.start()
+    }
+
+    /// 并入 ChatGPT 实时额度；board 没变时不发布
+    private func applyChatGPTLiveQuota(_ quotas: [UsageAccount: LiveQuota]) {
+        var updated = board
+        for (account, quota) in quotas { updated.recordLive(quota, for: account) }
+        guard updated != board else { return }
+        board = updated
+        now = Date()
     }
 
     /// 跟随档案列表：列表变化时把已读到的实时额度按新的档案—账号对应重新并入

@@ -256,6 +256,14 @@ struct UsageBoard: Equatable {
         }
     }
 
+    /// 并入一份已经归属到账号的实时额度（ChatGPT：会话记录里的 rate_limits，见 ChatGPTLiveQuotaTracker）。
+    /// 合并规则与 recordLive(_:profiles:) 相同；不改失败原因和频率限制等待时间，不发请求。
+    mutating func recordLive(_ quota: LiveQuota, for account: UsageAccount) {
+        var usage = accounts[account] ?? AccountUsage()
+        usage.merge(live: quota)
+        accounts[account] = usage
+    }
+
     /// 这个档案所在账号的额度状态；还没有数据、或档案未登录时为 nil
     func usage(for profile: Profile) -> AccountUsage? {
         profile.usageAccount.flatMap { usage(for: $0) }
