@@ -12,7 +12,7 @@
 // 用 `osascriptCalls()` 读取调用记录，`osascriptFails(exit:stderr:)` 模拟失败。
 //
 // ccp 按 PATH 调用的 codex、launchctl、osascript、open（chatgpt-profiles ticket 04）：`searchPath` 最前面的 root/bin
-// 里有同名包装脚本，带上 FAKE_CODEX_DIR = root/codex、FAKE_LAUNCHCTL_DIR = root/launchctl、
+// 里有同名包装脚本，带上 FAKE_CODEX_LOG_DIR = root/codex、FAKE_LAUNCHCTL_DIR = root/launchctl、
 // FAKE_CHATGPT_APP_DIR = root/chatgpt-app 再执行 tests/fakes/ 里的同名假程序。所以经 `environment.searchPath`
 // 运行的 ccp 绝不会改动真实的 launchd 环境、退出用户的 ChatGPT 或运行真的 codex。
 // 用 `setLaunchdEnv`、`launchdEnv`、`launchctlCalls`、`chatgptApp`、`chatgptAppCalls`、`codexCalls` 准备和读取。
@@ -84,7 +84,7 @@ final class TempHome {
         for tool in ["codex", "launchctl", "osascript", "open"] {
             let script = """
                 #!/bin/zsh -f
-                export FAKE_CODEX_DIR=\(Self.shellQuote(fakeCodexDir.path))
+                export FAKE_CODEX_LOG_DIR=\(Self.shellQuote(fakeCodexDir.path))
                 export FAKE_LAUNCHCTL_DIR=\(Self.shellQuote(fakeLaunchctlDir.path))
                 export FAKE_CHATGPT_APP_DIR=\(Self.shellQuote(fakeChatGPTAppDir.path))
                 exec \(Self.shellQuote(fakes.appendingPathComponent(tool).path)) "$@"
@@ -216,7 +216,7 @@ final class TempHome {
 
     /// 假 codex 每次被调用时收到的参数
     func codexCalls() -> [[String]] {
-        Self.calls(in: fakeCodexDir.appendingPathComponent("calls"))
+        Self.calls(in: fakeCodexDir)
     }
 
     /// 读取假程序的调用记录目录（calls/1、2、3……，每个参数一行 arg=<参数>）

@@ -34,7 +34,7 @@ enum ShellRun {
             "HOME": home.url.path,
             "PATH": "\(fakes):\(fakeBin.path):/usr/bin:/bin:/usr/sbin:/sbin",
             "LANG": "en_US.UTF-8",
-            "FAKE_CODEX_DIR": home.fakeCodexDir.path,
+            "FAKE_CODEX_LOG_DIR": home.fakeCodexDir.path,
             "FAKE_LAUNCHCTL_DIR": home.fakeLaunchctlDir.path,
             "FAKE_CHATGPT_APP_DIR": home.fakeChatGPTAppDir.path,
         ].merging(extraEnvironment) { _, extra in extra }
