@@ -405,6 +405,81 @@ test_other_app_server_processes_block_removal_and_are_left_running() {
   assert_contains "$T_ERR" "agent-bridge" "应列出命令名"
 }
 
+# 询问之后到停止之间进程表可能变了（询问不限时）：确认后重新列一次进程，只停止仍是本档案守护进程的 PID
+
+test_pid_reused_after_confirmation_is_not_stopped() {
+  # 询问时 PID 是守护进程；确认时守护进程已退出，PID 被不相干的进程重用：不能停它
+  t_signed_in_profile work
+  local pid
+  pid=$(t_spawn 'exec /bin/sleep 60')
+  t_ps_process $pid "$(daemon_line work)"
+  t_ps_process_at 2 $pid "/bin/sleep 60 HOME=$T_HOME"
+  t_stdin y
+  t_ccp chatgpt rm work
+  local alive=0
+  process_alive $pid && { alive=1; kill -KILL $pid 2>/dev/null }
+  assert_eq $alive 1 "重用了 PID 的进程不应被停止"
+  assert_rc 0
+  assert_eq "$(ps_calls)" 2 "确认后应重新列一次进程"
+  assert_codex_args logout
+  [[ ! -e $(PROFILE work) ]] || fail "守护进程已经不在，档案目录应已删除"
+}
+
+test_process_started_using_profile_during_confirmation_blocks_removal() {
+  t_signed_in_profile work
+  local daemon
+  daemon=$(t_spawn 'exec /bin/sleep 60')
+  t_ps_process $daemon "$(daemon_line work)"
+  t_ps_process_at 2 $daemon "$(daemon_line work)"
+  t_ps_process_at 2 4280 "/opt/homebrew/bin/codex HOME=$T_HOME CODEX_HOME=$(PROFILE work)"
+  t_stdin y
+  t_ccp chatgpt rm work
+  local alive=0
+  process_alive $daemon && { alive=1; kill -KILL $daemon 2>/dev/null }
+  assert_rc 1
+  assert_eq $alive 1 "拒绝时不应停止守护进程"
+  assert_contains "$T_ERR" "4280" "应列出在用的进程"
+  assert_contains "$T_ERR" "没有删除" "应说明没有删除"
+  assert_not_logged_out
+  assert_profile_intact work
+}
+
+test_daemon_started_during_confirmation_blocks_removal() {
+  # 询问时没有提到的守护进程（询问之后才启动的）：没经过确认，不停止，也不删除
+  t_signed_in_profile work
+  local daemon
+  daemon=$(t_spawn 'exec /bin/sleep 60')
+  t_ps_process_at 1
+  t_ps_process_at 2 $daemon "$(daemon_line work)"
+  t_stdin y
+  t_ccp chatgpt rm work
+  local alive=0
+  process_alive $daemon && { alive=1; kill -KILL $daemon 2>/dev/null }
+  assert_rc 1
+  assert_eq $alive 1 "没确认过的守护进程不应停止"
+  assert_contains "$T_ERR" "$daemon" "应给出守护进程的 PID"
+  assert_contains "$T_ERR" "ccp chatgpt rm work" "应提示重新执行"
+  assert_not_logged_out
+  assert_profile_intact work
+}
+
+test_process_listing_failure_after_confirmation_blocks_removal() {
+  t_signed_in_profile work
+  local daemon
+  daemon=$(t_spawn 'exec /bin/sleep 60')
+  t_ps_process $daemon "$(daemon_line work)"
+  mkdir -p -- $T_PS && print -r -- 1 > $T_PS/exit.2
+  t_stdin y
+  t_ccp chatgpt rm work
+  local alive=0
+  process_alive $daemon && { alive=1; kill -KILL $daemon 2>/dev/null }
+  assert_rc 1
+  assert_eq $alive 1 "无法确认时不应停止守护进程"
+  assert_contains "$T_ERR" "没有删除" "应说明没有删除"
+  assert_not_logged_out
+  assert_profile_intact work
+}
+
 assert_not_contains_daemon_notice() {
   [[ $T_OUT != *守护进程* ]] || fail "没有本档案的守护进程时不应提到守护进程：$T_OUT"
 }

@@ -16,6 +16,8 @@
 #      其中的 shell（包括 ccp 自己和它启动的 ps）只是继承了它（codex 包装函数也把继承来的值当作过期的），
 #      守护进程派生的不叫 codex 的子进程随守护进程处理。
 #   3. 询问一次 [y/N]（有守护进程时在同一个问题里说明会先停止它）；y / yes 才继续。
+#      询问不限时，确认后重新列一次进程：ps 失败、有了在用的进程、出现询问时没提到的守护进程都拒绝；
+#      只停止询问时列出、现在仍是本档案守护进程的 PID（PID 可能已被不相干的进程重用）。
 #   4. 停止守护进程：kill -TERM，每 0.2 秒看一次，最多等 CCP_CHATGPT_DAEMON_TIMEOUT 秒（默认 10）；
 #      还在运行就不登出、不删除（不强制结束）。
 #   5. CODEX_HOME=<目录> command codex logout（由 codex 自己撤销凭据；不经过包装函数，也不看 CODEX_PROFILE）。
@@ -31,7 +33,7 @@ _ccp_cmd_chatgpt_rm() {
     print -u2 -r -- "用法：ccp chatgpt rm <名字>"
     return 2
   fi
-  local name=$1 dir active launchd variant answer entry
+  local name=$1 dir active launchd variant answer
   local -a daemons users
 
   if [[ $name == default ]]; then
@@ -74,11 +76,7 @@ _ccp_cmd_chatgpt_rm() {
   fi
 
   if (( ${#users} )); then
-    print -u2 -r -- "ccp chatgpt rm: 还有 codex 或 ChatGPT 桌面 App 在使用档案 \"$name\"（环境里的 CODEX_HOME 指向 $dir），没有删除："
-    for entry in $users; do
-      print -u2 -r -- "  PID ${entry%% *}  ${entry#* }"
-    done
-    print -u2 -r -- "  请退出 ChatGPT 桌面 App、结束在这个档案里运行的 codex 后重新执行 \`ccp chatgpt rm $name\`。"
+    _ccp_chatgpt_rm_report_users "$name" "$dir"
     return 1
   fi
 
@@ -88,6 +86,25 @@ _ccp_cmd_chatgpt_rm() {
   print -rn -- "确定要删除 ChatGPT 档案 \"$name\"（$dir）吗？会先在其中执行 codex logout。[y/N] "
   if ! IFS= read -r answer || [[ $answer != ([yY]|[yY][eE][sS]) ]]; then
     print -r -- "已取消，没有删除任何东西。"
+    return 1
+  fi
+
+  # 询问不限时：确认后重新列一次进程再动手——守护进程可能已经退出、PID 被不相干的进程重用，
+  # 也可能有进程在这期间开始用这个档案。只停止确认前列出、现在仍是本档案守护进程的 PID
+  local -a confirmed unconfirmed
+  confirmed=($daemons)
+  if ! _ccp_chatgpt_profile_processes "$dir"; then
+    print -u2 -r -- "ccp chatgpt rm: 确认后无法再次列出进程（ps 失败），不能确认守护进程和在用的进程，没有删除。"
+    return 1
+  fi
+  if (( ${#users} )); then
+    _ccp_chatgpt_rm_report_users "$name" "$dir"
+    return 1
+  fi
+  unconfirmed=(${daemons:|confirmed})
+  if (( ${#unconfirmed} )); then
+    print -u2 -r -- "ccp chatgpt rm: 询问之后档案 \"$name\" 的 ChatGPT 守护进程（PID ${(j:, :)unconfirmed}）启动了，没有停止它，也没有删除。"
+    print -u2 -r -- "  请重新执行 \`ccp chatgpt rm $name\`。"
     return 1
   fi
 
@@ -119,6 +136,17 @@ _ccp_cmd_chatgpt_rm() {
     return 1
   }
   print -r -- "已删除 ChatGPT 档案 \"$name\"。"
+}
+
+# 拒绝删除：列出在用档案的进程（调用方 users 数组里的 "PID 命令名"）。参数：档案名、档案目录
+_ccp_chatgpt_rm_report_users() {
+  emulate -L zsh
+  local name=$1 dir=$2 entry
+  print -u2 -r -- "ccp chatgpt rm: 还有 codex 或 ChatGPT 桌面 App 在使用档案 \"$name\"（环境里的 CODEX_HOME 指向 $dir），没有删除："
+  for entry in $users; do
+    print -u2 -r -- "  PID ${entry%% *}  ${entry#* }"
+  done
+  print -u2 -r -- "  请退出 ChatGPT 桌面 App、结束在这个档案里运行的 codex 后重新执行 \`ccp chatgpt rm $name\`。"
 }
 
 # 找在用档案目录 $1 的进程（不含 ccp 自己），填进调用方的两个数组：

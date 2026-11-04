@@ -302,6 +302,17 @@ t_ps_process() {
   print -r -- "$1 $2" >> $T_PS/output || exit 1
 }
 
+# 第 N 次调用 ps 时的进程表另加一行（这次调用不再用 t_ps_process 的那份）：t_ps_process_at N PID 命令行与环境；
+# 只给 N 时，这次调用的进程表为空
+t_ps_process_at() {
+  mkdir -p -- $T_PS || exit 1
+  if (( $# > 1 )); then
+    print -r -- "$2 $3" >> $T_PS/output.$1 || exit 1
+  else
+    : >> $T_PS/output.$1 || exit 1
+  fi
+}
+
 ps_calls() { _fake_calls $T_PS/calls }
 
 # 在后台启动一个真进程（交给 launchd 收养，测试结束前要自己停掉），输出它的 PID。

@@ -97,7 +97,7 @@ source "$HOME/.cc-pilot/cc-pilot.zsh"  # cc-pilot
    - 守护进程：可执行文件在 `<档案目录>/packages/app-server-daemon/` 下（命令行以这个路径开头，路径本身可以带空格；桌面 App 把它的 `codex app-server` 装在那里，App 退出后仍在运行）。不看环境。按第 3、4 条确认后停止。
    - 其余的只看环境里有 ` CODEX_HOME=<档案目录>`（或结尾多一个 `/`）后跟空格或行尾的进程，其中下面几类算在用：codex 进程（命令行第一个词的最后一段以 `codex` 开头，不分大小写，与 App 的 `ChatGPTSessionWriters` 口径一致；npm 装的 `node …/codex` 包装进程不算，算它启动的 codex）；其他命令行里有 ` app-server ` 参数的进程（VS Code 等 IDE 的 Codex 扩展也跑 `codex app-server`，它们不是桌面 App 的守护进程，不能停）；以及 ChatGPT 桌面 App 本体及其 helper（可执行文件在 `ChatGPT.app/` 里：命令行以 `/` 开头，第一个 `/ChatGPT.app/` 之前没有 `=`，路径本身可以带空格）：有任何一个就在询问之前拒绝，在 stderr 逐行列出 `PID <pid>  <命令名>`（App 的进程记作"ChatGPT 桌面 App"），请用户退出它们后重新执行；ccp 不停止它们，守护进程也不动。App 的"删除"不为此单独禁用：它在终端里运行同一条命令，拒绝信息显示在终端里。
    - 其他进程即使带着这个 `CODEX_HOME` 也不算：在 launchd 指向这个档案期间从 Dock 等打开的 iTerm、VS Code 和其中的 shell（包括 ccp 自己和它启动的 `ps`）只是继承了它（codex 包装函数同样把继承来的值当作过期的，见下文），守护进程派生的不叫 codex 的子进程随守护进程处理。
-3. 询问一次 `[y/N]`（只认 `y`/`yes`，读不到算否）；有守护进程时先在同一段提示里列出 PID、说明确认后会先停止它。
+3. 询问一次 `[y/N]`（只认 `y`/`yes`，读不到算否）；有守护进程时先在同一段提示里列出 PID、说明确认后会先停止它。询问不限时，所以确认后再用 `ps` 列一次：`ps` 失败、有了在用的进程（同第 2 条，列出后拒绝）、出现询问时没提到的守护进程，都不登出、不删除；只停止询问时列出、现在仍是本档案守护进程的 PID（期间守护进程可能已经退出、PID 被不相干的进程重用）。
 4. 停止守护进程：`kill -TERM`，每 0.2 秒检查一次，最多等 `CCP_CHATGPT_DAEMON_TIMEOUT` 秒（默认 10）；还在运行就不登出、不删除，不发 KILL。先停守护进程再登出，免得它在登出后又写回凭据。
 5. `CODEX_HOME=<档案目录> command codex logout`（不经过包装函数，也不看 `CODEX_PROFILE`）。不看退出码：之后 `auth.json` 仍在（包括悬空的软链接）就不删除，说明原因；不在就 `/bin/rm -rf -- <档案目录>`（不带结尾的 `/`）：`rm` 不跟随软链接，共享项只删链接本身，`~/.codex` 里的内容不受影响；档案目录本身是软链接时也只删这个链接。
 
