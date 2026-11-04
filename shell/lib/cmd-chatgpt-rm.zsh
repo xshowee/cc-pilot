@@ -16,7 +16,7 @@
 #      ~/.codex 里的内容不受影响（档案目录本身是软链接时也只删这个链接）。
 #
 # 进程列表用 `ps -A -E -ww -o pid= -o command=`（-E 在命令行后面追加进程的环境变量，以空格分隔；
-# 系统自带的程序看不到环境，codex 不是系统程序，看得到——见 notes）。ps 按 PATH 查找，测试换成假的。
+# 系统自带的程序看不到环境，codex 不是系统程序，看得到——见 shell/README.md 的 ccp chatgpt rm 一节）。ps 按 PATH 查找，测试换成假的。
 
 _ccp_cmd_chatgpt_rm() {
   emulate -L zsh
