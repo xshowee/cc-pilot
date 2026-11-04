@@ -22,7 +22,8 @@
 // 位置不前进，下次扫描重读这一批（实时额度重复并入不改变结果）。
 // 默认的归属钩子先归属 Claude 的（SessionAttribution）、再归属 ChatGPT 的（ChatGPTSessionAttribution），
 // 所以 Claude 一侧的同步也会重试 ChatGPT 的归属（等待期是否已过、history.jsonl 是否已写出）。
-// 归属与实时额度共用一个"写入进程"查询（ChatGPTSessionWriters，只能在一个队列上用，所以都在 `queue` 上）。
+// 归属与实时额度共用一个"写入进程"查询（ChatGPTSessionWriters，只能在一个队列上用，所以都在 `queue` 上）；
+// 一次扫描包成一批，只列一次进程。没有待归属的会话时归属不查进程，这批事件没有额度时实时额度也不查。
 //
 // 账本只在 `queue`（默认是一个后台串行队列）上访问：同步、归属钩子、onUpdate 和 `read` 的 body
 // 都在它上面执行，界面需要自己切回主线程。start / stop / read 可以在任意线程调用。
@@ -49,6 +50,8 @@ final class TokenUsageRecorder: @unchecked Sendable {
     /// ChatGPT 会话记录的监视器（followsChatGPT 时才有）
     private var chatgptSessions: CodexSessionMonitor?
     private let chatgptLiveQuota: ChatGPTLiveQuotaTracker
+    /// 归属与实时额度共用的写入进程查询（一次扫描包成一批，只列一次进程）
+    private let chatgptWriters: ChatGPTSessionWriters
     private let onChatGPTLiveQuota: ([UsageAccount: LiveQuota]) -> Void
 
     // 以下只在 queue 上访问
@@ -87,6 +90,7 @@ final class TokenUsageRecorder: @unchecked Sendable {
         self.calendar = calendar
         self.now = now
         let writers = ChatGPTSessionWriters(environment: environment)
+        chatgptWriters = writers
         if let attribute {
             self.attribute = attribute
         } else {
@@ -217,9 +221,14 @@ final class TokenUsageRecorder: @unchecked Sendable {
         }
     }
 
-    /// ChatGPT 会话记录监视器的一次扫描（在 queue 上）：记账、归属、汇总、通知，再交给实时额度
+    /// ChatGPT 会话记录监视器的一次扫描（在 queue 上）：记账、归属、汇总、通知，再交给实时额度。
+    /// 归属与实时额度共用一次进程列表（ChatGPTSessionWriters.batch）
     private func record(chatgpt scan: CodexSessionScan) {
         guard running else { return }
+        chatgptWriters.batch { recordBatch(chatgpt: scan) }
+    }
+
+    private func recordBatch(chatgpt scan: CodexSessionScan) {
         if let ledger = try? openLedger() {
             let revision = ledger.revision
             do {

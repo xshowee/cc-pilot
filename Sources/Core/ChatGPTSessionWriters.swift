@@ -12,6 +12,8 @@
 //     还没找到写入者、且在当前进程集合下还没问过的会话（新会话）。已知的会话再有变化不查。
 //   - 找到过写入者的会话记住结果：进程退出后，它写过的事件仍属于它的档案；重查时发现会话被别的进程打开
 //     （共享会话在另一个档案里被 resume），改归新进程的档案。
+//   - 一次扫描里归属与实时额度各问一次（会话集合不同）：包在 batch 里时整批只列一次进程、最多查一次打开的文件
+//     （同一进程集合下再查也查不出新东西）。
 // 只在一个线程 / 串行队列上使用。
 
 import Foundation
@@ -38,23 +40,44 @@ final class ChatGPTSessionWriters {
     private var unresolvedAsked: Set<String> = []
     /// 找到过的写入者
     private var known: [String: ChatGPTSessionWriter] = [:]
+    /// batch 里：是否在一批里、这一批列出的进程、这一批里是否已经查过打开的文件
+    private var inBatch = false
+    private var batchProcesses: [CodexProcess]?
+    private var batchScanned = false
 
     init(environment: CoreEnvironment) {
         query = environment.codexProcesses
         paths = ChatGPTProfilePaths(environment: environment)
     }
 
+    /// 在 body 里多次调用 writers(of:) 时共用一次进程列表（只在第一次需要时列），最多查一次打开的文件。
+    /// 可以嵌套（内层沿用外层的这一批）
+    func batch<T>(_ body: () throws -> T) rethrows -> T {
+        guard !inBatch else { return try body() }
+        inBatch = true
+        defer { inBatch = false; batchProcesses = nil; batchScanned = false }
+        return try body()
+    }
+
     /// 这些会话各自的写入者
     func writers(of sessions: Set<String>) -> [String: ChatGPTSessionWriter] {
-        let processes = query.codexProcesses()
+        let processes: [CodexProcess]
+        if let listed = batchProcesses {
+            processes = listed
+        } else {
+            processes = query.codexProcesses()
+            if inBatch { batchProcesses = processes }
+        }
         let running = Set(processes)
         for process in homes.keys where !running.contains(process) { homes[process] = nil }
 
         let unknown = sessions.filter { known[$0] == nil }
-        if running != scannedProcesses || unknown.contains(where: { !unresolvedAsked.contains($0) }) {
+        if !batchScanned,
+           running != scannedProcesses || unknown.contains(where: { !unresolvedAsked.contains($0) }) {
             scan(processes)
             scannedProcesses = running
             unresolvedAsked = []
+            batchScanned = inBatch
         }
         for session in sessions where known[session] == nil { unresolvedAsked.insert(session) }
         return Dictionary(uniqueKeysWithValues: sessions.map { ($0, known[$0] ?? .notFound) })

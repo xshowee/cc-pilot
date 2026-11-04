@@ -15,6 +15,8 @@ final class ChatGPTTokenUsageRecorderChecks: CheckSuite {
             Check("记入账本失败时读取位置不前进，之后重读这一批，不漏记", rereadsAfterFailedIngest),
             Check("Claude 一侧的同步也会重试 ChatGPT 的归属（没有新的 ChatGPT 事件也能过等待期）",
                   claudeSyncRetriesChatGPTAttribution),
+            Check("一次扫描（归属 + 实时额度）只列一次进程、只查一次打开的文件；没有待归属会话、没有额度时不列",
+                  listsProcessesOncePerScan),
         ]
     }
 
@@ -109,6 +111,30 @@ final class ChatGPTTokenUsageRecorderChecks: CheckSuite {
         try env.appendEvents(A.session, [3])
         try expect(waitUntil { (try? recorder.read { try $0.messages().count }) == 3 }, "重启后追加的事件没有读入")
         try expectEqual(try recorder.read { try $0.messages().map(\.tokens.input) }, [10, 10, 10])
+    }
+
+    static func listsProcessesOncePerScan() throws {
+        let env = try A.Env()
+        defer { env.remove() }
+        let process = env.home.codexProcesses.run(pid: 42, home: .path(env.codexHome), files: [env.lock(A.session)])
+        // 新会话：一次带 rate_limits 的用量（既要归属，又有实时额度）
+        try env.home.write(CodexRollout.path(A.session), CodexRollout.file([
+            CodexRollout.meta(id: A.session, at: A.iso(A.start)),
+            CodexRollout.turnContext(model: "gpt-5.3-codex", at: A.iso(A.start)),
+            CodexRollout.tokenCount(at: A.iso(A.at(1)), last: .init(input: 10, output: 1),
+                                    primary: .init(used: 40, minutes: 300, resetsAt: 1_793_800_000)),
+        ]))
+        let now = Box(A.at(5)), quotas = Box<[UsageAccount: LiveQuota]>([:])
+        let recorder = makeRecorder(env, now: now, quotas: quotas)
+        recorder.start()
+        defer { recorder.stop() }
+        try expect(waitUntil { quotas.value[UsageAccount(id: A.workAccount)] != nil }, "实时额度没有交给回调")
+        try expectEqual(try recorder.read { try $0.messages().map(\.attribution) }, [A.work()])
+        // 等可能晚到的 FSEvents 扫描做完：它们没有待归属的会话、没有额度，不该再列进程
+        Thread.sleep(forTimeInterval: 0.3)
+        _ = try recorder.read { _ in }
+        try expectEqual(env.home.codexProcesses.listCalls, 1, "列进程次数")
+        try expectEqual(env.home.codexProcesses.openFileQueries, [process], "查打开的文件")
     }
 
     static func claudeSyncRetriesChatGPTAttribution() throws {
