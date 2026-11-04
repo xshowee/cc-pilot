@@ -17,6 +17,7 @@ final class ChatGPTLiveQuotaChecks: CheckSuite {
             Check("与刷新合并：resets_at 更晚的优先，相同时取已用高的", mergesWithRefresh),
             Check("归属不到的会话（没有写入进程、外部目录、档案没有账号）不更新任何账号", unattributedUpdatesNothing),
             Check("账号在归属时确定：档案之后换了登录，这个会话的额度仍算旧账号的", accountFixedAtAttribution),
+            Check("档案当时没有账号（auth.json 还没写好、会话开始后才登录）：之后有账号了，这个会话照常更新", accountAppearsLater),
             Check("接收实时额度不发请求", sendsNoRequests),
         ]
     }
@@ -143,6 +144,35 @@ final class ChatGPTLiveQuotaChecks: CheckSuite {
         let quotas = tracker.update(with: reader.scan(scan1.cursors).events)
         try expectEqual(Array(quotas.keys), [workAccount])
         try expectEqual(quotas[workAccount]?.fiveHour?.utilization, 22)
+    }
+
+    static func accountAppearsLater() throws {
+        let home = try TempHome()
+        defer { home.remove() }
+        try prepare(home)
+        try home.makeCodexProfile("late")  // 会话开始时还没登录
+        home.codexProcesses.run(pid: 45, home: .path(home.url.path + "/.codex-profiles/late"),
+                                files: [home.url.path + "/.codex/thread-writer-locks/\(other).lock"])
+        let reader = CodexSessionReader(environment: home.environment)
+        let tracker = ChatGPTLiveQuotaTracker(environment: home.environment)
+        let t1 = fixedNow.addingTimeInterval(60), t2 = fixedNow.addingTimeInterval(120)
+        try writeSession(home, other, [
+            CodexRollout.tokenCount(at: iso(t1), last: nil, primary: .init(used: 20, minutes: 300, resetsAt: resets)),
+        ])
+        let scan1 = reader.scan([:])
+        try expect(tracker.update(with: scan1.events).isEmpty, "还没有账号时不更新")
+
+        try home.writeJSON(".codex-profiles/late/auth.json",
+                           chatgptAuth(email: "l@example.com", userID: "user-l", workspaceID: "ws-1"))
+        let handle = try FileHandle(forWritingTo: home.url.appendingPathComponent(CodexRollout.path(other)))
+        try handle.seekToEnd()
+        try handle.write(contentsOf: Data((CodexRollout.tokenCount(
+            at: iso(t2), last: nil, primary: .init(used: 22, minutes: 300, resetsAt: resets)) + "\n").utf8))
+        try handle.close()
+        let quotas = tracker.update(with: reader.scan(scan1.cursors).events)
+        let late = UsageAccount(id: "chatgpt:user-l:ws-1")
+        try expectEqual(Array(quotas.keys), [late])
+        try expectEqual(quotas[late]?.fiveHour?.utilization, 22)
     }
 
     static func sendsNoRequests() throws {
