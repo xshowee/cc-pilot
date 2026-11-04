@@ -4,8 +4,8 @@
 # 产物（随仓库提交，scripts/build-app.sh 只复制、不生成）：
 #   AppIcon.icns                          App 图标，16–512pt 各含 1x 与 @2x；Info.plist 的 CFBundleIconFile 指向它
 #   MenuBarIcon.png、MenuBarIcon@2x.png    菜单栏"只显示图标"用的模板图（18pt，单色）
-#   ClaudeIcon.png、ChatGPTIcon.png 与 @2x  工具图标（12pt，单色模板图）：面板分割线与菜单栏行首共用
-#                                         （chatgpt-profiles ticket 03）
+#   ClaudeIcon.png、ChatGPTIcon.png 与 @2x  工具图标，面板分割线用（12pt，单色模板图，chatgpt-profiles ticket 03）
+#   Claude/ChatGPTMenuBarIcon.png 与 @2x   工具图标，菜单栏行首用（10pt，单色模板图）
 # 只用 macOS 自带的 swift（NSImage 解析 SVG，见 scripts/render-icons.swift）和 iconutil，不联网。
 # 改了 SVG 后运行本脚本，把源文件和产物一起提交。
 

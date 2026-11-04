@@ -215,7 +215,8 @@ git push
 | `AppIcon.svg` | `Resources/AppIcon.icns` 中 64 像素及以上的尺寸 | App 图标（Finder、"应用程序"、DMG、"关于"、登录项） |
 | `AppIcon-small.svg` | `Resources/AppIcon.icns` 中 16、32 像素 | 同上的简化版：去掉阴影和窗口圆点、提示符加粗 |
 | `MenuBarIcon.svg` | `Resources/MenuBarIcon.png`（18 像素）、`MenuBarIcon@2x.png`（36 像素） | 菜单栏"只显示图标"的模板图（18pt，单色，系统按明暗着色） |
-| `claude.svg`、`chatgpt.svg` | `Resources/ClaudeIcon.png`、`ChatGPTIcon.png`（12 像素）及 `@2x`（24 像素） | 工具图标：面板分割线、菜单栏行首（12pt 单色模板图；素材是灰色，出图时只取形状涂成黑色） |
+| `claude.svg`、`chatgpt.svg` | `Resources/ClaudeIcon.png`、`ChatGPTIcon.png`（12 像素）及 `@2x`（24 像素） | 工具图标，面板分割线用（12pt 单色模板图；素材是灰色，出图时只取形状涂成黑色） |
+| 同上 | `Resources/ClaudeMenuBarIcon.png`、`ChatGPTMenuBarIcon.png`（10 像素）及 `@2x`（20 像素） | 工具图标，菜单栏行首用（10pt，与 10.5pt 文字同排） |
 
 改了 SVG 之后重新生成，并把源文件和产物一起提交：
 

@@ -4,7 +4,7 @@
 # 源文件是 Resources/Icons/*.svg，由 scripts/make-icons.sh 生成 Resources/AppIcon.icns（App 图标）
 # 和 Resources/MenuBarIcon*.png（菜单栏"只显示图标"用的模板图），生成结果随仓库提交，
 # scripts/build-app.sh 只负责复制。
-# chatgpt-profiles ticket 03：工具图标 Resources/ClaudeIcon*.png、ChatGPTIcon*.png 同样由 make-icons.sh
+# chatgpt-profiles ticket 03：工具图标 Resources/{Claude,ChatGPT}{Icon,MenuBarIcon}*.png 同样由 make-icons.sh
 # 生成、build-app.sh 复制（名字与尺寸由 Core 的 Tool.iconResourceName / ToolIconResource 决定，
 # 尺寸与单色见 tests/swift/AppIconChecks.swift）；生成与打包按 Resources/*.png 整体核对。
 source "${0:A:h}/lib.zsh"
@@ -72,7 +72,7 @@ assert_same_pngs() {
 
 test_resources_contain_both_tool_icons() {
   local name
-  for name in ClaudeIcon.png ClaudeIcon@2x.png ChatGPTIcon.png ChatGPTIcon@2x.png; do
+  for name in {Claude,ChatGPT}{Icon,MenuBarIcon}{,@2x}.png; do
     [[ -f $ROOT/Resources/$name ]] || fail "缺少 Resources/$name"
   done
 }

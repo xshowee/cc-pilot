@@ -5,9 +5,10 @@
 //   AppIcon.iconset/icon_<N>x<N>[@2x].png   16–512pt 各 1x、@2x，交给 iconutil 合成 .icns
 //     64 像素及以上用 AppIcon.svg；16、32 像素用 AppIcon-small.svg（去掉细节的简化版）
 //   MenuBarIcon.png、MenuBarIcon@2x.png      菜单栏模板图，18pt（18、36 像素），来自 MenuBarIcon.svg
-//   ClaudeIcon.png、ChatGPTIcon.png 与 @2x   工具图标（chatgpt-profiles ticket 03），12pt（12、24 像素），
-//     来自 claude.svg、chatgpt.svg；面板分割线与菜单栏行首共用。名字与边长须与 Core 的
-//     Tool.iconResourceName、ToolIconResource.points 一致（tests/swift/AppIconChecks.swift 核对）。
+//   ClaudeIcon.png、ChatGPTIcon.png 与 @2x   工具图标（chatgpt-profiles ticket 03），来自 claude.svg、chatgpt.svg：
+//     面板分割线用，12pt（12、24 像素）
+//   ClaudeMenuBarIcon.png、ChatGPTMenuBarIcon.png 与 @2x   同上，菜单栏行首用，10pt（10、20 像素）
+//     名字与边长须与 Core 的 Tool.iconResourceName、ToolIconResource.points 一致（tests/swift/AppIconChecks.swift 核对）。
 //     素材本身是灰色，出图时只保留形状（透明度）、涂成黑色，做成与 MenuBarIcon 一样的单色模板图。
 //
 // SVG 由系统的 NSImage（CoreSVG）解析，不依赖任何需要安装的工具。
@@ -27,8 +28,8 @@ let iconset = output.appendingPathComponent("AppIcon.iconset", isDirectory: true
 
 /// 菜单栏模板图的边长（pt）
 let menuBarPoints = 18
-/// 工具图标的边长（pt），同 Core 的 ToolIconResource.points
-let toolIconPoints = 12
+/// 工具图标：资源名后缀与边长（pt），同 Core 的 Tool.iconResourceName、ToolIconResource.points
+let toolIconSizes = [("Icon", 12), ("MenuBarIcon", 10)]
 
 func fail(_ message: String) -> Never {
     FileHandle.standardError.write("render-icons: \(message)\n".data(using: .utf8)!)
@@ -81,10 +82,12 @@ let glyph = load("MenuBarIcon.svg")
 writePNG(glyph, points: menuBarPoints, scale: 1, to: output.appendingPathComponent("MenuBarIcon.png"))
 writePNG(glyph, points: menuBarPoints, scale: 2, to: output.appendingPathComponent("MenuBarIcon@2x.png"))
 
-for (source, name) in [("claude.svg", "ClaudeIcon"), ("chatgpt.svg", "ChatGPTIcon")] {
+for (source, tool) in [("claude.svg", "Claude"), ("chatgpt.svg", "ChatGPT")] {
     let icon = load(source)
-    writePNG(icon, points: toolIconPoints, scale: 1, monochrome: true,
-             to: output.appendingPathComponent("\(name).png"))
-    writePNG(icon, points: toolIconPoints, scale: 2, monochrome: true,
-             to: output.appendingPathComponent("\(name)@2x.png"))
+    for (suffix, points) in toolIconSizes {
+        writePNG(icon, points: points, scale: 1, monochrome: true,
+                 to: output.appendingPathComponent("\(tool)\(suffix).png"))
+        writePNG(icon, points: points, scale: 2, monochrome: true,
+                 to: output.appendingPathComponent("\(tool)\(suffix)@2x.png"))
+    }
 }

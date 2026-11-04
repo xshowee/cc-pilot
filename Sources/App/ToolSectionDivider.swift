@@ -22,11 +22,11 @@ struct ToolSectionDivider: View {
     }
 
     @ViewBuilder private var mark: some View {
-        if let icon = ToolIcon.template(tool) {
+        if let icon = ToolIcon.template(tool, .panel) {
             Image(nsImage: icon)
                 .renderingMode(.template)
                 .resizable()
-                .frame(width: ToolIcon.size, height: ToolIcon.size)
+                .frame(width: ToolIcon.size(.panel), height: ToolIcon.size(.panel))
                 .foregroundColor(.secondary)
         } else {
             Text(verbatim: tool.displayName)

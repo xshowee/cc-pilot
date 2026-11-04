@@ -1,6 +1,6 @@
 // ticket 17：菜单栏"只显示图标"用的模板图（Resources/MenuBarIcon*.png，由 scripts/make-icons.sh 生成）。
-// chatgpt-profiles ticket 03：两个工具的图标（Resources/<Tool.iconResourceName>*.png，同样由 make-icons.sh 生成），
-// 面板分割线与菜单栏行首共用，也是模板图。
+// chatgpt-profiles ticket 03：两个工具的图标（Resources/<Tool.iconResourceName(用途)>*.png，同样由 make-icons.sh 生成），
+// 面板分割线、菜单栏行首各一种尺寸，也是模板图。
 // 模板图（isTemplate）只看透明度，系统按菜单栏明暗着色；画面里混进别的颜色，在深色菜单栏下就会露出来。
 // 尺寸与 App 图标的检查在 tests/shell/test-app-icon.zsh。
 
@@ -22,19 +22,25 @@ final class AppIconChecks: CheckSuite {
     static var toolIconChecks: [Check] {
         var checks: [Check] = []
         for tool in Tool.allCases {
-            for (scale, suffix) in [(1, ".png"), (2, "@2x.png")] {
-                let name = tool.iconResourceName + suffix
-                let side = ToolIconResource.points * scale
-                checks.append(Check("\(tool.displayName) 的图标 \(name) 是 \(side) 像素见方的单色模板图") {
-                    let url = repoRoot.appendingPathComponent("Resources/\(name)")
-                    try expectPixels(url, side)
-                    // ChatGPT 图标线条细，12 像素时几乎全是抗锯齿的半透明像素，不要求有完全不透明的像素
-                    try expectMonochrome(url, solidAlpha: 0.5)
-                })
+            for use in ToolIconResource.Use.allCases {
+                for (scale, suffix) in [(1, ".png"), (2, "@2x.png")] {
+                    let name = tool.iconResourceName(use) + suffix
+                    let side = ToolIconResource.points(use) * scale
+                    checks.append(Check("\(tool.displayName) 的图标 \(name) 是 \(side) 像素见方的单色模板图") {
+                        let url = repoRoot.appendingPathComponent("Resources/\(name)")
+                        try expectPixels(url, side)
+                        // ChatGPT 图标线条细，10–12 像素时几乎全是抗锯齿的半透明像素，不要求有完全不透明的像素
+                        try expectMonochrome(url, solidAlpha: 0.5)
+                    })
+                }
             }
         }
-        checks.append(Check("两个工具的图标资源名不同") {
-            try expectEqual(Set(Tool.allCases.map(\.iconResourceName)).count, Tool.allCases.count)
+        checks.append(Check("每个工具、每种用途的图标资源名都不同") {
+            let names = Tool.allCases.flatMap { tool in ToolIconResource.Use.allCases.map(tool.iconResourceName) }
+            try expectEqual(Set(names).count, names.count)
+        })
+        checks.append(Check("菜单栏用的图标两行叠起来放得进 22pt 高的菜单栏") {
+            try expect(ToolIconResource.points(.menuBar) * 2 <= 22, "菜单栏图标 \(ToolIconResource.points(.menuBar))pt 太高")
         })
         return checks
     }
