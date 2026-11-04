@@ -1,5 +1,6 @@
-// 面板里"清空全部账号"的确认条（token-usage ticket 07）：从设置菜单进入，确认后清空所有账号的累计 Token 用量
-// （起算点移到此刻，不碰 Claude Code 的任何文件）。样式同 PendingChangeBanner，不弹系统对话框。
+// 面板里"清空全部账号"的确认条（token-usage ticket 07）：从设置菜单进入，确认后清空所有账号的累计 Token 用量，
+// 含 ChatGPT 账号（chatgpt-profiles ticket 10）；起算点移到此刻，不碰 Claude Code、ChatGPT 的任何文件。
+// 样式同 PendingChangeBanner，不弹系统对话框。
 
 import SwiftUI
 

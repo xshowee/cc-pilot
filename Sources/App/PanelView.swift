@@ -1,7 +1,8 @@
 // 点击菜单栏图标后弹出的面板：标题与"刷新全部"、未接入 zsh 时的提示（ticket 25）、
 // 档案卡片列表（点击即切换，可单独刷新额度、删除）、添加档案的输入框（ticket 09，点底栏按钮后出现）、
 // 底栏（添加档案、设置菜单、退出）。"菜单栏只显示图标"在设置菜单里。
-// 鼠标停在已登录的档案卡片上时，左侧弹出它所在账号的统计面板（token-usage ticket 07，StatsFlyoutController）；
+// 鼠标停在已登录的档案卡片上时，左侧弹出它所在账号的统计面板（token-usage ticket 07，StatsFlyoutController；
+// ChatGPT 卡片同样，chatgpt-profiles ticket 10）。两个工具可以有同名档案，面板的行按工具 + 档案名区分；
 // 设置菜单里点"清空全部账号的累计…"后，底栏上方出现确认条（ClearAllBanner）。
 // 档案分 Claude Code、ChatGPT 上下两段（chatgpt-profiles ticket 02）；两段都显示时，每段前面是带工具标识的
 // 分割线（ToolSectionDivider）；没有 ChatGPT 默认档案 ~/.codex 时不显示 ChatGPT 一段（也就没有分割线）。
@@ -57,7 +58,7 @@ struct PanelView: View {
                         SwitchableProfileRow(
                             profile: profile,
                             isCurrent: profile.name == current.name,
-                            isViewing: profile.name == flyout.hover.profile,
+                            isViewing: flyout.hover.row == StatsFlyoutRow(tool: .claudeCode, name: profile.name),
                             usage: usage.usage(for: profile),
                             now: usage.now,
                             isRefreshing: usage.isRefreshing(profile),
@@ -71,7 +72,7 @@ struct PanelView: View {
                             ),
                             // 未登录的档案没有统计面板：停在上面等同于离开账号行
                             onHover: StatsFlyoutTarget(profile: profile) == nil ? nil : { hovering in
-                                flyout.row(profile.name, hovering: hovering)
+                                flyout.row(StatsFlyoutRow(tool: .claudeCode, name: profile.name), hovering: hovering)
                             }
                         ) {
                             current.switchTo(profile.name)
@@ -118,7 +119,8 @@ struct PanelView: View {
             chatgpt.reload(); actions.update(withChatGPT: chatgpt.profiles)
             // 终端里可能 ccp init / ccp uninstall 过（ticket 25 的提示随之更新）
             shellIntegration.refresh()
-            flyout.install(StatsFlyoutRoot(controller: flyout, profiles: profiles, usage: usage, stats: tokenStats))
+            flyout.install(StatsFlyoutRoot(controller: flyout, profiles: profiles, chatgpt: chatgpt, usage: usage,
+                                           stats: tokenStats))
         }
         .onDisappear {
             flyout.dismiss()
@@ -126,12 +128,16 @@ struct PanelView: View {
         }
         .onChange(of: profiles.profiles) { list in
             actions.update(with: list)
-            flyout.rowsChanged(Set(list.filter { StatsFlyoutTarget(profile: $0) != nil }.map(\.name)))
+            flyout.rowsChanged(StatsFlyoutRow.rows(claudeCode: list, chatgpt: chatgpt.profiles))
         }
-        .onChange(of: chatgpt.profiles) { list in actions.update(withChatGPT: list) }
+        .onChange(of: chatgpt.profiles) { list in
+            actions.update(withChatGPT: list)
+            flyout.rowsChanged(StatsFlyoutRow.rows(claudeCode: profiles.profiles, chatgpt: list))
+        }
     }
 
-    /// ChatGPT 一段：分割线 + 档案卡片，点击即切换（ticket 04），刷新额度（ticket 07），删除（ticket 06）。
+    /// ChatGPT 一段：分割线 + 档案卡片，点击即切换（ticket 04），刷新额度（ticket 07），删除（ticket 06），
+    /// 停在有账号的卡片上弹出统计面板（ticket 10）。
     /// 正在后台切换时卡片不可点击。
     @ViewBuilder private var chatgptSection: some View {
         ToolSectionDivider(tool: .chatgpt)
@@ -155,7 +161,12 @@ struct PanelView: View {
                         actions.removeChatGPT(profile.name, currentProfile: chatgpt.currentName,
                                               launchdCodexHome: chatgpt.launchdCodexHome)
                     }
-                ))
+                ),
+                isViewing: flyout.hover.row == StatsFlyoutRow(tool: .chatgpt, name: profile.name),
+                // 没有账号（未登录、API key）的档案没有统计面板：停在上面等同于离开账号行
+                onHover: StatsFlyoutTarget(chatgpt: profile) == nil ? nil : { hovering in
+                    flyout.row(StatsFlyoutRow(tool: .chatgpt, name: profile.name), hovering: hovering)
+                })
         }
     }
 

@@ -145,11 +145,16 @@ enum HistoryHover {
 }
 
 /// 统计面板显示的账号：鼠标停在哪个档案行上，就显示它所在账号的数据。同一账号的多个档案行得到同一个账号，
-/// 显示同一份数据（Token 用量和额度都属于账号）。未登录的档案没有面板。
+/// 显示同一份数据（Token 用量和额度都属于账号）。未登录的档案没有面板。ChatGPT 档案见 StatsFlyout+ChatGPT.swift。
 struct StatsFlyoutTarget: Equatable {
     /// 与账本里记的账号相同（UsageAccount.id，见 SessionAttribution）
     let account: UsageAccount
     let email: String?
+
+    init(account: UsageAccount, email: String?) {
+        self.account = account
+        self.email = email
+    }
 
     init?(profile: Profile) {
         guard let account = profile.usageAccount else { return nil }
@@ -158,21 +163,33 @@ struct StatsFlyoutTarget: Equatable {
     }
 }
 
-/// 鼠标在档案行与统计面板之间移动时，面板显示哪一行（档案名）。
+/// 统计面板里的一行：工具 + 档案名。两个工具可以有同名档案（各自独立），只按档案名会串到另一个工具的行上。
+struct StatsFlyoutRow: Hashable {
+    let tool: Tool
+    let name: String
+
+    /// 此刻有账号（有统计面板）的行，两个工具的都在里面（StatsFlyoutHover.rowsChanged 要全部的行）
+    static func rows(claudeCode: [Profile], chatgpt: [ChatGPTProfile]) -> Set<StatsFlyoutRow> {
+        Set(claudeCode.filter { StatsFlyoutTarget(profile: $0) != nil }.map { StatsFlyoutRow(tool: .claudeCode, name: $0.name) }
+            + chatgpt.filter { StatsFlyoutTarget(chatgpt: $0) != nil }.map { StatsFlyoutRow(tool: .chatgpt, name: $0.name) })
+    }
+}
+
+/// 鼠标在档案行与统计面板之间移动时，面板显示哪一行。
 /// 停在行上立即弹出、移到另一行立即切换；离开行或面板后不马上收起，界面等一小会儿再调用 settle()，
 /// 那时既不在行上也不在面板上才收起——从行移到面板要经过两个窗口之间的空隙。
 /// 只把有账号的行报进来（未登录的行不算行，停在上面等同于离开）。
 struct StatsFlyoutHover: Equatable {
     /// 显示哪一行；nil 表示收起
-    private(set) var profile: String?
-    private var overRow: String?
+    private(set) var row: StatsFlyoutRow?
+    private var overRow: StatsFlyoutRow?
     private var overFlyout = false
 
-    mutating func row(_ name: String, hovering: Bool) {
+    mutating func row(_ row: StatsFlyoutRow, hovering: Bool) {
         if hovering {
-            overRow = name
-            profile = name
-        } else if overRow == name {
+            overRow = row
+            self.row = row
+        } else if overRow == row {
             // 进入新行的通知可能先于离开旧行的到达：只清掉还记着的那一行
             overRow = nil
         }
@@ -184,14 +201,14 @@ struct StatsFlyoutHover: Equatable {
 
     /// 离开后等待结束：既不在行上也不在面板上就收起
     mutating func settle() {
-        if overRow == nil && !overFlyout { profile = nil }
+        if overRow == nil && !overFlyout { row = nil }
     }
 
-    /// 档案列表变了：rows 是此刻有账号的行。停着的行、或面板显示的那一行没了（删除、登出）时收不到离开，
-    /// 这里清掉；面板显示的那一行没了就立即收起
-    mutating func rowsChanged(_ rows: Set<String>) {
+    /// 档案列表变了：rows 是此刻两个工具全部有账号的行（StatsFlyoutRow.rows）。停着的行、或面板显示的那一行没了
+    /// （删除、登出）时收不到离开，这里清掉；面板显示的那一行没了就立即收起
+    mutating func rowsChanged(_ rows: Set<StatsFlyoutRow>) {
         if let overRow, !rows.contains(overRow) { self.overRow = nil }
-        if let profile, !rows.contains(profile) { self = StatsFlyoutHover() }
+        if let row, !rows.contains(row) { self = StatsFlyoutHover() }
     }
 
     /// 主面板关闭：立即收起

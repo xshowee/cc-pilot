@@ -1,4 +1,5 @@
 // 侧边统计面板的窗口（token-usage ticket 07）：鼠标停在主面板的账号行上时，在主面板左侧弹出这个账号的统计面板。
+// Claude Code 与 ChatGPT（chatgpt-profiles ticket 10）的行共用这一个面板，行按工具 + 档案名区分（StatsFlyoutRow）。
 //
 // 窗口：一个不会成为 key 的非激活 NSPanel，作为主面板窗口（MenuBarExtra 的 .window）的子窗口。
 //   不能成为 key 很要紧：MenuBarExtra 的窗口一失去 key 就会收起，点统计面板里的分段、清空按钮时它必须保持 key。
@@ -13,7 +14,7 @@ import SwiftUI
 
 @MainActor
 final class StatsFlyoutController: ObservableObject {
-    /// 鼠标停在哪一行（档案名）；nil 时面板收起
+    /// 鼠标停在哪一行（工具 + 档案名）；nil 时面板收起
     @Published private(set) var hover = StatsFlyoutHover()
 
     /// 离开行或面板后等多久再收起
@@ -76,8 +77,8 @@ final class StatsFlyoutController: ObservableObject {
     // MARK: - 鼠标
 
     /// 鼠标进入或离开一个有账号的档案行
-    func row(_ name: String, hovering: Bool) {
-        hover.row(name, hovering: hovering)
+    func row(_ row: StatsFlyoutRow, hovering: Bool) {
+        hover.row(row, hovering: hovering)
         if !hovering { scheduleSettle() }
         apply()
     }
@@ -88,8 +89,8 @@ final class StatsFlyoutController: ObservableObject {
         if !hovering { scheduleSettle() }
     }
 
-    /// 档案列表变了（rows 是有账号的档案名）：停着的行被删除或登出时收不到离开，在这里收起
-    func rowsChanged(_ rows: Set<String>) {
+    /// 档案列表变了（rows 是两个工具全部有账号的行）：停着的行被删除或登出时收不到离开，在这里收起
+    func rowsChanged(_ rows: Set<StatsFlyoutRow>) {
         hover.rowsChanged(rows)
         apply()
     }
@@ -131,7 +132,7 @@ final class StatsFlyoutController: ObservableObject {
     }
 
     private func apply() {
-        if hover.profile == nil { hide() } else { show() }
+        if hover.row == nil { hide() } else { show() }
     }
 
     private func show() {

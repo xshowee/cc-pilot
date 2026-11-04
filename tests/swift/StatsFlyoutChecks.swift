@@ -5,7 +5,7 @@
 //   TokenFigure(_:period:)                  Token 用量卡与模型卡：主数字、四类、占比、起算点
 //   HistoryBar.bars(_:)                     历史卡：每格四类与相对高度
 //   StatsFlyoutTarget(profile:)             鼠标停在哪一行 → 显示哪个账号
-//   StatsFlyoutHover                        鼠标在行与面板之间移动时弹出、切换、收起
+//   StatsFlyoutHover                        鼠标在行与面板之间移动时弹出、切换、收起（行按 StatsFlyoutRow：工具 + 档案名）
 // 期望值都是手算的。
 
 import Foundation
@@ -139,63 +139,65 @@ final class StatsFlyoutChecks: CheckSuite {
         try expect(StatsFlyoutTarget(profile: loggedOut) == nil, "未登录没有面板")
     }
 
+    static func claude(_ name: String) -> StatsFlyoutRow { StatsFlyoutRow(tool: .claudeCode, name: name) }
+
     static func hover() throws {
         var hover = StatsFlyoutHover()
-        try expectEqual(hover.profile, nil)
+        try expectEqual(hover.row, nil)
 
-        hover.row("work", hovering: true)
-        try expectEqual(hover.profile, "work", "停在行上弹出")
+        hover.row(claude("work"), hovering: true)
+        try expectEqual(hover.row, claude("work"), "停在行上弹出")
 
         // 移到另一行：新行的进入可能先于旧行的离开到达
-        hover.row("side", hovering: true)
-        hover.row("work", hovering: false)
+        hover.row(claude("side"), hovering: true)
+        hover.row(claude("work"), hovering: false)
         hover.settle()
-        try expectEqual(hover.profile, "side", "换成另一行")
+        try expectEqual(hover.row, claude("side"), "换成另一行")
 
         // 从行移到面板：离开行之后、等待结束之前进入面板，不收起
-        hover.row("side", hovering: false)
+        hover.row(claude("side"), hovering: false)
         hover.flyout(hovering: true)
         hover.settle()
-        try expectEqual(hover.profile, "side", "停在面板上不收起")
+        try expectEqual(hover.row, claude("side"), "停在面板上不收起")
 
         // 都离开：等待结束时收起
         hover.flyout(hovering: false)
-        try expectEqual(hover.profile, "side", "等待结束之前还在")
+        try expectEqual(hover.row, claude("side"), "等待结束之前还在")
         hover.settle()
-        try expectEqual(hover.profile, nil, "都离开后收起")
+        try expectEqual(hover.row, nil, "都离开后收起")
 
         // 主面板关闭：立即收起
-        hover.row("work", hovering: true)
+        hover.row(claude("work"), hovering: true)
         hover.dismiss()
-        try expectEqual(hover.profile, nil)
+        try expectEqual(hover.row, nil)
         hover.settle()
-        try expectEqual(hover.profile, nil)
+        try expectEqual(hover.row, nil)
     }
 
     static func hoveredRowDisappears() throws {
         var hover = StatsFlyoutHover()
-        hover.row("work", hovering: true)
-        hover.rowsChanged(["work", "side"])
-        try expectEqual(hover.profile, "work", "停着的行还在")
-        hover.rowsChanged(["work"])
-        try expectEqual(hover.profile, "work", "别的行没了不影响")
+        hover.row(claude("work"), hovering: true)
+        hover.rowsChanged([claude("work"), claude("side")])
+        try expectEqual(hover.row, claude("work"), "停着的行还在")
+        hover.rowsChanged([claude("work")])
+        try expectEqual(hover.row, claude("work"), "别的行没了不影响")
 
         // 停着的行被删除（或登出，不再报进来）：收不到离开，也要收起，之后不会再弹出来
-        hover.rowsChanged(["side"])
-        try expectEqual(hover.profile, nil, "停着的行没了")
+        hover.rowsChanged([claude("side")])
+        try expectEqual(hover.row, nil, "停着的行没了")
         hover.settle()
-        try expectEqual(hover.profile, nil)
+        try expectEqual(hover.row, nil)
 
         // 鼠标停在面板上时，面板显示的那一行没了：同样收起
-        hover.row("side", hovering: true)
-        hover.row("side", hovering: false)
+        hover.row(claude("side"), hovering: true)
+        hover.row(claude("side"), hovering: false)
         hover.flyout(hovering: true)
         hover.rowsChanged([])
-        try expectEqual(hover.profile, nil, "面板显示的那一行没了")
-        hover.row("work", hovering: true)
-        hover.row("work", hovering: false)
+        try expectEqual(hover.row, nil, "面板显示的那一行没了")
+        hover.row(claude("work"), hovering: true)
+        hover.row(claude("work"), hovering: false)
         hover.settle()
-        try expectEqual(hover.profile, nil, "面板已收起，不再算停在面板上")
+        try expectEqual(hover.row, nil, "面板已收起，不再算停在面板上")
     }
 
     static func placement() throws {
