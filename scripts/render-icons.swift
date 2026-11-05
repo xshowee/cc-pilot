@@ -7,7 +7,8 @@
 //   MenuBarIcon.png、MenuBarIcon@2x.png      菜单栏模板图，18pt（18、36 像素），来自 MenuBarIcon.svg
 //   ClaudeIcon.png、ChatGPTIcon.png 与 @2x   工具图标（chatgpt-profiles ticket 03），来自 claude.svg、chatgpt.svg：
 //     面板分割线用，12pt（12、24 像素）
-//   ClaudeMenuBarIcon.png、ChatGPTMenuBarIcon.png 与 @2x   同上，菜单栏行首用，10pt（10、20 像素）
+//   ClaudeMenuBarIcon.png、ChatGPTMenuBarIcon.png 与 @2x   同上，菜单栏行首用，ChatGPT 10pt（10、20 像素），
+//     Claude 11pt（11、22 像素）
 //   ClaudeMenuBarSummaryIcon.png、ChatGPTMenuBarSummaryIcon.png 与 @2x   同上，只显示一个工具时
 //     菜单栏两行文字的左侧用，ChatGPT 14pt（14、28 像素），Claude 15pt（15、30 像素）
 //     名字与边长须与 Core 的 Tool.iconResourceName、ToolIconResource.points 一致（tests/swift/AppIconChecks.swift 核对）。
@@ -33,7 +34,7 @@ let menuBarPoints = 18
 /// 工具图标：资源名后缀与各工具的边长（pt），同 Core 的 Tool.iconResourceName、ToolIconResource.points
 let toolIconSizes: [(String, [String: Int])] = [
     ("Icon", ["Claude": 12, "ChatGPT": 12]),
-    ("MenuBarIcon", ["Claude": 10, "ChatGPT": 10]),
+    ("MenuBarIcon", ["Claude": 11, "ChatGPT": 10]),
     ("MenuBarSummaryIcon", ["Claude": 15, "ChatGPT": 14]),
 ]
 

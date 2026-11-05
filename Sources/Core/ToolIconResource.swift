@@ -18,11 +18,12 @@ enum ToolIconResource {
     }
 
     /// 图标边长（pt）。scripts/render-icons.swift 按同样的数值出图（1x、@2x）。
-    /// 菜单栏两行左侧的 Claude 图标大 1pt：它是一圈细射线、留白多，同样大小时看着比 ChatGPT 的小、虚
+    /// 菜单栏里的 Claude 图标大 1pt：它是一圈细射线、留白多，同样大小时看着比 ChatGPT 的小、虚
     static func points(_ use: Use, _ tool: Tool) -> Int {
         switch (use, tool) {
         case (.panel, _): return 12
-        case (.menuBar, _): return 10
+        case (.menuBar, .claudeCode): return 11
+        case (.menuBar, .chatgpt): return 10
         case (.menuBarSummary, .claudeCode): return 15
         case (.menuBarSummary, .chatgpt): return 14
         }

@@ -216,7 +216,7 @@ git push
 | `AppIcon-small.svg` | `Resources/AppIcon.icns` 中 16、32 像素 | 同上的简化版：去掉阴影和窗口圆点、提示符加粗 |
 | `MenuBarIcon.svg` | `Resources/MenuBarIcon.png`（18 像素）、`MenuBarIcon@2x.png`（36 像素） | 菜单栏"只显示图标"的模板图（18pt，单色，系统按明暗着色） |
 | `claude.svg`、`chatgpt.svg` | `Resources/ClaudeIcon.png`、`ChatGPTIcon.png`（12 像素）及 `@2x`（24 像素） | 工具图标，面板分割线用（12pt 单色模板图；素材是灰色，出图时只取形状涂成黑色） |
-| 同上 | `Resources/ClaudeMenuBarIcon.png`、`ChatGPTMenuBarIcon.png`（10 像素）及 `@2x`（20 像素） | 工具图标，菜单栏行首用（10pt，与 10.5pt 文字同排） |
+| 同上 | `Resources/ChatGPTMenuBarIcon.png`（10 像素）、`ClaudeMenuBarIcon.png`（11 像素）及 `@2x` | 工具图标，菜单栏行首用（与 10.5pt 文字同排；Claude 大 1pt，理由同下） |
 | 同上 | `Resources/ChatGPTMenuBarSummaryIcon.png`（14 像素）、`ClaudeMenuBarSummaryIcon.png`（15 像素）及 `@2x` | 工具图标，只显示一个工具时菜单栏两行文字的左侧用（Claude 的射线图形留白多，大 1pt） |
 
 改了 SVG 之后重新生成，并把源文件和产物一起提交：

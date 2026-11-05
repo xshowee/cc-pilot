@@ -7,7 +7,7 @@
 // 一眼看出说的是 Claude Code 还是 ChatGPT（Pro、Team 等套餐名两边都有）；两行文字仍在图标右侧的区域里互相居中，
 // 找不到图标时只画文字。
 // "只显示图标"模式用的图标（icon）也放在这里。
-// 两个工具都显示时（chatgpt-profiles ticket 11）每行一个工具：行首是工具图标（ToolIcon 的 .menuBar 规格，10pt 原尺寸），
+// 两个工具都显示时（chatgpt-profiles ticket 11）每行一个工具：行首是工具图标（ToolIcon 的 .menuBar 规格，10pt，Claude 11pt，原尺寸），
 // 后面是 5 小时剩余，两行各自着色（image(toolRows:)）。找不到图标（不在 App 包里运行）时行首退回文字 "C" / "G"。
 // 工具图标的着色（两种画法相同）：有品牌色的（Claude Code，ToolIcon.brandColor）画 tinted(..., color: 品牌色)；
 // 没有的，整张是模板图时画模板图，不是时画 tinted(..., color: .labelColor)（黑色模板图在深色菜单栏上看不见）。
@@ -91,9 +91,10 @@ enum MenuBarImage {
         let isTemplate = rows.allSatisfy { $0.color == nil } && brandIcons.allSatisfy { $0 == nil }
         let font = NSFont.monospacedDigitSystemFont(ofSize: 10.5, weight: .regular)
         let letterFont = NSFont.systemFont(ofSize: 10.5, weight: .medium)
-        let iconSize = rows.map { ToolIcon.size($0.tool, .menuBar) }.max() ?? 0
+        // 图标各按自己的边长画，在宽为最大边长的一列里水平居中，文字从这一列右边开始
+        let column = rows.map { ToolIcon.size($0.tool, .menuBar) }.max() ?? 0
         let gap: CGFloat = 3
-        let drawn: [(icon: NSImage?, text: NSAttributedString)] = zip(rows, brandIcons).map { row, brandIcon in
+        let drawn: [(icon: NSImage?, size: CGFloat, text: NSAttributedString)] = zip(rows, brandIcons).map { row, brandIcon in
             let icon = brandIcon ?? (isTemplate ? ToolIcon.template(row.tool, .menuBar)
                                                 : ToolIcon.tinted(row.tool, .menuBar, color: .labelColor))
             let text = NSMutableAttributedString()
@@ -103,20 +104,22 @@ enum MenuBarImage {
             }
             text.append(NSAttributedString(string: row.text, attributes: [
                 .font: font, .foregroundColor: isTemplate ? NSColor.black : (row.color ?? .labelColor)]))
-            return (icon, text)
+            return (icon, ToolIcon.size(row.tool, .menuBar), text)
         }
-        let rowWidths = drawn.map { ($0.icon == nil ? 0 : iconSize + gap) + $0.text.size().width }
+        let rowWidths = drawn.map { ($0.icon == nil ? 0 : column + gap) + $0.text.size().width }
         let width = ceil(rowWidths.max() ?? 0) + 4
         let image = NSImage(size: NSSize(width: width, height: 22), flipped: false) { _ in
             for (index, row) in drawn.enumerated() {
-                // 与 image(top:bottom:) 同样的两行位置；图标左对齐成一列，竖直方向对准数字的中线
+                // 与 image(top:bottom:) 同样的两行位置；图标在一列里居中，竖直方向对准数字的中线
                 let y: CGFloat = index == 0 ? 10 : -2
                 var x: CGFloat = 2
                 if let icon = row.icon {
+                    let size = row.size
                     let baseline = y - font.descender
-                    let iconY = ((baseline + font.capHeight / 2 - iconSize / 2) * 2).rounded() / 2
-                    icon.draw(in: NSRect(x: x, y: min(max(iconY, 0), 22 - iconSize), width: iconSize, height: iconSize))
-                    x += iconSize + gap
+                    let iconX = x + ((column - size) / 2 * 2).rounded() / 2
+                    let iconY = ((baseline + font.capHeight / 2 - size / 2) * 2).rounded() / 2
+                    icon.draw(in: NSRect(x: iconX, y: min(max(iconY, 0), 22 - size), width: size, height: size))
+                    x += column + gap
                 }
                 row.text.draw(at: NSPoint(x: x, y: y))
             }

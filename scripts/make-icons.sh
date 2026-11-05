@@ -5,7 +5,7 @@
 #   AppIcon.icns                          App 图标，16–512pt 各含 1x 与 @2x；Info.plist 的 CFBundleIconFile 指向它
 #   MenuBarIcon.png、MenuBarIcon@2x.png    菜单栏"只显示图标"用的模板图（18pt，单色）
 #   ClaudeIcon.png、ChatGPTIcon.png 与 @2x  工具图标，面板分割线用（12pt，单色模板图，chatgpt-profiles ticket 03）
-#   Claude/ChatGPTMenuBarIcon.png 与 @2x   工具图标，菜单栏行首用（10pt，单色模板图）
+#   Claude/ChatGPTMenuBarIcon.png 与 @2x   工具图标，菜单栏行首用（ChatGPT 10pt、Claude 11pt，单色模板图）
 #   Claude/ChatGPTMenuBarSummaryIcon.png 与 @2x   工具图标，只显示一个工具时菜单栏两行文字的左侧用
 #                                         （ChatGPT 14pt、Claude 15pt）
 # 只用 macOS 自带的 swift（NSImage 解析 SVG，见 scripts/render-icons.swift）和 iconutil，不联网。

@@ -1,7 +1,7 @@
 // 工具图标（chatgpt-profiles ticket 03）：Claude Code / ChatGPT 的图标，面板分割线（ToolSectionDivider）、
 // 菜单栏行首（ticket 11）与只显示一个工具时菜单栏两行文字的左侧共用这一个入口。
 // 资源是 Contents/Resources/<Tool.iconResourceName(用途)>.png 与 @2x：按用途各一个尺寸
-// （ToolIconResource.points：面板 12pt、菜单栏行首 10pt、菜单栏两行左侧 14pt，其中 Claude 15pt）的单色模板图（黑色 + 透明度），
+// （ToolIconResource.points：面板 12pt、菜单栏行首 10pt、菜单栏两行左侧 14pt，菜单栏里 Claude 都大 1pt）的单色模板图（黑色 + 透明度），
 // 由 scripts/make-icons.sh 从 Resources/Icons/*.svg 生成（见 Core 的 ToolIconResource）。
 //
 // 两种取法：
