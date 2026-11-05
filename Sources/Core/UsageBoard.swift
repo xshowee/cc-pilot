@@ -68,6 +68,7 @@ struct ObservedWindow: Equatable {
     /// 并入另一份数据（刷新结果或实时额度），返回合并后的窗口。规则（spec 决定 9，ticket 04 实测修订）：
     ///   - resets_at 更晚的优先：那是更新的窗口，旧窗口的数据不再有意义。
     ///   - resets_at 相同（容差内）：取已用百分比最高的那份。同一窗口内用量只增不减，较低的那份必然是旧数据。
+    ///     已用也相同时，重置时间取更晚的（第一次使用前刷新给的是暂定时间）。
     ///     不能按时间取较新：实时额度文件的 received_at 是写文件时间，不是数据时间——状态栏重绘会带着旧的
     ///     rate_limits 重写文件，同一档案的两个会话也会互相覆盖。
     ///   - 任一方没有 resets_at：无法判断是不是同一个窗口，取观察时间较新的（与接入实时额度前的刷新行为一致）。
@@ -83,11 +84,15 @@ struct ObservedWindow: Equatable {
         if theirs.timeIntervalSince(mine) > Self.sameWindowTolerance { return candidate }
         if mine.timeIntervalSince(theirs) > Self.sameWindowTolerance { return self }
         if candidate.window.utilization > window.utilization { return candidate }
+        // 已用相同时重置时间取更晚的：窗口重置后、第一次使用前刷新，服务器给的是暂定的重置时间（刷新时刻 + 窗口长度），
+        // 第一次使用后窗口才从那时起算，之后的数据重置时间更晚（真机验收 13 发现）。只改重置时间，变灰规则不变
+        let resetsAt = candidate.window.utilization == window.utilization ? max(mine, theirs) : mine
+        let kept = UsageWindow(utilization: window.utilization, resetsAt: resetsAt)
         if candidate.source == .refresh || confirming, candidate.window.remainingPercent == window.remainingPercent,
            candidate.observedAt > observedAt {
-            return ObservedWindow(window: window, observedAt: candidate.observedAt, source: source)
+            return ObservedWindow(window: kept, observedAt: candidate.observedAt, source: source)
         }
-        return self
+        return ObservedWindow(window: kept, observedAt: observedAt, source: source)
     }
 }
 

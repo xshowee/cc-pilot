@@ -26,6 +26,7 @@ final class LiveQuotaMergeChecks: CheckSuite {
             Check("同一份实时额度里有窗口被采纳为新数据：其他窗口的相同数值也算确认；空闲重绘不算", liveConfirmsSibling),
             Check("刷新给小数、实时给整数：同一窗口取已用较高的", fractionalRefresh),
             Check("resets_at 差几秒（ISO 去掉小数秒 vs 整数秒）算同一个窗口", resetsAtTolerance),
+            Check("同一窗口、已用相同：重置时间取更晚的（新窗口第一次使用前刷新给的是暂定时间）", tieTakesLaterReset),
             Check("同一账号的其他档案也显示；未登录、不在列表里的档案跳过", accountMapping),
             Check("接收实时额度不发请求，不改失败原因、频率限制和可刷新的账号", liveLeavesRefreshStateAlone),
             Check("格式无法识别：丢掉来自刷新的数字，实时额度照常显示", unrecognizedKeepsLive),
@@ -255,6 +256,22 @@ final class LiveQuotaMergeChecks: CheckSuite {
                          profiles: [solo])
         try expectEqual(fiveHour(board, now: at(minutes: 11)), .remaining(80, tint: .green),
                         "同一窗口：保留已用较高的刷新，而不是把整数秒当成更晚的窗口")
+    }
+
+    static func tieTakesLaterReset() throws {
+        // 周窗口刚重置、还没用过时刷新：服务器给暂定的重置时间（刷新时刻 + 7 天）；
+        // 4 分钟后第一次使用，窗口从那时起算，实时额度给的重置时间晚 4 分钟，已用同为 0（真机验收 13 发现）
+        var board = UsageBoard()
+        board.record(refresh(fiveHour: used(0, resetsInMinutes: 300), at: at(minutes: 0)))
+        board.recordLive([live(fiveHour: used(0, resetsInMinutes: 304), at: at(minutes: 4))], profiles: [solo])
+        let window = try unwrap(board.usage(for: solo)?.fiveHourWindow, "有 5 小时窗口")
+        try expectEqual(window.window.resetsAt, at(minutes: 304), "取更晚的重置时间")
+        try expectEqual(window.observedAt, at(minutes: 0), "实时的相同数值仍不算确认，变灰时间不变")
+
+        // 反过来：已经是更晚的重置时间，再来一份更早的（相同已用），不改
+        board.record(refresh(fiveHour: used(0, resetsInMinutes: 300), at: at(minutes: 6)))
+        try expectEqual(board.usage(for: solo)?.fiveHourWindow?.window.resetsAt, at(minutes: 304), "不退回更早的")
+        try expectEqual(board.usage(for: solo)?.fiveHourWindow?.observedAt, at(minutes: 6), "刷新的相同数值仍算确认")
     }
 
     static func accountMapping() throws {
