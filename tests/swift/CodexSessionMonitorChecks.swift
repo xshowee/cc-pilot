@@ -1,6 +1,7 @@
 // chatgpt-profiles ticket 08：启动时全量读一次 ChatGPT 会话记录，之后监听两个会话目录的变化（FSEvents）增量读入。
 // 接口：CodexSessionMonitor(environment:latency:onScan:).start()；directories(for:)（事件 → 要扫描的目录）。
 // 用真实文件系统事件，每一步最多等 5 秒。会话记录是合成的。
+// 写完就关闭的写法 FSEvents 看得到；一直开着只追加（codex 守护进程的写法）要靠 kqueue，见 OpenWriter 的两项。
 
 import CoreServices
 import Foundation
@@ -12,6 +13,8 @@ final class CodexSessionMonitorChecks: CheckSuite {
             Check("同一批变化报告了父目录与子目录（零点新建日期目录时）也不重复读入", followsNestedDirectoriesOnce),
             Check("会话目录启动时还不存在，之后创建也能读入", picksUpRootsCreatedLater),
             Check("只扫描事件报告的目录；根目录本身变化或要求重新扫描时全量", scopesToReportedDirectories),
+            Check("写入者一直开着会话记录追加写入（不关闭，FSEvents 不报）也能读入", followsAppendsToOpenFile),
+            Check("写入锁出现后，锁出现前就有的会话记录在一直开着时的追加也能读入", followsLockedSessionAppends),
         ]
     }
 
@@ -117,5 +120,80 @@ final class CodexSessionMonitorChecks: CheckSuite {
                                               FSEventStreamEventFlags(kFSEventStreamEventFlagMustScanSubDirs))]) == nil,
                    "要求重新扫描时全量")
         try expect(monitor.directories(for: [(real + "/.codex/other", none)]) == nil, "说不清的路径全量")
+    }
+
+    /// 模仿 codex 守护进程：打开会话记录后整个会话期间不关闭，只追加（macOS 上 FSEvents 只报创建与关闭）
+    final class OpenWriter {
+        private let fd: Int32
+        init(_ url: URL) throws {
+            try FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            fd = open(url.path, O_WRONLY | O_CREAT | O_APPEND, 0o644)
+            try expect(fd >= 0, "打不开 \(url.path)")
+        }
+        func append(_ lines: [String]) throws {
+            let data = Data(CodexRollout.file(lines).utf8)
+            let written = data.withUnsafeBytes { write(fd, $0.baseAddress, $0.count) }
+            try expect(written == data.count, "写入失败")
+        }
+        /// 只在检查结束时调用（defer），检查过程中文件一直开着
+        func close() { _ = Darwin.close(fd) }
+    }
+
+    static func tokenCount(_ n: Int) -> String {
+        CodexRollout.tokenCount(at: t0, last: .init(input: n, output: 1), total: .init(input: n * 10, output: n))
+    }
+
+    static func followsAppendsToOpenFile() throws {
+        let home = try TempHome()
+        defer { home.remove() }
+        let collected = Collected()
+        let monitor = CodexSessionMonitor(environment: home.environment, latency: 0.05) { collected.add($0) }
+        monitor.start()
+        defer { monitor.stop() }
+        Thread.sleep(forTimeInterval: 0.3)
+
+        let writer = try OpenWriter(home.url.appendingPathComponent(CodexRollout.path(id)))
+        defer { writer.close() }
+        try writer.append([CodexRollout.meta(id: id, at: t0), tokenCount(1)])
+        for n in 2...4 {
+            Thread.sleep(forTimeInterval: 0.4)
+            try writer.append([tokenCount(n)])
+        }
+        try expect(collected.wait(for: 4), "一直开着的会话记录追加的事件 5 秒内没有全部读入：\(collected.all.count) 条")
+        Thread.sleep(forTimeInterval: 0.3)
+        try expectEqual(collected.all.map(\.usage?.input), [1, 2, 3, 4])
+    }
+
+    static func followsLockedSessionAppends() throws {
+        let home = try TempHome()
+        defer { home.remove() }
+        // 会话记录早就写好、关闭了（App 启动前的会话，resume 时守护进程重新打开它）：修改时间放到很久以前
+        let path = CodexRollout.path(id)
+        let url = home.url.appendingPathComponent(path)
+        try home.write(path, CodexRollout.file([CodexRollout.meta(id: id, at: t0), tokenCount(1)]))
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -86_400)],
+                                              ofItemAtPath: url.path)
+        try FileManager.default.createDirectory(
+            at: home.url.appendingPathComponent(".codex/thread-writer-locks"), withIntermediateDirectories: true)
+        let collected = Collected()
+        let monitor = CodexSessionMonitor(environment: home.environment, latency: 0.05) { collected.add($0) }
+        monitor.start()
+        defer { monitor.stop() }
+        try expect(collected.wait(for: 1), "启动后 5 秒内没有读入已有的会话记录")
+        Thread.sleep(forTimeInterval: 0.3)
+
+        // 守护进程：打开会话记录、拿写入锁（锁文件也一直开着），之后只追加
+        let writer = try OpenWriter(url)
+        defer { writer.close() }
+        let lock = try OpenWriter(home.url.appendingPathComponent(".codex/thread-writer-locks/\(id).lock"))
+        defer { lock.close() }
+        for n in 2...4 {
+            Thread.sleep(forTimeInterval: 0.4)
+            try writer.append([tokenCount(n)])
+        }
+        try expect(collected.wait(for: 4), "拿着写入锁追加的事件 5 秒内没有全部读入：\(collected.all.count) 条")
+        Thread.sleep(forTimeInterval: 0.3)
+        try expectEqual(collected.all.map(\.usage?.input), [1, 2, 3, 4])
     }
 }
