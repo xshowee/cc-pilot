@@ -14,8 +14,8 @@
 //   见到它再挂）；消失的锁摘掉监听、再扫描一次。启动时已有的锁一样挂上。
 // - 兜底（锁目录不存在、或锁的生命周期与推断不符）：一次扫描里读到新内容、且最近 idleTimeout 内修改过的 .jsonl
 //   也挂上；idleTimeout 内没有变化就摘掉（每次扫描时检查）。修改时间的条件让首次启动全量读历史时不给旧文件挂。
-// 文件被删除、改名时摘掉。挂上的文件最多 watchLimit 个（每个占一个 fd）：满了先挤掉最久没变化的兜底监听，
-// 全是锁对应的就不再挂。只监听 .jsonl：.zst 写完就关闭，FSEvents 看得到。
+// 文件被删除、改名时摘掉。挂上的文件最多 watchLimit 个（每个占一个 fd）：满了挤掉最久没变化的那个（锁对应的
+// 也一样，免得残留的锁占满名额），要挂的比它们都旧就不挂。只监听 .jsonl：.zst 写完就关闭，FSEvents 看得到。
 //
 // 只扫描通知报告的目录（会话进行中每一两秒一次，没必要每次 stat 全部历史会话记录）；说不清哪里变了
 // （根目录本身、需要重新扫描、事件丢失）时全量扫描。上次读不了的文件（.zst 正在写入）所在目录下次一并扫描。
@@ -67,6 +67,8 @@ final class CodexSessionMonitor: @unchecked Sendable {
     /// kqueue 报告了、还没扫描的目录；pendingArmed 时已安排在 latency 后扫描
     private var pending: Set<String> = []
     private var pendingArmed = false
+    /// 因为达到上限没挂上、已经记过日志的会话记录（每份只记一次）
+    private var declined: Set<String> = []
 
     private let cursorSource: (() -> [String: CodexFileCursor]?)?
 
@@ -211,7 +213,7 @@ final class CodexSessionMonitor: @unchecked Sendable {
         }
     }
 
-    /// 给会话记录挂上 kqueue 监听（已挂着时只补上 locked）。满了先挤掉最久没变化的兜底监听，挤不掉就不挂
+    /// 给会话记录挂上 kqueue 监听（已挂着时只补上 locked）。满了挤掉最久没变化的那个，它比这份新就不挂
     private func watch(_ path: String, locked: Bool, lastChange: Date? = nil) {
         guard path.hasSuffix(".jsonl") else { return }
         if let existing = watches[path] {
@@ -220,14 +222,17 @@ final class CodexSessionMonitor: @unchecked Sendable {
         }
         let lastChange = lastChange ?? Self.modified(path) ?? Date()
         if watches.count >= watchLimit {
-            guard let victim = watches.filter({ !$0.value.locked })
-                      .min(by: { $0.value.lastChange < $1.value.lastChange }),
-                  locked || victim.value.lastChange < lastChange else {
-                NSLog("CC Pilot: 监听的会话记录已达上限（%d 份），%@ 不再监听", watchLimit, path)
+            // 按最近变化挤，不论是不是锁对应的：残留的锁（锁的生命周期与推断不符）不能挤掉正在写入的会话
+            guard let victim = watches.min(by: { $0.value.lastChange < $1.value.lastChange }),
+                  victim.value.lastChange < lastChange else {
+                if declined.insert(path).inserted {
+                    NSLog("CC Pilot: 监听的会话记录已达上限（%d 份），%@ 不再监听", watchLimit, path)
+                }
                 return
             }
             unwatch(victim.key)
         }
+        declined.remove(path)
         let fd = open(path, O_EVTONLY)
         guard fd >= 0 else { return }
         let source = DispatchSource.makeFileSystemObjectSource(
