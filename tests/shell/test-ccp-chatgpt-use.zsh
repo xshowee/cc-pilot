@@ -1,7 +1,7 @@
 #!/bin/zsh -f
 # ccp chatgpt use <名字>（别名 ccp codex use）：切换 ChatGPT 当前档案（chatgpt-profiles ticket 04，ADR 0005）。
-# 切换 = 写当前档案记录 ~/.codex-profiles/active + launchctl setenv/unsetenv CODEX_HOME
-#        + ChatGPT 桌面 App（com.openai.codex）运行时按选择退出并重新打开。
+# 切换 = 写当前档案记录 ~/.codex-profiles/active + launchctl setenv/unsetenv CODEX_HOME。
+# ChatGPT 桌面 App（com.openai.codex）只查询是否在运行、提示用户自己重启，绝不退出或重新打开它。
 # launchd 环境、桌面 App 都是假的（tests/fakes/launchctl、osascript、open）。
 source "${0:A:h}/lib.zsh"
 
@@ -63,7 +63,7 @@ test_launchctl_failure_is_reported() {
   t_codex_profile work
   mkdir -p -- $T_LAUNCHD && print -r -- 1 > $T_LAUNCHD/exit
   t_chatgpt_app running
-  t_ccp chatgpt use work --restart
+  t_ccp chatgpt use work
   assert_eq "$T_RC" 1 "launchctl 失败时退出码"
   assert_contains "$T_ERR" launchctl "错误信息里说明是 launchctl"
   assert_eq "$(chatgpt_app_calls)" "" "launchctl 失败时不动桌面 App"
@@ -102,8 +102,9 @@ test_rejects_claude_only_profile() {
 test_rejects_bad_usage() {
   assert_use_rejected 2 "用法" 
   assert_use_rejected 2 "只需要一个" work default
-  assert_use_rejected 2 "只能选一个" work --restart --no-restart
   assert_use_rejected 2 "未知选项" work --force
+  assert_use_rejected 2 "未知选项" work --restart
+  assert_use_rejected 2 "未知选项" work --no-restart
 }
 
 test_record_location_is_directory_is_rejected() {
@@ -115,171 +116,44 @@ test_record_location_is_directory_is_rejected() {
   assert_eq "$(launchctl_calls)" 0 "不应调用 launchctl"
 }
 
-# ---------- 桌面 App ----------
+# ---------- 桌面 App：只提示，不退出、不重新打开 ----------
 
-test_app_not_running_is_left_alone_without_asking() {
+test_app_not_running_is_left_alone_without_hint() {
   t_codex_profile work
-  t_stdin y
   t_ccp chatgpt use work
   assert_rc 0
   assert_stderr_empty
-  [[ $T_OUT != *"[y/N]"* ]] || fail "桌面 App 没在运行时不应询问"
+  [[ $T_OUT != *"正在运行"* ]] || fail "桌面 App 没在运行时不应提示"
   assert_eq "$(chatgpt_app_calls)" "osascript application id \"com.openai.codex\" is running" "只查询是否在运行"
 }
 
-test_running_app_asks_and_yes_quits_then_reopens_with_new_home() {
+test_running_app_is_not_quit_or_reopened_and_user_is_told_to_restart() {
   t_codex_profile work
   t_chatgpt_app running
   t_stdin y
   t_ccp chatgpt use work
   assert_rc 0
   assert_stderr_empty
-  assert_contains "$T_OUT" "[y/N]" "应询问是否重启"
-  assert_contains "$T_OUT" "重启 ChatGPT" "询问的内容"
-  chatgpt_app_running || fail "重启后桌面 App 应在运行"
-  assert_eq "$(< $T_CHATGPT_APP/running)" "$T_HOME/.codex-profiles/work" "重新打开的桌面 App 从 launchd 拿到新档案"
-  local calls=$(chatgpt_app_calls)
-  assert_contains "$calls" 'osascript tell application id "com.openai.codex" to quit' "应请桌面 App 退出"
-  assert_eq "${${(f)calls}[-1]}" "open com.openai.codex" "最后用 open -b 重新打开"
+  [[ $T_OUT != *"[y/N]"* ]] || fail "不应询问是否重启"
+  assert_contains "$T_OUT" "退出并重新打开" "提示用户自己重启 ChatGPT"
+  assert_eq "$(< $(ACTIVE))" work "档案已切换"
+  assert_eq "$(launchd_env CODEX_HOME)" "$T_HOME/.codex-profiles/work" "launchd 已设置"
+  assert_eq "$(chatgpt_app_calls)" "osascript application id \"com.openai.codex\" is running" "只查询是否在运行"
+  chatgpt_app_running || fail "桌面 App 仍在运行"
+  assert_eq "$(< $T_CHATGPT_APP/running)" "" "桌面 App 还是启动时的环境，没有被重新打开"
 }
 
-test_running_app_answer_yes_is_case_insensitive() {
-  t_codex_profile work
-  t_chatgpt_app running
-  t_stdin YES
-  t_ccp chatgpt use work
-  assert_rc 0
-  assert_contains "$(chatgpt_app_calls)" "open com.openai.codex" "YES 也算同意"
-}
-
-test_running_app_declined_switches_without_restart() {
-  local answer
-  for answer in n "" "yes please"; do
-    rm -rf -- $T_CHATGPT_APP $T_LAUNCHD
-    t_codex_profile work
-    t_chatgpt_app running
-    t_stdin "$answer"
-    t_ccp chatgpt use work
-    assert_rc 0
-    assert_stderr_empty
-    assert_contains "$T_OUT" "下次打开" "说明下次打开时生效（回答：$answer）"
-    assert_eq "$(< $(ACTIVE))" work "档案照样切换（回答：$answer）"
-    assert_eq "$(launchd_env CODEX_HOME)" "$T_HOME/.codex-profiles/work" "launchd 照样设置（回答：$answer）"
-    [[ $(chatgpt_app_calls) != *quit* ]] || fail "拒绝时不应退出桌面 App（回答：$answer）"
-    chatgpt_app_running || fail "桌面 App 仍在运行"
-  done
-}
-
-test_no_input_counts_as_declined() {
-  t_codex_profile work
-  t_chatgpt_app running
-  t_ccp chatgpt use work
-  assert_rc 0
-  [[ $(chatgpt_app_calls) != *quit* ]] || fail "读不到回答时不应退出桌面 App"
-}
-
-test_restart_flag_skips_question() {
-  t_codex_profile work
-  t_chatgpt_app running
-  t_ccp chatgpt use --restart work
-  assert_rc 0
-  assert_stderr_empty
-  [[ $T_OUT != *"[y/N]"* ]] || fail "--restart 不应询问"
-  assert_eq "$(< $T_CHATGPT_APP/running)" "$T_HOME/.codex-profiles/work" "重新打开的桌面 App 使用新档案"
-}
-
-test_restart_to_default_reopens_without_codex_home() {
+test_switch_to_default_with_running_app_only_hints() {
   t_codex_profile work
   t_codex_active work
   t_launchd_env CODEX_HOME "$T_HOME/.codex-profiles/work"
   t_chatgpt_app running
-  t_ccp chatgpt use default --restart
+  t_ccp chatgpt use default
   assert_rc 0
-  assert_eq "${${(f)$(chatgpt_app_calls)}[-1]}" "open com.openai.codex" "最后重新打开桌面 App"
-  assert_eq "$(_fake_field $T_CHATGPT_APP/calls/$(_fake_calls $T_CHATGPT_APP/calls) launchd_codex_home_set)" no \
-    "重新打开时 launchd 里已没有 CODEX_HOME"
-}
-
-test_no_restart_flag_skips_question_and_keeps_app_running() {
-  t_codex_profile work
-  t_chatgpt_app running
-  t_stdin y
-  t_ccp chatgpt use work --no-restart
-  assert_rc 0
-  assert_stderr_empty
-  [[ $T_OUT != *"[y/N]"* ]] || fail "--no-restart 不应询问"
-  assert_contains "$T_OUT" "下次打开" "说明下次打开时生效"
-  [[ $(chatgpt_app_calls) != *quit* ]] || fail "--no-restart 不应退出桌面 App"
-}
-
-test_quit_not_authorized_still_switches_and_gives_manual_steps() {
-  t_codex_profile work
-  t_chatgpt_app running deny
-  t_ccp chatgpt use work --restart
-  assert_rc 0
-  assert_eq "$(< $(ACTIVE))" work "档案照样切换"
-  assert_eq "$(launchd_env CODEX_HOME)" "$T_HOME/.codex-profiles/work" "launchd 照样设置"
-  assert_contains "$T_ERR" "请手动退出 ChatGPT 后重新打开" "提示手动重启"
-  assert_contains "$T_ERR" "ccp chatgpt use work --restart" "给出可复制的命令"
-  assert_contains "$T_ERR" "自动化" "说明去哪里允许"
-  [[ $(chatgpt_app_calls) != *"open com.openai.codex"* ]] || fail "没退出就不应重新打开"
-}
-
-test_app_that_does_not_quit_in_time_is_given_up_on() {
-  t_codex_profile work
-  t_chatgpt_app running ignore-quit
-  t_ccp CCP_CHATGPT_QUIT_TIMEOUT=0.5 chatgpt use work --restart
-  assert_rc 0
-  assert_contains "$T_ERR" "放弃" "说明已放弃重启"
-  assert_contains "$T_ERR" "0.5 秒" "说明等了多久"
-  [[ $(chatgpt_app_calls) != *"open com.openai.codex"* ]] || fail "没退出就不应重新打开"
-  assert_eq "$(< $(ACTIVE))" work "档案照样切换"
-}
-
-test_reopen_failure_is_reported_as_warning() {
-  t_codex_profile work
-  t_chatgpt_app running open-exit
-  t_ccp chatgpt use work --restart
-  assert_rc 0
-  assert_contains "$T_ERR" "手动打开 ChatGPT" "提示手动打开"
-}
-
-# ---------- 给 App 的机器可读信号：--restart-status ----------
-# 带上它时，要求重启却没能重启（退出被拒、超时、重新打开失败）以退出码 3 结束；说明照样写 stderr。
-# 不带它（终端里的用户）时这些情况仍是退出码 0。
-
-test_restart_status_exits_3_when_quit_is_denied() {
-  t_codex_profile work
-  t_chatgpt_app running deny
-  t_ccp chatgpt use work --restart --restart-status
-  assert_rc 3
-  assert_eq "$(< $(ACTIVE))" work "档案照样切换"
-  assert_contains "$T_ERR" "请手动退出 ChatGPT 后重新打开" "说明照样写出"
-}
-
-test_restart_status_exits_3_when_app_does_not_quit_or_reopen() {
-  t_codex_profile work
-  t_chatgpt_app running ignore-quit
-  t_ccp CCP_CHATGPT_QUIT_TIMEOUT=0.2 chatgpt use work --restart-status --restart
-  assert_rc 3
-  rm -f -- $T_CHATGPT_APP/ignore-quit
-  t_chatgpt_app running open-exit
-  t_ccp chatgpt use work --restart --restart-status
-  assert_rc 3
-  assert_contains "$T_ERR" "手动打开 ChatGPT" "提示手动打开"
-}
-
-test_restart_status_exits_0_when_restarted_or_not_needed() {
-  t_codex_profile work
-  t_ccp chatgpt use work --restart --restart-status
-  assert_rc 0
-  t_chatgpt_app running
-  t_ccp chatgpt use work --restart --restart-status
-  assert_rc 0
-  assert_stderr_empty
-  chatgpt_app_running || fail "应已重新打开"
-  t_ccp chatgpt use work --no-restart --restart-status
-  assert_rc 0
+  assert_contains "$T_OUT" "退出并重新打开" "提示用户自己重启 ChatGPT"
+  assert_eq "$(launchd_env CODEX_HOME)" "<unset>" "launchd 里的 CODEX_HOME 应被去掉"
+  [[ $(chatgpt_app_calls) != *quit* ]] || fail "不应退出桌面 App"
+  [[ $(chatgpt_app_calls) != *"open com.openai.codex"* ]] || fail "不应打开桌面 App"
 }
 
 # ---------- Claude Code 一侧不受影响 ----------

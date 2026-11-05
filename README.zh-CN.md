@@ -40,7 +40,7 @@ cc-pilot 让每个账号各自独立：
 - 菜单栏显示两行：当前账号的订阅等级（如 Max 5x、Pro；不知道订阅等级时显示账号名称），以及这个账号的 5 小时窗口剩余额度（从未刷新过、也没有会话报告过实时额度时显示"—"）。也可以设置为只显示一个图标。
 - 有了 ChatGPT（存在 `~/.codex` 目录）之后，菜单栏改为每个工具一行：工具图标，加上它当前账号的 5 小时窗口剩余额度。在齿轮菜单里，"菜单栏显示 Claude Code"和"菜单栏显示 ChatGPT"可以分别隐藏其中一个（只剩一个显示时不能再关掉）；只显示一个工具时，菜单栏回到上面的两行显示。ChatGPT 的订阅等级取最近一次刷新得到的套餐，没有时取登录信息里的套餐，再没有就显示账号名称。
 - 面板上方列出 Claude Code 的账号，下方列出 ChatGPT 的账号，中间用两个工具的图标分隔；只有存在 `~/.codex` 时才显示 ChatGPT 这一段。每个账号以登录的邮箱为主要显示内容，账号名称作为副标题，另外显示组织和订阅等级（ChatGPT 显示套餐）。还没登录的显示"未登录"；两个账号登录的是同一个邮箱时，会标注"与某某是同一账号"，ChatGPT 按同一用户、同一工作区判断。用 API key 登录的 ChatGPT 账号会注明，不显示额度。
-- 点一下即可切换当前账号，效果与 `ccp use` 或 `ccp chatgpt use` 完全相同。切换 ChatGPT 账号时如果 ChatGPT 桌面 App 正在运行，App 会询问是否立即重启 ChatGPT；选"以后再说"时账号照样切换，ChatGPT 下次打开时使用它。添加和删除账号时，App 打开"终端"执行 `ccp add` / `ccp rm`（ChatGPT 为 `ccp chatgpt add` / `ccp chatgpt rm`），流程与命令行完全一致。在 `ccp` 里做的修改会立刻反映到 App 上。
+- 点一下即可切换当前账号，效果与 `ccp use` 或 `ccp chatgpt use` 完全相同。切换 ChatGPT 账号不会退出或重新打开 ChatGPT 桌面 App：它正在运行时继续使用原来的账号，你自己退出并重新打开后才使用新账号。添加和删除账号时，App 打开"终端"执行 `ccp add` / `ccp rm`（ChatGPT 为 `ccp chatgpt add` / `ccp chatgpt rm`），流程与命令行完全一致。在 `ccp` 里做的修改会立刻反映到 App 上。
 - 额度：点"刷新全部"（两个工具都刷新）或某个账号旁边的刷新按钮，获取 5 小时窗口和覆盖全部模型的周窗口的**剩余**百分比及重置时间；展开 Claude Code 账号可以看到按模型细分的周窗口和超额付费的使用情况。
   - 所有数字都是剩余百分比，不是 Claude Code `/usage` 里的已用百分比。
   - 颜色按剩余百分比：剩余 ≤20% 红色，≤50% 琥珀色，其余绿色。
@@ -83,7 +83,6 @@ CC Pilot 只访问下面三个地址：
 | `~/.codex-profiles/` | 除默认账号以外的 ChatGPT 账号，每个账号一个目录：`~/.codex-profiles/<名字>/`（即它的 `CODEX_HOME`）；以及记录 ChatGPT 当前账号的文件 `~/.codex-profiles/active`。新账号一开始只有 `config.toml` 和指向 `~/.codex/` 的软链接，`auth.json` 由 `codex login` 写入。 |
 | `~/.codex/`（ChatGPT 默认账号） | cc-pilot 不修改默认账号的登录、设置和其中的文件。`ccp chatgpt add` 在 `~/.codex/` 或其中的共享目录（`sessions`、`archived_sessions`、`thread-writer-locks`、`.tmp`、`skills`、`plugins`、`rules`）不存在时创建它们，并把其中的 `config.toml` 复制到新账号。之后，在其他账号里运行的 codex 也会写入这里：会话数据库经账号 `config.toml` 里的 `sqlite_home`，会话文件经软链接。App 读取 `sessions`、`archived_sessions` 里的会话记录，以及每个 ChatGPT 账号的 `auth.json` 和 `history.jsonl`。 |
 | launchd 环境变量 `CODEX_HOME` | `ccp chatgpt use` 用 `launchctl setenv` 把它设为 ChatGPT 当前账号的目录，之后打开的 App 都使用这个账号；切回 `default` 时用 `launchctl unsetenv` 删除它。它在注销或重启前一直有效；App 每次启动时按 ChatGPT 当前账号重新设置一次（只在 `~/.codex-profiles/` 存在时）。不安装 LaunchAgent。 |
-| ChatGPT 桌面 App | 它正在运行时切换 ChatGPT 账号，cc-pilot 先询问，你同意后才正常退出它并重新打开。第一次会由 macOS 询问是否允许控制 ChatGPT（"自动化"）；不允许时账号照样切换，并告诉你怎么自己重启 ChatGPT。 |
 | ChatGPT 后台服务 | `ccp chatgpt rm` 在你确认后，用普通的终止信号停止桌面 App 为该账号运行的后台服务（桌面 App 装在账号目录 `packages/app-server-daemon/` 下的 `codex app-server`，App 退出后它仍在运行）。不会停止其他任何进程：其他 `app-server`（例如 IDE 的 Codex 扩展运行的）算作账号仍在使用。 |
 | `~/Library/Application Support/cc-pilot/` | App 的 Token 用量账本（`token-usage.sqlite`）：按账号和模型的 token 数、每份会话记录读到了哪里、每个会话属于哪个账号。不含对话内容。 |
 | "终端" | 在 App 里添加或删除账号时，App 打开一个新的终端窗口执行 `ccp add` / `ccp rm`（或 `ccp chatgpt add` / `ccp chatgpt rm`）。第一次会由 macOS 询问是否允许 CC Pilot 控制"终端"；不允许也没关系，App 会给出命令让你自己复制执行。 |
@@ -148,7 +147,7 @@ ChatGPT 的用法相同（`ccp codex …` 与 `ccp chatgpt …` 完全一样）�
 
 ```zsh
 ccp chatgpt add work         # 新建 ChatGPT 账号 work，并在其中执行 codex login
-ccp chatgpt use work         # 切换：之后新启动的 codex 和之后打开的 App 使用 work；重启 ChatGPT 前会先询问
+ccp chatgpt use work         # 切换：之后新启动的 codex 和之后打开的 App 使用 work；正在运行的 ChatGPT 要你自己重新打开后才使用它
 CODEX_PROFILE=work codex     # 只在这一次、这个终端里临时使用 work，不改变 ChatGPT 当前账号
 ccp chatgpt use default      # 切回 ~/.codex
 ```
@@ -171,7 +170,7 @@ ccp chatgpt use default      # 切回 ~/.codex
 | `ccp add <名字>` | 新建账号，并直接进入它的 Claude Code 完成首次引导和登录。不改变当前账号。Claude Code 在账号目录里的专用空目录 `.ccp-workdir` 中启动，而不是在你的当前目录；如果它询问是否信任这个目录，放心选 Yes，之后对这个账号执行 `ccp rm` 时不会再问。 |
 | `ccp rm <名字>` | 删除账号：先请你确认，然后打开该账号的 Claude Code，请你在里面执行 `/logout` 并退出；确认已经登出后才删除。默认账号和当前账号不能删除。Claude Code 同样在账号的 `.ccp-workdir` 中启动，删除账号时一并删除。 |
 | `ccp chatgpt ls` | 列出所有 ChatGPT 账号（`~/.codex` 是 `default`，其他在 `~/.codex-profiles/` 下），当前账号前面标 `*`。`ccp codex ls` 与之相同。 |
-| `ccp chatgpt use <名字>` | 切换 ChatGPT 当前账号：之后新启动的 `codex` 和之后打开的 App（ChatGPT、Zed 等，经 `launchctl setenv CODEX_HOME`）都用它；ChatGPT 桌面 App 正在运行时询问是否重启它，`--restart` / `--no-restart` 不询问。只在一个终端里临时使用：`CODEX_PROFILE=<名字> codex`。 |
+| `ccp chatgpt use <名字>` | 切换 ChatGPT 当前账号：之后新启动的 `codex` 和之后打开的 App（ChatGPT、Zed 等，经 `launchctl setenv CODEX_HOME`）都用它；不会退出或重新打开 ChatGPT 桌面 App，它正在运行时要你自己退出并重新打开才使用新账号。只在一个终端里临时使用：`CODEX_PROFILE=<名字> codex`。 |
 | `ccp chatgpt add <名字>` | 新建 ChatGPT 账号，并在其中运行 `codex login`。它的 `config.toml` 从 `~/.codex/config.toml` 复制一份（`sqlite_home` 指向 `~/.codex`），会话、`AGENTS.md`、技能、插件和规则是指向 `~/.codex` 的软链接，所有账号共享；登录和设置每个账号一份。登录没有完成时保留账号，并给出之后登录的命令。不改变当前 ChatGPT 账号。 |
 | `ccp chatgpt rm <名字>` | 删除 ChatGPT 账号。默认账号、当前账号、`launchctl` 里仍指向的账号不能删除；仍在使用中的账号也不能删除：只要有 `codex` 进程、其他 `app-server` 进程（例如 IDE 的 Codex 扩展）或 ChatGPT 桌面 App 带着这个账号的 `CODEX_HOME` 在运行，就列出它们，不询问直接停下。否则先请你确认；桌面 App 为它运行的后台服务（账号目录 `packages/app-server-daemon/` 下的 `codex app-server`）在运行时先停止它，然后在其中执行 `codex logout`，确认 `auth.json` 已不在才删除。只删除账号自己的文件，`~/.codex` 里共享的会话、技能等保持不变。 |
 | `ccp init [--yes]` | 接入 zsh：征得同意后在 `~/.zshrc` 末尾加上接入行；`--yes` 不询问。已经接入时什么都不改。 |
@@ -186,7 +185,7 @@ ccp chatgpt use default      # 切回 ~/.codex
   - Claude Desktop；
   - zsh 以外的 shell（bash、fish 等）。
 - **ChatGPT 的 App 跟随 launchd，而 launchd 重启后就忘了**。重启 Mac 或重新登录后，在 CC Pilot 运行之前打开的 App 使用 ChatGPT 默认账号，直到 CC Pilot 启动（或者你执行 `ccp chatgpt use`）重新设置 `CODEX_HOME`；打开"登录时启动"可以缩短这段时间。切换时已经在运行的程序（编辑器、zsh 以外的 shell 等）继续使用它们启动时的 `CODEX_HOME`；只有 zsh 里的 `codex` 经过包装函数，总是使用当前账号。
-- **ChatGPT 桌面 App 同一时间只能用一个账号**。切换 ChatGPT 账号会重启它，正在进行的任务会中断。
+- **ChatGPT 桌面 App 同一时间只能用一个账号**。切换 ChatGPT 账号后，要你自己退出并重新打开它（正在进行的任务会中断）才使用新账号。
 - **共享的 ChatGPT 会话有局限**。只有本地会话是共享的：ChatGPT 的普通聊天存在网上，跟着各自的账号走。桌面 App 侧边栏里的项目分组每个账号一份，所以在另一个账号里开始的会话出现在最近的会话里，而不在它的项目下。上游 Codex 将来可能让 `codex resume` 只列出当前账号的会话；cc-pilot 不会去绕过它。
 - **MCP 服务器和项目信任设置只在创建时复制一次**。`ccp add` 从默认账号的 `~/.claude.json` 里只复制 `mcpServers`（用户级 MCP 服务器）和 `projects`（项目信任设置）两项，作为新账号的初始值。之后各账号各自独立变化，不会保持同步：在默认账号里新加的 MCP 服务器，不会出现在已经建好的账号里，反之亦然。claude.ai 账号里配置的连接器跟账号走，不在复制范围内。
 - **设置只在创建时复制一次**。`ccp add` 把默认账号的 `~/.claude/settings.json` 复制为新账号的初始设置（`ccp chatgpt add` 对 `~/.codex/config.toml` 也是这样），之后各账号各自独立变化：在一个账号里改主题、状态栏、hooks 等，其他账号不会跟着变。这样不同订阅等级的账号可以用不同的模型和 advisor。插件是共享的，但"是否启用"记在各账号的设置里：在一个账号里装好并启用的插件，在其他账号里需要用 `/plugin` 再启用一次。

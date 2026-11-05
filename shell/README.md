@@ -79,17 +79,14 @@ source "$HOME/.cc-pilot/cc-pilot.zsh"  # cc-pilot
 
 然后以 `CODEX_HOME=<档案目录> command codex login` 登录（不经过包装函数，也不看 `CODEX_PROFILE`），不改变当前档案。`codex` 退出码非零或退出后档案里没有 `auth.json` 时保留档案，在 stderr 最后一行给出之后登录用的命令 `CODEX_HOME=<档案目录> command codex login`（`command` 绕过包装函数，否则包装函数会把 `~/.codex-profiles/` 下的 `CODEX_HOME` 换成当前档案），退出码非零。
 
-### `ccp chatgpt use <名字> [--restart|--no-restart]`（ADR 0005）
+### `ccp chatgpt use <名字>`（ADR 0005）
 
-切换逻辑只在这里实现一份，App 点击 ChatGPT 档案时在后台执行它（总是带 `--restart` 或 `--no-restart`，以及 `--restart-status`），App 启动时执行 `ccp chatgpt use <当前档案> --no-restart` 恢复重启后丢失的 launchd 环境变量。
+切换逻辑只在这里实现一份，App 点击 ChatGPT 档案时在后台执行它，App 启动时执行 `ccp chatgpt use <当前档案>` 恢复重启后丢失的 launchd 环境变量。
 
 1. 名字检查与 `ccp use` 相同；不通过时什么都不改，退出码 1（参数错误 2）。
 2. 写 `~/.codex-profiles/active`（格式、原子写入与 `ccp use` 相同）。
 3. `launchctl setenv CODEX_HOME <档案目录>`；`default` 时 `launchctl unsetenv CODEX_HOME`。之后经 LaunchServices 打开的 App（Dock、Spotlight、`open`、Zed 等）使用新档案。失败时退出码 1。
-4. ChatGPT 桌面 App（`com.openai.codex`）正在运行时询问"重启 ChatGPT？[y/N]"（只认 `y`/`yes`，读不到算否；`--restart`/`--no-restart` 不询问）。重启：`osascript -e 'tell application id "com.openai.codex" to quit'`，每 0.2 秒查一次是否还在运行（`… is running`，不需要自动化授权），最多等 `CCP_CHATGPT_QUIT_TIMEOUT` 秒（默认 15），退出后 `open -b com.openai.codex`。
-   - 退出被拒（macOS 自动化授权，`(-1743)`）、超时、重新打开失败：档案照样已经切换，在 stderr 说明怎么手动完成（附可复制的 `ccp chatgpt use <名字> --restart`），退出码仍是 0。
-   - 只给 App 用的 `--restart-status`：要求了重启却没能重启（上面三种情况）时改以退出码 3 结束，说明照样写 stderr；重启成功、桌面 App 没在运行、不重启时仍是 0。App 按退出码 3 判断没有重启、提示用户，不看 stderr 是否为空。
-   - 桌面 App 在 `CODEX_HOME/packages/` 下的 `codex app-server` 守护进程退出后仍在运行；重启时是否一并停止旧档案的守护进程待真机实测，目前不停止。
+4. ChatGPT 桌面 App（`com.openai.codex`）正在运行时（`osascript -e 'application id "com.openai.codex" is running'`，不需要自动化授权）只在 stdout 提示"你自己退出并重新打开它之后，它才会使用新档案"。只做切换，不退出、不重新打开桌面 App，退出码 0。
 
 ### `ccp chatgpt rm <名字>`
 
