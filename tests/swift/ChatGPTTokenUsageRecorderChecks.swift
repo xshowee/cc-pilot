@@ -19,6 +19,10 @@ final class ChatGPTTokenUsageRecorderChecks: CheckSuite {
                   claudeSyncRetriesChatGPTAttribution),
             Check("一次扫描（归属 + 实时额度）只列一次进程、只查一次打开的文件；没有待归属会话、没有额度时不列",
                   listsProcessesOncePerScan),
+            Check("重启后按账本补回各账号最近的一份额度：写入进程已退出也行，用事件自己的时间，不列进程",
+                  restoresQuotaAfterRestart),
+            Check("补回额度只取最近一条已归属用量之后、同一会话下一条用量之前的；会话转到别的账号后各补各的；没归属的不补",
+                  restoreStopsAtNextUsage),
         ]
     }
 
@@ -243,5 +247,84 @@ final class ChatGPTTokenUsageRecorderChecks: CheckSuite {
         try appendLimited(3, used: 30)
         try expect(waitUntil { (try? recorder.read { try $0.messages().count }) == 3 },
                    "写入失败的那一批没有重读：\((try? recorder.read { try $0.messages().count }) ?? -1) 条")
+    }
+
+    /// 第一次启动：work 档案的进程写着会话，一次用量（第 1 分钟）、一份只带额度的事件（第 2 分钟，已用 40%）；
+    /// 读入并归属后停止、进程退出。返回之后用的时钟
+    static func recordWithWriterThenExit(_ env: A.Env) throws -> Box<Date> {
+        let process = env.home.codexProcesses.run(pid: 42, home: .path(env.codexHome), files: [env.lock(A.session)])
+        try env.home.write(CodexRollout.path(A.session), CodexRollout.file([
+            CodexRollout.meta(id: A.session, at: A.iso(A.start)),
+            CodexRollout.turnContext(model: "gpt-5.3-codex", at: A.iso(A.start)),
+            env.tokenCount(1),
+            CodexRollout.tokenCount(at: A.iso(A.at(2)), last: nil,
+                                    primary: .init(used: 40, minutes: 300, resetsAt: 1_793_800_000)),
+        ]))
+        let now = Box(A.at(5))
+        do {
+            let recorder = makeRecorder(env, now: now)
+            recorder.start()
+            defer { recorder.stop() }
+            try expect(waitUntil { (try? recorder.read { try $0.messages().map(\.attribution) }) == [A.work()] },
+                       "第一次启动 5 秒内没有读入并归属")
+        }
+        env.home.codexProcesses.exit(process)
+        return now
+    }
+
+    static func restoresQuotaAfterRestart() throws {
+        let env = try A.Env()
+        defer { env.remove() }
+        let now = try recordWithWriterThenExit(env)
+        let listed = env.home.codexProcesses.listCalls
+
+        let quotas = Box<[UsageAccount: LiveQuota]>([:])
+        let recorder = makeRecorder(env, now: now, quotas: quotas)
+        recorder.start()
+        defer { recorder.stop() }
+        let work = UsageAccount(id: A.workAccount)
+        try expect(waitUntil { quotas.value[work] != nil }, "重启后 5 秒内没有补回额度")
+        try expectEqual(quotas.value[work]?.fiveHour?.utilization, 40)
+        try expectEqual(quotas.value[work]?.receivedAt, A.at(2), "用事件自己的时间（旧数据照常变灰）")
+        try expectEqual(quotas.value[work]?.profile, "work")
+        Thread.sleep(forTimeInterval: 0.3)
+        _ = try recorder.read { _ in }
+        try expectEqual(env.home.codexProcesses.listCalls, listed, "补回额度不列进程")
+    }
+
+    static func restoreStopsAtNextUsage() throws {
+        let env = try A.Env()
+        defer { env.remove() }
+        let now = try recordWithWriterThenExit(env)
+        // App 没开时：会话在默认档案（user-d）里续用（history.jsonl 比记着的观察结果新），又用了一次，
+        // 之后一份已用 70% 的额度——它属于默认档案的账号，不属于 work 的
+        now.value = A.at(7)
+        try env.history(nil, A.session, at: 6)
+        let handle = try FileHandle(forWritingTo: env.home.url.appendingPathComponent(CodexRollout.path(A.session)))
+        try handle.seekToEnd()
+        try handle.write(contentsOf: Data(CodexRollout.file([
+            env.tokenCount(3),
+            CodexRollout.tokenCount(at: A.iso(A.at(4)), last: nil,
+                                    primary: .init(used: 70, minutes: 300, resetsAt: 1_793_800_000)),
+        ]).utf8))
+        try handle.close()
+        // 没有写入者、也没有其他证据的会话：带额度，但不归任何账号
+        try env.home.write(CodexRollout.path(A.other), CodexRollout.file([
+            CodexRollout.meta(id: A.other, at: A.iso(A.start), creatorUserID: nil),
+            CodexRollout.tokenCount(at: A.iso(A.at(3)), last: .init(input: 5, output: 1),
+                                    primary: .init(used: 90, minutes: 300, resetsAt: 1_793_800_000)),
+        ]))
+
+        let quotas = Box<[UsageAccount: LiveQuota]>([:])
+        let recorder = makeRecorder(env, now: now, quotas: quotas)
+        recorder.start()
+        defer { recorder.stop() }
+        let work = UsageAccount(id: A.workAccount)
+        try expect(waitUntil { quotas.value[work] != nil }, "重启后 5 秒内没有补回额度")
+        let byDefault = UsageAccount(id: A.defaultAccount)
+        try expect(waitUntil { quotas.value[byDefault] != nil }, "续用的账号没有补回额度")
+        try expectEqual(quotas.value[work]?.fiveHour?.utilization, 40, "下一条用量之后的额度不算 work 的")
+        try expectEqual(quotas.value[byDefault]?.fiveHour?.utilization, 70)
+        try expectEqual(Set(quotas.value.keys), [work, byDefault], "没归属的会话不补额度")
     }
 }

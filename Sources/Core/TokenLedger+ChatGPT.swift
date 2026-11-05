@@ -154,3 +154,36 @@ extension TokenLedger {
             """, [.text(sessionID), .text(profile), .real(time.timeIntervalSince1970)])
     }
 }
+
+// MARK: - 启动时补回实时额度（ChatGPTLiveQuotaTracker.restore 用）
+
+/// 一个账号在账本里最近的一条已归属的 ChatGPT 明细
+struct ChatGPTLatestAttributed: Equatable {
+    let account: UsageAccount
+    /// 归属到的档案
+    let profile: String
+    let sessionID: String
+    let timestamp: Date
+}
+
+extension TokenLedger {
+    /// 每个 ChatGPT 账号最近的一条已归属明细（还没汇总掉的）。归属沿用账本的结果（ChatGPTSessionAttribution），
+    /// 进程退出后也能用；待归属、未归属的不算
+    func latestAttributedChatGPTMessages() throws -> [ChatGPTLatestAttributed] {
+        // max(ts) 与同一行的其他列一起取（SQLite 的聚合裸列规则）
+        let statement = try db.prepare("""
+            SELECT account, profile, session_id, max(ts) FROM messages
+            WHERE tool = '\(Tool.chatgpt.rawValue)' AND attribution = \(Self.attributedState)
+            GROUP BY account
+            """)
+        var result: [ChatGPTLatestAttributed] = []
+        while try statement.step() {
+            guard let account = statement.text(0), let profile = statement.text(1),
+                  let session = statement.text(2) else { continue }
+            result.append(ChatGPTLatestAttributed(account: UsageAccount(id: account), profile: profile,
+                                                  sessionID: session,
+                                                  timestamp: Date(timeIntervalSince1970: statement.double(3))))
+        }
+        return result.sorted { $0.account.id < $1.account.id }
+    }
+}

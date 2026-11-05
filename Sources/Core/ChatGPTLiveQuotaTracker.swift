@@ -15,6 +15,13 @@
 // 账号在归属时确定并记住：档案之后换了登录，运行中的进程仍在用旧账号的令牌，它写下的额度仍属于旧账号。
 // 会话改由别的档案的进程写（共享会话被 resume）时重新确定。档案当时没有账号时不记住（auth.json 可能正写到一半，
 // 或会话开始后才登录），之后每批事件重读，读到账号时再确定（同一批里每个档案只读一次）。
+//
+// 启动时补回（restore）：App 重启后读取位置从账本接着往下，旧事件不再读入，进行中的会话也要等下一次事件，
+// 所以面板一开始没有 ChatGPT 额度。restore 按账本里每个账号最近的一条已归属明细（归属沿用账本的结果，
+// 进程退出后也能用）找到那个会话，重读它的会话记录，取其中最后一份额度：
+// 只取这条明细及之后、同一会话下一条用量事件之前的（之前的可能属于续用前的账号，之后的用量没归属到这个账号）；
+// 重放的不算。时间用事件自己的，旧数据照常按 30 分钟变灰。只读本地文件，不发请求，不列进程。
+// 还没归属的会话（例如过了等待期才按创建者归属的桌面 App 会话）补不回来，等它写下一次事件。
 // 只在一个线程 / 串行队列上使用。
 
 import Foundation
@@ -46,6 +53,31 @@ final class ChatGPTLiveQuotaTracker {
                                         fiveHour: limits.fiveHour, sevenDay: limits.sevenDay)
         }
         return latest
+    }
+
+    /// 启动时补回各账号最近的一份额度（见文件头"启动时补回"）。
+    /// - latest: 账本里每个账号最近的一条已归属明细（TokenLedger.latestAttributedChatGPTMessages）
+    /// - cursors: 账本记着的读取位置，用其中的会话 ID 找到会话记录文件（TokenLedger.chatgptCursors）
+    static func restore(_ latest: [ChatGPTLatestAttributed],
+                        cursors: [String: CodexFileCursor]) -> [UsageAccount: LiveQuota] {
+        var restored: [UsageAccount: LiveQuota] = [:]
+        for entry in latest {
+            let paths = cursors.filter { $0.value.sessionID == entry.sessionID }.keys.sorted()
+            let events = paths.flatMap { path in
+                ((try? CodexSessionReader.read(path, after: nil)) ?? nil)?.events ?? []
+            }.filter { $0.sessionID == entry.sessionID && !$0.replayed }
+            // 这条明细之后同一会话的下一条用量：之后的事件不一定属于这个账号
+            let cutoff = events.filter { $0.usage != nil && $0.timestamp > entry.timestamp }.map(\.timestamp).min()
+            let candidates = events.filter { event in
+                event.rateLimits != nil && event.timestamp >= entry.timestamp
+                    && cutoff.map { event.timestamp < $0 } ?? true
+            }
+            guard let last = candidates.max(by: { $0.timestamp < $1.timestamp }),
+                  let limits = last.rateLimits else { continue }
+            restored[entry.account] = LiveQuota(profile: entry.profile, receivedAt: last.timestamp,
+                                                fiveHour: limits.fiveHour, sevenDay: limits.sevenDay)
+        }
+        return restored
     }
 
     /// 会话所属的账号：同一档案沿用归属时确定的账号，换了档案或还没确定时读档案此刻的账号

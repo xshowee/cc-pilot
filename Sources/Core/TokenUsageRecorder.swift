@@ -18,7 +18,8 @@
 // （CodexSessionMonitor，ticket 08）也由它带着，跑在同一个队列上。每次扫描依次：记入账本（事件、session_meta、
 // 读取位置同一事务，见 TokenLedger+ChatGPT.swift）→ 归属钩子 → 汇总 → 有变化时 onUpdate → 同一批事件交给
 // 实时额度（ChatGPTLiveQuotaTracker），各账号的实时额度交给 onChatGPTLiveQuota。监视器每次扫描都从账本记着的
-// 位置接着读：App 重启后不重读历史会话记录（进行中的会话要等它写下一次事件才有实时额度）；记入账本失败时
+// 位置接着读：App 重启后不重读历史会话记录，启动后第一次扫描归属完之后，按账本补回各账号最近的一份额度
+// （ChatGPTLiveQuotaTracker.restore，只做一次，只重读每个账号最近的那个会话）；记入账本失败时
 // 位置不前进，下次扫描（不管哪个目录有变化，同 Claude 一侧的 needsFullScan）全量重读，这一批所在的会话已经结束、
 // 目录不再变化也能补上（实时额度重复并入不改变结果）。
 // 默认的归属钩子先归属 Claude 的（SessionAttribution）、再归属 ChatGPT 的（ChatGPTSessionAttribution），
@@ -62,6 +63,8 @@ final class TokenUsageRecorder: @unchecked Sendable {
     private var stream: FSEventStreamRef?
     /// 上次汇总时的本地日期
     private var rolledUpDay: DateComponents?
+    /// 启动后已按账本补回过 ChatGPT 的实时额度（每次启动只做一次）
+    private var restoredChatGPTQuota = false
     /// 上次同步没做成（账本打不开、读入出错）：下次不管哪里有变化都全量扫描，没读完的文件不必等它所在的项目再变
     private var needsFullScan = false
 
@@ -241,10 +244,21 @@ final class TokenUsageRecorder: @unchecked Sendable {
             try? attribute(ledger)
             rollUpIfNewDay(ledger)
             if ledger.revision != revision { onUpdate() }
+            restoreChatGPTQuota(ledger)
         } else {
             chatgptSessions?.requestFullScan()
         }
         let quotas = chatgptLiveQuota.update(with: scan.events)
+        if !quotas.isEmpty { onChatGPTLiveQuota(quotas) }
+    }
+
+    /// 启动后第一次扫描归属完之后补回各账号最近的一份额度；查不了账本时下次扫描再试
+    private func restoreChatGPTQuota(_ ledger: TokenLedger) {
+        guard !restoredChatGPTQuota,
+              let latest = try? ledger.latestAttributedChatGPTMessages(),
+              let cursors = try? ledger.chatgptCursors() else { return }
+        restoredChatGPTQuota = true
+        let quotas = ChatGPTLiveQuotaTracker.restore(latest, cursors: cursors)
         if !quotas.isEmpty { onChatGPTLiveQuota(quotas) }
     }
 
