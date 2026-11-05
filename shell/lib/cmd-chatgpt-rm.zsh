@@ -18,7 +18,8 @@
 #   3. 询问一次 [y/N]（有守护进程时在同一个问题里说明会先停止它）；y / yes 才继续。
 #      询问不限时，确认后重新列一次进程：ps 失败、有了在用的进程、出现询问时没提到的守护进程都拒绝；
 #      只停止询问时列出、现在仍是本档案守护进程的 PID（PID 可能已被不相干的进程重用）。
-#   4. 停止守护进程：kill -TERM，每 0.2 秒看一次，最多等 CCP_CHATGPT_DAEMON_TIMEOUT 秒（默认 10）；
+#   4. 停止守护进程：kill -TERM，每 0.2 秒看一次，最多等 CCP_CHATGPT_DAEMON_TIMEOUT 秒（默认 30。真机上刚服务完会话的守护进程
+#      要先收尾，SIGTERM 后约 16 秒才退出；空闲的约 1 秒）；
 #      还在运行就不登出、不删除（不强制结束）。
 #   5. CODEX_HOME=<目录> command codex logout（由 codex 自己撤销凭据；不经过包装函数，也不看 CODEX_PROFILE）。
 #   6. <目录>/auth.json 仍存在（登出失败）时不删除；否则 rm -rf <目录>：rm 不跟随软链接，共享项只删链接本身，
@@ -108,9 +109,9 @@ _ccp_cmd_chatgpt_rm() {
   fi
 
   if (( ${#daemons} )); then
-    print -r -- "正在停止守护进程……"
+    print -r -- "正在停止守护进程（刚用过时可能要十几秒）……"
     if ! _ccp_chatgpt_stop_processes $daemons; then
-      print -u2 -r -- "ccp chatgpt rm: 档案 \"$name\" 的 ChatGPT 守护进程（PID ${(j:, :)reply}）在 ${CCP_CHATGPT_DAEMON_TIMEOUT:-10} 秒内没有退出，没有登出，也没有删除。"
+      print -u2 -r -- "ccp chatgpt rm: 档案 \"$name\" 的 ChatGPT 守护进程（PID ${(j:, :)reply}）在 ${CCP_CHATGPT_DAEMON_TIMEOUT:-30} 秒内没有退出，没有登出，也没有删除。"
       print -u2 -r -- "  请退出 ChatGPT 或结束这些进程后重新执行 \`ccp chatgpt rm $name\`。"
       return 1
     fi
@@ -185,11 +186,11 @@ _ccp_chatgpt_profile_processes() {
   return 0
 }
 
-# 正常停止进程（参数：PID…）：发 TERM，每 0.2 秒检查一次，最多等 CCP_CHATGPT_DAEMON_TIMEOUT 秒（默认 10）。
+# 正常停止进程（参数：PID…）：发 TERM，每 0.2 秒检查一次，最多等 CCP_CHATGPT_DAEMON_TIMEOUT 秒（默认 30）。
 # 全部退出返回 0；否则把还在运行的 PID 放进 reply，返回 1。不发 KILL。
 _ccp_chatgpt_stop_processes() {
   emulate -L zsh
-  local pid timeout=${CCP_CHATGPT_DAEMON_TIMEOUT:-10}
+  local pid timeout=${CCP_CHATGPT_DAEMON_TIMEOUT:-30}
   [[ $timeout == <-> ]] || timeout=10
   local -i tries=$(( timeout * 5 ))
   kill -TERM "$@" 2>/dev/null
