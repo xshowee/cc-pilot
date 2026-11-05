@@ -26,7 +26,7 @@ cc-pilot 让每个账号各自独立：
 通过 `codex` 命令行和 ChatGPT 桌面 App 使用的 ChatGPT 账号，cc-pilot 用同样的方式管理。Claude Code 和 ChatGPT 的账号互相独立：两边各有自己的当前账号，也可以有同名的账号。
 
 - **每个 ChatGPT 账号是一个独立的 `CODEX_HOME` 目录**，有自己的登录状态。你现在的 `~/.codex` 就是名为 `default` 的 ChatGPT 账号，原样保留；其他账号在 `~/.codex-profiles/<名字>/`。
-- **切换也作用于 App**。执行 `ccp chatgpt use work` 之后，新启动的 `codex` 会话使用 work，之后从 Dock、Spotlight 或 `open` 打开的 App（ChatGPT 桌面 App、Zed 等）也使用 work：cc-pilot 在 launchd 的环境里设置了 `CODEX_HOME`。ChatGPT 桌面 App 正在运行时，cc-pilot 先询问，再退出并重新打开它。已经在运行的会话继续使用原来的账号。
+- **切换也作用于 App**。执行 `ccp chatgpt use work` 之后，新启动的 `codex` 会话使用 work，之后从 Dock、Spotlight 或 `open` 打开的 App（ChatGPT 桌面 App、Zed 等）也使用 work：cc-pilot 在 launchd 的环境里设置了 `CODEX_HOME`。正在运行的 ChatGPT 桌面 App 不会被退出或重新打开：它继续使用原来的账号，你自己退出并重新打开后才使用新账号。已经在运行的会话继续使用原来的账号。
 - **单个终端临时用别的账号**：`CODEX_PROFILE=work codex`，不改变 ChatGPT 的当前账号。
 - **工作环境共用**。会话历史、`AGENTS.md`、技能、插件和规则由所有 ChatGPT 账号共用，在一个账号里开始的本地会话可以在另一个账号里继续；登录、设置（`config.toml`）、输入历史和桌面 App 自己的状态每个账号各有一份。
 
