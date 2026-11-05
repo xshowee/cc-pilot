@@ -142,7 +142,8 @@ final class ChatGPTTokenUsageRecorderChecks: CheckSuite {
     static func claudeSyncRetriesChatGPTAttribution() throws {
         let env = try A.Env()
         defer { env.remove() }
-        try env.rollout(A.session, events: [1])
+        // 创建者不是任何档案的账号：过了等待期记为未归属
+        try env.rollout(A.session, creator: "user-x", events: [1])
         let now = Box(A.at(5))
         let recorder = makeRecorder(env, now: now)
         recorder.start()

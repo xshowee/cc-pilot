@@ -109,12 +109,13 @@ extension TokenCounts {
 
 /// 账本里记着的一个 ChatGPT 会话
 struct ChatGPTSessionRecord {
-    /// session_meta 的 creator_user_id（只用于校验，见 ChatGPTSessionAttribution）
+    /// session_meta 的 creator_user_id：①② 都没有证据时按它归属（见 ChatGPTSessionAttribution ③）
     var creatorUserID: String?
     /// 子代理会话的父线程
     var parentSessionID: String?
-    /// 观察到的写入档案（写它的进程的 CODEX_HOME）与观察时刻；没观察到过时为 nil
-    var observed: (profile: String, at: Date)?
+    /// 观察到的写入档案（写它的进程的 CODEX_HOME）与观察时刻；没观察到过时为 nil。
+    /// profile 为 nil 表示写入进程的 CODEX_HOME 是 cc-pilot 管理范围以外的目录
+    var observed: (profile: String?, at: Date)?
 }
 
 extension TokenLedger {
@@ -126,14 +127,27 @@ extension TokenLedger {
         try statement.bind([.text(sessionID)])
         guard try statement.step() else { return nil }
         var record = ChatGPTSessionRecord(creatorUserID: statement.text(0), parentSessionID: statement.text(1))
-        if let profile = statement.text(2) {
-            record.observed = (profile, Date(timeIntervalSince1970: statement.double(3)))
+        // observed_at 只由 recordChatGPTWriter 写，与 profile 一起；profile 为空、observed_at 不为空是外部目录
+        if statement.text(3) != nil {
+            record.observed = (statement.text(2), Date(timeIntervalSince1970: statement.double(3)))
         }
         return record
     }
 
-    /// 记下观察到的写入档案（覆盖之前的）。不算账本变化（revision 不变）
-    func recordChatGPTWriter(sessionID: String, profile: String, at time: Date) throws {
+    /// 以前（还不按创建者归属时）记为未归属的明细是否已经按创建者重新看过一次（ChatGPTSessionAttribution）
+    func chatgptCreatorBackfillDone() throws -> Bool {
+        let statement = try db.prepare("SELECT 1 FROM meta WHERE key = 'chatgpt_creator_backfill'")
+        return try statement.step()
+    }
+
+    func markChatGPTCreatorBackfillDone(at time: Date) throws {
+        try db.run("INSERT OR IGNORE INTO meta (key, value) VALUES ('chatgpt_creator_backfill', ?1)",
+                   [.real(time.timeIntervalSince1970)])
+    }
+
+    /// 记下观察到的写入档案（覆盖之前的）；profile 为 nil 表示写入进程的 CODEX_HOME 是外部目录。
+    /// 不算账本变化（revision 不变）
+    func recordChatGPTWriter(sessionID: String, profile: String?, at time: Date) throws {
         try db.run("""
             INSERT INTO chatgpt_sessions (session_id, profile, observed_at) VALUES (?1, ?2, ?3)
             ON CONFLICT (session_id) DO UPDATE SET profile = excluded.profile, observed_at = excluded.observed_at

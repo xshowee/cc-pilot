@@ -35,7 +35,7 @@ struct CodexSessionMeta: Equatable, Codable {
     let id: String
     /// 工作区 ID：同一 Team 工作区的不同用户相同，不能用来区分账号
     var creatorAccountID: String?
-    /// 创建会话的用户（chatgpt_user_id）：只用于校验归属
+    /// 创建会话的用户（chatgpt_user_id）：写入进程与 history.jsonl 都没有证据时按它归属（ChatGPTSessionAttribution ③）
     var creatorUserID: String?
     /// 写会话的客户端，例如 codex_cli_rs、codex_vscode、桌面 App
     var originator: String?

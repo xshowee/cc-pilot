@@ -4,7 +4,9 @@
 // 结果从 TokenLedger.messages() 读。会话记录、history.jsonl、进程都是合成的（CodexRolloutFixtures、
 // FakeCodexProcesses），不涉及文件监听。期望值来自 spec "会话 → 档案归属顺序"：
 //   ① 写这个会话的进程的 CODEX_HOME；② 各档案 history.jsonl 的 session_id，取最新一行所在档案；
-//   ③ 都找不到时，会话 1 小时没有新事件后记为未归属。观察到的归属持久化。账号键 "chatgpt:<用户>:<工作区>"。
+//   ③ ①② 都没有证据时，会话 1 小时没有新事件后按 session_meta 的 creator_user_id 归到唯一对应的账号，
+//   对应不到或对应几个时记为未归属（spec Comments 2026-11-05 的决定）。观察到的归属持久化。
+//   账号键 "chatgpt:<用户>:<工作区>"。
 
 import Foundation
 
@@ -17,13 +19,24 @@ final class ChatGPTSessionAttributionChecks: CheckSuite {
             Check("② 找不到进程时按各档案的 history.jsonl，取最新一行所在的档案", attributesByNewestHistory),
             Check("记着的归属和 history.jsonl 哪个更新用哪个（App 没开时会话在别的档案里 resume）",
                   newerOfObservedAndHistoryWins),
-            Check("③ 都找不到：会话 1 小时没有新事件前先等着，之后记为未归属", unknownSessionBecomesUnattributed),
+            Check("③ 都找不到：会话 1 小时没有新事件前先等着，之后按创建者归到唯一对应的账号",
+                  attributesByCreatorAfterGrace),
+            Check("③ 创建者对应不到任何档案的账号：1 小时后记为未归属", unknownSessionBecomesUnattributed),
+            Check("③ 创建者对应几个账号（同一用户的不同工作区）：记为未归属", ambiguousCreatorIsUnattributed),
+            Check("③ 几个档案登录了创建者的同一个账号：归到这个账号，档案取列表里的第一个",
+                  creatorAccountInSeveralProfiles),
+            Check("有 ① 写入进程的证据时不看创建者，即使两者账号不同", writerBeatsCreator),
+            Check("有 ② history.jsonl 的证据时不看创建者，即使两者账号不同；档案没有账号时也不改看创建者",
+                  historyBeatsCreator),
+            Check("写入进程是外部目录的会话，进程退出后的事件也不按创建者归属", externalWriterBeatsCreatorLater),
+            Check("以前已经记为未归属的明细也按创建者重新归属（有 ①② 证据的不动）", reattributesOldUnattributed),
             Check("Claude 的归属器不碰 ChatGPT 的待归属会话，反之亦然", toolsDoNotTouchEachOther),
             Check("档案没有可用的账号时先等着，等待期内登录就归属，过了等待期记为未归属", waitsWhileAccountMissing),
             Check("写入进程的 CODEX_HOME 是外部目录：记为未归属", externalWriterIsUnattributed),
-            Check("共享会话在另一个档案里 resume：之前的仍算原账号，之后的算新档案的（creator_user_id 不改变归属）",
-                  resumedElsewhereMovesNewEvents),
+            Check("共享会话在另一个档案里 resume：之前的仍算原账号，之后的算新档案的"
+                  + "（有写入进程时不看 creator_user_id）", resumedElsewhereMovesNewEvents),
             Check("子代理会话随父线程的归属", subagentFollowsParent),
+            Check("③ 子代理会话自己没有创建者时，看父会话的创建者", subagentUsesParentCreator),
         ]
     }
 
@@ -62,7 +75,7 @@ final class ChatGPTSessionAttributionChecks: CheckSuite {
         func lock(_ id: String) -> String { home.url.path + "/.codex/thread-writer-locks/\(id).lock" }
 
         /// 写一份会话记录：首行 session_meta，之后每分钟数一次用量
-        func rollout(_ id: String, creator: String = "user-w", parent: String? = nil, events minutes: [Double],
+        func rollout(_ id: String, creator: String? = "user-w", parent: String? = nil, events minutes: [Double],
                      input: Int = 10) throws {
             var meta = CodexRollout.meta(id: id, at: iso(start), creatorUserID: creator)
             if let parent {
@@ -207,10 +220,25 @@ final class ChatGPTSessionAttributionChecks: CheckSuite {
 
     // MARK: - ③ 未归属
 
+    static func attributesByCreatorAfterGrace() throws {
+        let env = try Env()
+        defer { env.remove() }
+        // Zed（codex-acp）、桌面 App 的会话：CC Pilot 没在运行，没有写入进程的记录，也不写 history.jsonl
+        try env.rollout(session, creator: "user-w", events: [1, 2])
+        try env.ingest()
+        let attribution = env.attribution()
+        env.clock = at(2 + 59)
+        try attribution.attribute(env.ledger)
+        try expectEqual(try env.attributions(), [.pending, .pending], "最新事件之后不到 1 小时")
+        env.clock = at(2 + 61)
+        try attribution.attribute(env.ledger)
+        try expectEqual(try env.attributions(), [work(), work()])
+    }
+
     static func unknownSessionBecomesUnattributed() throws {
         let env = try Env()
         defer { env.remove() }
-        try env.rollout(session, events: [1, 2])
+        try env.rollout(session, creator: "user-x", events: [1, 2])
         try env.ingest()
         let attribution = env.attribution()
         env.clock = at(2 + 59)
@@ -222,10 +250,105 @@ final class ChatGPTSessionAttributionChecks: CheckSuite {
         try expectEqual(try env.ledger.cumulativeUsage(account: workAccount).usage.tokens, .zero)
     }
 
+    static func ambiguousCreatorIsUnattributed() throws {
+        let env = try Env()
+        defer { env.remove() }
+        // user-w 还在另一个工作区：creator_user_id 只有用户 ID，分不出是哪个工作区
+        try env.home.makeCodexProfile("team", auth: chatgptAuth(email: "w@example.com", userID: "user-w", workspaceID: "ws-2"))
+        try env.rollout(session, creator: "user-w", events: [1])
+        try env.ingest()
+        env.clock = at(62)
+        try env.attribution().attribute(env.ledger)
+        try expectEqual(try env.attributions(), [.unattributed])
+    }
+
+    static func creatorAccountInSeveralProfiles() throws {
+        let env = try Env()
+        defer { env.remove() }
+        // alpha 与 work 登录同一个账号（同一用户、同一工作区）：列表顺序是 default、alpha、work
+        try env.home.makeCodexProfile("alpha", auth: chatgptAuth(email: "w@example.com", userID: "user-w", workspaceID: "ws-1"))
+        try env.rollout(session, creator: "user-w", events: [1])
+        try env.ingest()
+        env.clock = at(62)
+        try env.attribution().attribute(env.ledger)
+        try expectEqual(try env.attributions(), [.attributed(profile: "alpha", account: workAccount)])
+    }
+
+    static func writerBeatsCreator() throws {
+        let env = try Env()
+        defer { env.remove() }
+        // user-w 创建的会话由默认档案（user-d）的进程在写
+        env.home.codexProcesses.run(pid: 50, home: .unset, files: [env.lock(session)])
+        try env.rollout(session, creator: "user-w", events: [1])
+        try env.ingest()
+        env.clock = at(62)
+        try env.attribution().attribute(env.ledger)
+        try expectEqual(try env.attributions(), [byDefault])
+    }
+
+    static func historyBeatsCreator() throws {
+        let env = try Env()
+        defer { env.remove() }
+        try env.history(nil, session, at: 0)
+        try env.rollout(session, creator: "user-w", events: [1])
+        try env.ingest()
+        env.clock = at(62)
+        try env.attribution().attribute(env.ledger)
+        try expectEqual(try env.attributions(), [byDefault])
+
+        // history.jsonl 说是 work 档案，它用 API key 登录、没有账号：仍记为未归属，不改按创建者（user-d）
+        let env2 = try Env()
+        defer { env2.remove() }
+        try env2.home.writeJSON(".codex-profiles/work/auth.json", apiKeyAuth())
+        try env2.history("work", session, at: 0)
+        try env2.rollout(session, creator: "user-d", events: [1])
+        try env2.ingest()
+        env2.clock = at(62)
+        try env2.attribution().attribute(env2.ledger)
+        try expectEqual(try env2.attributions(), [.unattributed])
+    }
+
+    static func externalWriterBeatsCreatorLater() throws {
+        let env = try Env()
+        defer { env.remove() }
+        let process = env.home.codexProcesses.run(pid: 42, home: .path("/opt/elsewhere/codex"), files: [env.lock(session)])
+        try env.rollout(session, creator: "user-w", events: [1])
+        try env.ingest()
+        let attribution = env.attribution()
+        try attribution.attribute(env.ledger)
+        try expectEqual(try env.attributions(), [.unattributed])
+        // 外部进程退出后又写了一些（CC Pilot 没看到是谁写的），重启后过了等待期
+        env.home.codexProcesses.exit(process)
+        try env.appendEvents(session, [3])
+        env.ledger = try TokenLedger(at: TokenLedger.defaultURL(environment: env.home.environment))
+        try env.ingest()
+        env.clock = at(70)
+        try env.attribution().attribute(env.ledger)
+        try expectEqual(try env.attributions(), [.unattributed, .unattributed])
+    }
+
+    static func reattributesOldUnattributed() throws {
+        let env = try Env()
+        defer { env.remove() }
+        // 以前的版本不看创建者：没有证据的会话过了等待期记为未归属；
+        // other 在 work 档案里写（history.jsonl），那时 work 用 API key 登录、没有账号，也记为未归属
+        try env.rollout(session, creator: "user-w", events: [1, 2])
+        try env.rollout(other, creator: "user-d", events: [1])
+        try env.history("work", other, at: 0)
+        try env.ingest()
+        try env.ledger.attribute(sessionID: session, as: .unattributed, tool: .chatgpt)
+        try env.ledger.attribute(sessionID: other, as: .unattributed, tool: .chatgpt)
+        env.clock = at(200)
+        try env.attribution().attribute(env.ledger)
+        let messages = try env.ledger.messages()
+        try expectEqual(messages.filter { $0.sessionID == session }.map(\.attribution), [work(), work()])
+        try expectEqual(messages.filter { $0.sessionID == other }.map(\.attribution), [.unattributed])
+    }
+
     static func toolsDoNotTouchEachOther() throws {
         let env = try Env()
         defer { env.remove() }
-        try env.rollout(session, events: [1])
+        try env.rollout(session, creator: nil, events: [1])
         try env.ingest()
         try env.home.write(".claude/projects/p/s-claude.jsonl", TranscriptFixture.file([
             TranscriptFixture.assistant(id: "msg_c", session: "s-claude", at: iso(at(1)), output: 3),
@@ -314,6 +437,18 @@ final class ChatGPTSessionAttributionChecks: CheckSuite {
         try env.rollout(session, events: [1])
         try env.rollout(child, parent: session, events: [2])
         try env.ingest()
+        try env.attribution().attribute(env.ledger)
+        let messages = try env.ledger.messages()
+        try expectEqual(messages.filter { $0.sessionID == child }.map(\.attribution), [work()])
+    }
+
+    static func subagentUsesParentCreator() throws {
+        let env = try Env()
+        defer { env.remove() }
+        try env.rollout(session, creator: "user-w", events: [1])
+        try env.rollout(child, creator: nil, parent: session, events: [2])
+        try env.ingest()
+        env.clock = at(63)
         try env.attribution().attribute(env.ledger)
         let messages = try env.ledger.messages()
         try expectEqual(messages.filter { $0.sessionID == child }.map(\.attribution), [work()])

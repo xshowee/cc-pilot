@@ -12,13 +12,16 @@
 //             这些旧消息的明细已经删掉了，靠它防止再记一次。只记两个保留期：更早的忘掉，
 //             忘掉的分界记在 meta 的 forgotten_before，读入时早于它的行一律跳过（它们所在的日子早已汇总，
 //             能出现只可能是 resume 链一路带下来的旧消息），这样表不会无限增长，也不会重记。
-//   meta      键值：forgotten_before（见上）；origin_all（"清空全部账号"的时刻，见下）。
+//   meta      键值：forgotten_before（见上）；origin_all（"清空全部账号"的时刻，见下）；
+//             chatgpt_creator_backfill（已按创建者重新看过以前记为未归属的 ChatGPT 明细的时刻，
+//             见 ChatGPTSessionAttribution）。
 //   origins   每个账号的起算点（ticket 03）：清空这个账号时的时刻；account 为空串表示未归属。
 //   files     每份会话记录读到的位置（字节偏移）和 inode。与明细在同一个事务里写入，
 //             中途退出也不会重复计入或漏记。只放 Claude 的（读入时会忘掉不在 projects/ 下的位置）。
 //   chatgpt_files     ChatGPT 会话记录的读取位置（CodexFileCursor 的 JSON），同样与明细同事务写入（v5）。
 //   chatgpt_sessions  ChatGPT 会话：session_meta 里的 creator_user_id、子代理的父线程（只在读首行那次读到），
-//             以及观察到的写入档案和观察时刻（v5，见 ChatGPTSessionAttribution）。
+//             以及观察到的写入档案和观察时刻（v5，见 ChatGPTSessionAttribution；档案为空、观察时刻不为空
+//             表示写入进程的 CODEX_HOME 是外部目录）。
 //
 // 读取规则：
 //   - 会话记录是 projects/<项目>/<会话>.jsonl 和 projects/<项目>/<父会话>/subagents/*.jsonl。
@@ -340,11 +343,20 @@ final class TokenLedger {
     /// 附带其中最新一条待归属明细的时间。两个工具的归属器各管各的：Claude 的归属器找不到 ChatGPT 的会话，
     /// 不能把它们记成未归属
     func pendingSessions(tool: Tool) throws -> [(sessionID: String, latest: Date)] {
+        try sessions(in: Self.pendingState, tool: tool)
+    }
+
+    /// 一个工具有未归属明细的会话，表示方式同 pendingSessions
+    func unattributedSessions(tool: Tool) throws -> [(sessionID: String, latest: Date)] {
+        try sessions(in: Self.unattributedState, tool: tool)
+    }
+
+    private func sessions(in state: Int, tool: Tool) throws -> [(sessionID: String, latest: Date)] {
         let statement = try db.prepare("""
             SELECT coalesce(parent_session_id, session_id), max(ts) FROM messages WHERE attribution = ?1 AND tool = ?2
             GROUP BY 1
             """)
-        try statement.bind([.int(Self.pendingState), .text(tool.rawValue)])
+        try statement.bind([.int(state), .text(tool.rawValue)])
         var sessions: [(sessionID: String, latest: Date)] = []
         while try statement.step() {
             sessions.append((statement.text(0) ?? "", Date(timeIntervalSince1970: statement.double(1))))
@@ -353,8 +365,15 @@ final class TokenLedger {
     }
 
     /// 给一个工具的一个会话（含它的子代理）的待归属明细定下归属。已经归属过的明细不改：档案之后换登录，
-    /// 旧记录仍算原账号。
-    func attribute(sessionID: String, as attribution: LedgerAttribution, tool: Tool = .claudeCode) throws {
+    /// 旧记录仍算原账号。replacing 为 .unattributed 时改的是未归属的明细（ChatGPT 按创建者重新归属）。
+    func attribute(sessionID: String, as attribution: LedgerAttribution, tool: Tool = .claudeCode,
+                   replacing previous: LedgerAttribution = .pending) throws {
+        let from: Int
+        switch previous {
+        case .pending: from = Self.pendingState
+        case .unattributed: from = Self.unattributedState
+        case .attributed: return
+        }
         let values: [SQLiteValue]
         switch attribution {
         case .pending: return
@@ -366,7 +385,7 @@ final class TokenLedger {
         try db.run("""
             UPDATE messages SET attribution = ?1, profile = ?2, account = ?3
             WHERE attribution = ?4 AND coalesce(parent_session_id, session_id) = ?5 AND tool = ?6
-            """, values + [.int(Self.pendingState), .text(sessionID), .text(tool.rawValue)])
+            """, values + [.int(from), .text(sessionID), .text(tool.rawValue)])
         if db.changes > 0 { revision += 1 }
     }
 
