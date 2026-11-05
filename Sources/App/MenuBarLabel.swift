@@ -1,5 +1,6 @@
 // 菜单栏上显示的内容（显示哪些工具由 Core 的 MenuBarContent 决定）：
-// - 只显示一个工具：两行（第一行见 MenuBarSummary.titleLine：Claude 订阅等级 / ChatGPT 套餐，不知道时是档案名；额度）；
+// - 只显示一个工具：左侧是这个工具的图标，右侧两行（第一行见 MenuBarSummary.titleLine：Claude 订阅等级 / ChatGPT 套餐，
+//   不知道时是档案名；额度）；
 // - 两个工具都显示（chatgpt-profiles ticket 11）：每行一个工具，`[图标] N%`；
 // - 打开"只显示图标"后只显示图标。
 // 悬停提示和读屏说出当前档案名（两个工具时两个都说）。
@@ -33,7 +34,8 @@ struct MenuBarLabel: View {
         let resetText = String(localized: "Reset")
         switch content {
         case .single(let summary):
-            return MenuBarImage.image(top: summary.titleLine(tierName: AccountText.tierName,
+            return MenuBarImage.image(tool: summary.tool,
+                                      top: summary.titleLine(tierName: AccountText.tierName,
                                                              planName: ChatGPTAccountText.planName),
                                       bottom: summary.quotaLine(resetText: resetText),
                                       bottomColor: summary.quotaTint.nsColor)

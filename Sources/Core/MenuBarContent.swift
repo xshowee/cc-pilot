@@ -1,7 +1,7 @@
 // 菜单栏显示什么（chatgpt-profiles ticket 11，spec "菜单栏"）：
 // - 两个工具都显示：每行一个工具，`[图标] <5 小时剩余>%`（Claude Code 在上、ChatGPT 在下），不显示套餐名；
 //   每行的文字、颜色、"—"、"已重置"、变灰同原来的额度一行（UsageReading.menuBarText / menuBarTint）。
-// - 只显示一个工具：保持原来的"套餐 / 5 小时剩余"两行（MenuBarSummary）。
+// - 只显示一个工具："套餐 / 5 小时剩余"两行（MenuBarSummary），左侧加这个工具的图标（界面 MenuBarImage 画）。
 // 一个工具显示 ⇔ 设置里没有隐藏它，且它有默认档案。Claude Code 一段总是存在（面板也总是显示它）；
 // ChatGPT 没有默认档案 ~/.codex 时档案列表为空（ChatGPTProfileStore.listProfiles），不显示。
 // 两个工具都不显示（都被隐藏，或隐藏了 Claude Code 而没有 ChatGPT 默认档案）时显示 Claude Code，不让菜单栏变空；

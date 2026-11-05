@@ -3,6 +3,9 @@
 // 画成 22pt 高的模板图（isTemplate），由系统按菜单栏的明暗着色。
 // 额度一行需要着色时（ticket 12）不能用模板图：档案名用 labelColor（绘制时按菜单栏明暗取色），
 // 额度用传入的颜色（过期灰也是动态色，同样在绘制时按菜单栏明暗取浅色/深色那个，ticket 26）。
+// 只显示一个工具时两行文字的左侧是这个工具的图标（ToolIcon 的 .menuBarSummary 规格，14pt，Claude 15pt），竖直方向对准两行文字的中线，
+// 一眼看出说的是 Claude Code 还是 ChatGPT（Pro、Team 等套餐名两边都有）；两行文字仍在图标右侧的区域里互相居中。
+// 着色规则同下面两个工具时：整张是模板图时画模板图，否则画 tinted(..., color: .labelColor)。找不到图标时只画文字。
 // "只显示图标"模式用的图标（icon）也放在这里。
 // 两个工具都显示时（chatgpt-profiles ticket 11）每行一个工具：行首是工具图标（ToolIcon 的 .menuBar 规格，10pt 原尺寸），
 // 后面是 5 小时剩余，两行各自着色（image(toolRows:)）。整张都不着色时是模板图，图标画模板图；
@@ -30,9 +33,9 @@ enum MenuBarImage {
     private static var cachedKey: [AnyHashable] = []
     private static var cachedImage: NSImage?
 
-    /// bottomColor 为 nil 时画成模板图（不着色）
-    static func image(top: String, bottom: String, bottomColor: NSColor? = nil) -> NSImage {
-        let key: [AnyHashable] = ["summary", top, bottom, bottomColor]
+    /// 两行文字左侧画 tool 的图标。bottomColor 为 nil 时画成模板图（不着色）
+    static func image(tool: Tool, top: String, bottom: String, bottomColor: NSColor? = nil) -> NSImage {
+        let key: [AnyHashable] = ["summary", tool, top, bottom, bottomColor]
         if key == cachedKey, let cachedImage { return cachedImage }
 
         let fonts = [NSFont.systemFont(ofSize: 10.5, weight: .medium),
@@ -41,12 +44,25 @@ enum MenuBarImage {
         let lines = zip([top, bottom], zip(fonts, colors)).map { value, style in
             truncated(value, font: style.0, color: style.1, maxWidth: maxWidth)
         }
-        let width = ceil(lines.map { $0.size().width }.max() ?? 0) + 4
+        // 字符串绘制自带基线留白，偏移一下让两行可见部分都落在 22pt 的状态栏里
+        let lineY: [CGFloat] = [10, -2]
+        let icon = bottomColor == nil ? ToolIcon.template(tool, .menuBarSummary)
+                                      : ToolIcon.tinted(tool, .menuBarSummary, color: .labelColor)
+        let iconSize = ToolIcon.size(tool, .menuBarSummary)
+        let iconWidth = icon == nil ? 0 : iconSize + 4
+        let textWidth = ceil(lines.map { $0.size().width }.max() ?? 0)
+        let width = ceil(iconWidth + textWidth) + 4
         let image = NSImage(size: NSSize(width: width, height: 22), flipped: false) { _ in
+            if let icon {
+                // 两行文字可见部分的中线：第二行的基线与第一行大写字母顶端之间
+                let bottomBaseline = lineY[1] - fonts[1].descender
+                let topCapLine = lineY[0] - fonts[0].descender + fonts[0].capHeight
+                let iconY = (((bottomBaseline + topCapLine) / 2 - iconSize / 2) * 2).rounded() / 2
+                icon.draw(in: NSRect(x: 2, y: min(max(iconY, 0), 22 - iconSize), width: iconSize, height: iconSize))
+            }
             for (index, line) in lines.enumerated() {
-                let x = ((width - line.size().width) * 2).rounded() / 4
-                // 字符串绘制自带基线留白，偏移一下让两行可见部分都落在 22pt 的状态栏里
-                line.draw(at: NSPoint(x: x, y: index == 0 ? 10 : -2))
+                let x = 2 + iconWidth + ((textWidth - line.size().width) * 2).rounded() / 4
+                line.draw(at: NSPoint(x: x, y: lineY[index]))
             }
             return true
         }
@@ -71,7 +87,7 @@ enum MenuBarImage {
         let isTemplate = rows.allSatisfy { $0.color == nil }
         let font = NSFont.monospacedDigitSystemFont(ofSize: 10.5, weight: .regular)
         let letterFont = NSFont.systemFont(ofSize: 10.5, weight: .medium)
-        let iconSize = ToolIcon.size(.menuBar)
+        let iconSize = rows.map { ToolIcon.size($0.tool, .menuBar) }.max() ?? 0
         let gap: CGFloat = 3
         let drawn: [(icon: NSImage?, text: NSAttributedString)] = rows.map { row in
             let icon = isTemplate ? ToolIcon.template(row.tool, .menuBar)

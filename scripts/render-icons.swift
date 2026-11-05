@@ -8,6 +8,8 @@
 //   ClaudeIcon.png、ChatGPTIcon.png 与 @2x   工具图标（chatgpt-profiles ticket 03），来自 claude.svg、chatgpt.svg：
 //     面板分割线用，12pt（12、24 像素）
 //   ClaudeMenuBarIcon.png、ChatGPTMenuBarIcon.png 与 @2x   同上，菜单栏行首用，10pt（10、20 像素）
+//   ClaudeMenuBarSummaryIcon.png、ChatGPTMenuBarSummaryIcon.png 与 @2x   同上，只显示一个工具时
+//     菜单栏两行文字的左侧用，ChatGPT 14pt（14、28 像素），Claude 15pt（15、30 像素）
 //     名字与边长须与 Core 的 Tool.iconResourceName、ToolIconResource.points 一致（tests/swift/AppIconChecks.swift 核对）。
 //     素材本身是灰色，出图时只保留形状（透明度）、涂成黑色，做成与 MenuBarIcon 一样的单色模板图。
 //
@@ -28,8 +30,12 @@ let iconset = output.appendingPathComponent("AppIcon.iconset", isDirectory: true
 
 /// 菜单栏模板图的边长（pt）
 let menuBarPoints = 18
-/// 工具图标：资源名后缀与边长（pt），同 Core 的 Tool.iconResourceName、ToolIconResource.points
-let toolIconSizes = [("Icon", 12), ("MenuBarIcon", 10)]
+/// 工具图标：资源名后缀与各工具的边长（pt），同 Core 的 Tool.iconResourceName、ToolIconResource.points
+let toolIconSizes: [(String, [String: Int])] = [
+    ("Icon", ["Claude": 12, "ChatGPT": 12]),
+    ("MenuBarIcon", ["Claude": 10, "ChatGPT": 10]),
+    ("MenuBarSummaryIcon", ["Claude": 15, "ChatGPT": 14]),
+]
 
 func fail(_ message: String) -> Never {
     FileHandle.standardError.write("render-icons: \(message)\n".data(using: .utf8)!)
@@ -84,7 +90,8 @@ writePNG(glyph, points: menuBarPoints, scale: 2, to: output.appendingPathCompone
 
 for (source, tool) in [("claude.svg", "Claude"), ("chatgpt.svg", "ChatGPT")] {
     let icon = load(source)
-    for (suffix, points) in toolIconSizes {
+    for (suffix, sizes) in toolIconSizes {
+        let points = sizes[tool]!
         writePNG(icon, points: points, scale: 1, monochrome: true,
                  to: output.appendingPathComponent("\(tool)\(suffix).png"))
         writePNG(icon, points: points, scale: 2, monochrome: true,

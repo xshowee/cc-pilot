@@ -7,7 +7,8 @@
 //
 // 带额度的摘要由 UsageBoard.menuBarSummary(currentProfile:profiles:now:) 生成。
 // 只显示 ChatGPT 一个工具时（chatgpt-profiles ticket 11）也用这两行：上一行是 ChatGPT 的套餐（chatgptPlan），
-// 不知道时同样退回档案名。两个工具都显示时改为每行一个工具，见 MenuBarContent。
+// 不知道时同样退回档案名。两行左侧画 tool 的图标（界面 MenuBarImage），区分是哪个工具。
+// 两个工具都显示时改为每行一个工具，见 MenuBarContent。
 
 import Foundation
 

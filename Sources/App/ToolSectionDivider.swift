@@ -27,7 +27,7 @@ struct ToolSectionDivider: View {
             Image(nsImage: icon)
                 .renderingMode(.template)
                 .resizable()
-                .frame(width: ToolIcon.size(.panel), height: ToolIcon.size(.panel))
+                .frame(width: ToolIcon.size(tool, .panel), height: ToolIcon.size(tool, .panel))
                 .foregroundColor(iconColor)
         } else {
             Text(verbatim: tool.displayName)

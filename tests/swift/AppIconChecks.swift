@@ -1,6 +1,6 @@
 // ticket 17：菜单栏"只显示图标"用的模板图（Resources/MenuBarIcon*.png，由 scripts/make-icons.sh 生成）。
 // chatgpt-profiles ticket 03：两个工具的图标（Resources/<Tool.iconResourceName(用途)>*.png，同样由 make-icons.sh 生成），
-// 面板分割线、菜单栏行首各一种尺寸，也是模板图。
+// 面板分割线、菜单栏行首、菜单栏两行文字左侧各一种尺寸，也是模板图。
 // 模板图（isTemplate）只看透明度，系统按菜单栏明暗着色；画面里混进别的颜色，在深色菜单栏下就会露出来。
 // 尺寸与 App 图标的检查在 tests/shell/test-app-icon.zsh。
 
@@ -25,7 +25,7 @@ final class AppIconChecks: CheckSuite {
             for use in ToolIconResource.Use.allCases {
                 for (scale, suffix) in [(1, ".png"), (2, "@2x.png")] {
                     let name = tool.iconResourceName(use) + suffix
-                    let side = ToolIconResource.points(use) * scale
+                    let side = ToolIconResource.points(use, tool) * scale
                     checks.append(Check("\(tool.displayName) 的图标 \(name) 是 \(side) 像素见方的单色模板图") {
                         let url = repoRoot.appendingPathComponent("Resources/\(name)")
                         try expectPixels(url, side)
@@ -40,7 +40,17 @@ final class AppIconChecks: CheckSuite {
             try expectEqual(Set(names).count, names.count)
         })
         checks.append(Check("菜单栏用的图标两行叠起来放得进 22pt 高的菜单栏") {
-            try expect(ToolIconResource.points(.menuBar) * 2 <= 22, "菜单栏图标 \(ToolIconResource.points(.menuBar))pt 太高")
+            for tool in Tool.allCases {
+                let side = ToolIconResource.points(.menuBar, tool)
+                try expect(side * 2 <= 22, "\(tool.displayName) 的菜单栏图标 \(side)pt 太高")
+            }
+        })
+        checks.append(Check("两行文字左侧的图标放得进 22pt 高的菜单栏，且比行首图标大") {
+            for tool in Tool.allCases {
+                let side = ToolIconResource.points(.menuBarSummary, tool)
+                try expect(side <= 22 && side > ToolIconResource.points(.menuBar, tool),
+                           "\(tool.displayName) 的两行左侧图标 \(side)pt 不合适")
+            }
         })
         return checks
     }
