@@ -79,6 +79,16 @@ test_suggested_login_command_signs_in_to_the_new_profile() {
   [[ ! -e $T_HOME/.codex/auth.json ]] || fail "不应登录到默认档案"
 }
 
+test_ctrl_c_during_login_still_explains_how_to_sign_in_later() {
+  # 终端里按 Ctrl-C：SIGINT 同时发给 ccp 和 codex。ccp 不能跟着退出，要把提示打完（真机验收 13 发现）
+  t_codex_default
+  t_ccp FAKE_CODEX_HOOK='kill -INT $PPID; exit 130' -- chatgpt add work
+  assert_rc 130
+  [[ -d $T_HOME/.codex-profiles/work ]] || fail "档案应保留"
+  assert_contains "$T_ERR" "已保留" "应说明档案已保留"
+  assert_contains "$T_ERR" "CODEX_HOME=" "应提示之后怎么登录"
+}
+
 test_login_exiting_zero_without_auth_json_counts_as_not_signed_in() {
   t_codex_default
   t_ccp FAKE_CODEX_HOOK='rm -f -- "$CODEX_HOME/auth.json"' -- chatgpt add work

@@ -55,8 +55,13 @@ _ccp_cmd_chatgpt_add() {
   print -r -- "已创建 ChatGPT 档案 \"$name\"（$dir）。"
   print -r -- "正在这个档案里运行 codex login，请完成登录。"
   local rc
+  # 终端里按 Ctrl-C 时 SIGINT 同时发给 ccp 和 codex。ccp 设一个什么都不做的 trap：codex 照常收到 SIGINT 退出
+  # （trap 不会传给子进程，忽略才会），ccp 不跟着退出，接着把下面"档案已保留、之后怎么登录"的提示打完。
+  # emulate -L 打开了 local_traps，函数返回时恢复原来的 INT 处理
+  trap : INT
   CODEX_HOME=$dir command codex login
   rc=$?
+  trap - INT
   if (( rc == 0 )) && [[ -e $dir/auth.json ]]; then
     return 0
   fi
