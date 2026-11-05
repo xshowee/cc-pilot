@@ -4,13 +4,14 @@
 // 额度一行需要着色时（ticket 12）不能用模板图：档案名用 labelColor（绘制时按菜单栏明暗取色），
 // 额度用传入的颜色（过期灰也是动态色，同样在绘制时按菜单栏明暗取浅色/深色那个，ticket 26）。
 // 只显示一个工具时两行文字的左侧是这个工具的图标（ToolIcon 的 .menuBarSummary 规格，14pt，Claude 15pt），竖直方向对准两行文字的中线，
-// 一眼看出说的是 Claude Code 还是 ChatGPT（Pro、Team 等套餐名两边都有）；两行文字仍在图标右侧的区域里互相居中。
-// 着色规则同下面两个工具时：整张是模板图时画模板图，否则画 tinted(..., color: .labelColor)。找不到图标时只画文字。
+// 一眼看出说的是 Claude Code 还是 ChatGPT（Pro、Team 等套餐名两边都有）；两行文字仍在图标右侧的区域里互相居中，
+// 找不到图标时只画文字。
 // "只显示图标"模式用的图标（icon）也放在这里。
 // 两个工具都显示时（chatgpt-profiles ticket 11）每行一个工具：行首是工具图标（ToolIcon 的 .menuBar 规格，10pt 原尺寸），
-// 后面是 5 小时剩余，两行各自着色（image(toolRows:)）。整张都不着色时是模板图，图标画模板图；
-// 有一行着色时整张不是模板图，图标必须画 tinted(..., color: .labelColor)，否则深色菜单栏上看不见。
-// 找不到图标（不在 App 包里运行）时行首退回文字 "C" / "G"。
+// 后面是 5 小时剩余，两行各自着色（image(toolRows:)）。找不到图标（不在 App 包里运行）时行首退回文字 "C" / "G"。
+// 工具图标的着色（两种画法相同）：有品牌色的（Claude Code，ToolIcon.brandColor）画 tinted(..., color: 品牌色)；
+// 没有的，整张是模板图时画模板图，不是时画 tinted(..., color: .labelColor)（黑色模板图在深色菜单栏上看不见）。
+// 画了品牌色图标或有文字着色时整张就不是模板图，不着色的文字也改用 labelColor（绘制时按菜单栏明暗取色）。
 
 import AppKit
 
@@ -33,21 +34,23 @@ enum MenuBarImage {
     private static var cachedKey: [AnyHashable] = []
     private static var cachedImage: NSImage?
 
-    /// 两行文字左侧画 tool 的图标。bottomColor 为 nil 时画成模板图（不着色）
+    /// 两行文字左侧画 tool 的图标。bottomColor 为 nil 且图标没有品牌色时画成模板图（不着色）
     static func image(tool: Tool, top: String, bottom: String, bottomColor: NSColor? = nil) -> NSImage {
         let key: [AnyHashable] = ["summary", tool, top, bottom, bottomColor]
         if key == cachedKey, let cachedImage { return cachedImage }
 
+        let brandIcon = brandIcon(tool, .menuBarSummary)
+        let isTemplate = bottomColor == nil && brandIcon == nil
         let fonts = [NSFont.systemFont(ofSize: 10.5, weight: .medium),
                      NSFont.monospacedDigitSystemFont(ofSize: 10.5, weight: .regular)]
-        let colors: [NSColor] = bottomColor.map { [.labelColor, $0] } ?? [.black, .black]
+        let colors: [NSColor] = isTemplate ? [.black, .black] : [.labelColor, bottomColor ?? .labelColor]
         let lines = zip([top, bottom], zip(fonts, colors)).map { value, style in
             truncated(value, font: style.0, color: style.1, maxWidth: maxWidth)
         }
         // 字符串绘制自带基线留白，偏移一下让两行可见部分都落在 22pt 的状态栏里
         let lineY: [CGFloat] = [10, -2]
-        let icon = bottomColor == nil ? ToolIcon.template(tool, .menuBarSummary)
-                                      : ToolIcon.tinted(tool, .menuBarSummary, color: .labelColor)
+        let icon = brandIcon ?? (isTemplate ? ToolIcon.template(tool, .menuBarSummary)
+                                            : ToolIcon.tinted(tool, .menuBarSummary, color: .labelColor))
         let iconSize = ToolIcon.size(tool, .menuBarSummary)
         let iconWidth = icon == nil ? 0 : iconSize + 4
         let textWidth = ceil(lines.map { $0.size().width }.max() ?? 0)
@@ -66,7 +69,7 @@ enum MenuBarImage {
             }
             return true
         }
-        image.isTemplate = bottomColor == nil
+        image.isTemplate = isTemplate
         cachedKey = key
         cachedImage = image
         return image
@@ -79,19 +82,20 @@ enum MenuBarImage {
         let color: NSColor?
     }
 
-    /// 每行一个工具（上下两行）。所有行的 color 都为 nil 时画成模板图
+    /// 每行一个工具（上下两行）。所有行的 color 都为 nil 且没有品牌色图标时画成模板图
     static func image(toolRows rows: [ToolRow]) -> NSImage {
         let key: [AnyHashable] = ["tools"] + rows.flatMap { [$0.tool, $0.text, $0.color] as [AnyHashable] }
         if key == cachedKey, let cachedImage { return cachedImage }
 
-        let isTemplate = rows.allSatisfy { $0.color == nil }
+        let brandIcons = rows.map { brandIcon($0.tool, .menuBar) }
+        let isTemplate = rows.allSatisfy { $0.color == nil } && brandIcons.allSatisfy { $0 == nil }
         let font = NSFont.monospacedDigitSystemFont(ofSize: 10.5, weight: .regular)
         let letterFont = NSFont.systemFont(ofSize: 10.5, weight: .medium)
         let iconSize = rows.map { ToolIcon.size($0.tool, .menuBar) }.max() ?? 0
         let gap: CGFloat = 3
-        let drawn: [(icon: NSImage?, text: NSAttributedString)] = rows.map { row in
-            let icon = isTemplate ? ToolIcon.template(row.tool, .menuBar)
-                                  : ToolIcon.tinted(row.tool, .menuBar, color: .labelColor)
+        let drawn: [(icon: NSImage?, text: NSAttributedString)] = zip(rows, brandIcons).map { row, brandIcon in
+            let icon = brandIcon ?? (isTemplate ? ToolIcon.template(row.tool, .menuBar)
+                                                : ToolIcon.tinted(row.tool, .menuBar, color: .labelColor))
             let text = NSMutableAttributedString()
             if icon == nil {
                 text.append(NSAttributedString(string: fallbackLetter(row.tool) + " ", attributes: [
@@ -122,6 +126,11 @@ enum MenuBarImage {
         cachedKey = key
         cachedImage = image
         return image
+    }
+
+    /// 涂成品牌色的工具图标；工具没有品牌色或找不到图标时为 nil
+    private static func brandIcon(_ tool: Tool, _ use: ToolIcon.Use) -> NSImage? {
+        ToolIcon.brandColor(tool).flatMap { ToolIcon.tinted(tool, use, color: $0) }
     }
 
     /// 找不到工具图标时行首的文字

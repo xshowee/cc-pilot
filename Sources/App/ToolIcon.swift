@@ -10,6 +10,8 @@
 // - tinted：着色后的图。菜单栏图片带颜色时（isTemplate = false）不会再被系统着色，里面的黑色模板图
 //   在深色菜单栏上就看不见了，这时要用 tinted(tool, 用途, color: .labelColor)——与第一行文字同一取色方式，
 //   动态色在绘制时按菜单栏当时的明暗取色。
+// 品牌色（brandColor）：Claude Code 的图标在面板分割线和菜单栏里都涂成品牌橙色 #D97757，一眼认出；
+// ChatGPT 没有品牌色，跟着文字颜色走（用户 2026-11-06 决定菜单栏里的 Claude 图标也用橙色）。
 // 不在 App 包里运行（找不到资源，如检查程序）时都返回 nil，调用方退回文字（Tool.displayName 或 "C"/"G"）。
 // 图片的 accessibilityDescription 是工具名；SwiftUI 里仍要显式给 accessibilityLabel。
 
@@ -41,6 +43,14 @@ enum ToolIcon {
         }
         return images
     }()
+
+    /// 图标的品牌色；nil 表示没有，图标跟着文字颜色着色
+    static func brandColor(_ tool: Tool) -> NSColor? {
+        switch tool {
+        case .claudeCode: return NSColor(srgbRed: 0xD9 / 255, green: 0x77 / 255, blue: 0x57 / 255, alpha: 1)
+        case .chatgpt: return nil
+        }
+    }
 
     /// 模板图（黑色 + 透明度，isTemplate = true）
     static func template(_ tool: Tool, _ use: Use) -> NSImage? {
