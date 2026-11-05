@@ -6,6 +6,26 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>CC Pilot</title>
         <item>
+            <title>0.4.1</title>
+            <pubDate>Thu, 05 Nov 2026 23:54:38 +0800</pubDate>
+            <link>https://github.com/xshowee/cc-pilot</link>
+            <sparkle:fullReleaseNotesLink>https://github.com/xshowee/cc-pilot/releases</sparkle:fullReleaseNotesLink>
+            <sparkle:version>5</sparkle:version>
+            <sparkle:shortVersionString>0.4.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <description sparkle:format="markdown"><![CDATA[CC Pilot 0.4.1
+
+- When the menu bar shows only one tool, its icon now appears to the left of the two lines, so you can tell at a glance whether the plan and usage are for Claude Code or ChatGPT.
+
+---
+
+CC Pilot 0.4.1
+
+- 菜单栏只显示一个工具时，两行文字左侧会显示这个工具的图标，一眼就能看出套餐和额度是 Claude Code 还是 ChatGPT 的。
+]]></description>
+            <enclosure url="https://github.com/xshowee/cc-pilot/releases/download/v0.4.1/CCPilot-0.4.1.dmg" length="3684545" type="application/octet-stream" sparkle:edSignature="kKZBps5cL+9sWSJV03OQKz6sTNNK0AtYBxvcOcy/RTOS00bxI3y2o4xI6MTHwf+RtLq6Cz5Ii43sbyzqIfSJDA=="/>
+        </item>
+        <item>
             <title>0.4.0</title>
             <pubDate>Thu, 05 Nov 2026 19:22:38 +0800</pubDate>
             <link>https://github.com/xshowee/cc-pilot</link>
@@ -69,57 +89,9 @@ CC Pilot 0.3.0
 ]]></description>
             <enclosure url="https://github.com/xshowee/cc-pilot/releases/download/v0.3.0/CCPilot-0.3.0.dmg" length="2969052" type="application/octet-stream" sparkle:edSignature="KZ7EtK5hwff2s+6tAkb+/I5JHD/TUS363c3T6dW1cN1JU8vRBpbpHDURjDZ3zuyreE5pmjYZYBaWq+33cDnrCw=="/>
         </item>
-        <item>
-            <title>0.2.0</title>
-            <pubDate>Sat, 24 Oct 2026 14:44:26 +0800</pubDate>
-            <link>https://github.com/xshowee/cc-pilot</link>
-            <sparkle:fullReleaseNotesLink>https://github.com/xshowee/cc-pilot/releases</sparkle:fullReleaseNotesLink>
-            <sparkle:version>2</sparkle:version>
-            <sparkle:shortVersionString>0.2.0</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
-            <description sparkle:format="markdown"><![CDATA[CC Pilot 0.2.0: new profiles get their own settings instead of sharing the default profile's.
-
-- **Settings are now kept per profile.** When you add a profile (`ccp add`, or adding one in the app), the default profile's `~/.claude/settings.json` is copied once as its starting settings. After that, changing a setting in one profile, for example with `/model` or `/advisor`, affects only that profile. Profiles on different subscription tiers can now use different models and advisors.
-- **Plugins are still shared, but enabling them isn't.** Whether a plugin is enabled is part of each profile's settings, so a plugin you enable later in one profile has to be enabled with `/plugin` in the others.
-- **Profiles created with 0.1.0 are unchanged** and still share settings with the default profile. To give one its own settings:
-
-  ```sh
-  rm ~/.claude-profiles/<name>/settings.json && cp ~/.claude/settings.json ~/.claude-profiles/<name>/settings.json
-  ```
-
-- To have a new profile share settings like before:
-
-  ```sh
-  rm ~/.claude-profiles/<name>/settings.json && ln -s ~/.claude/settings.json ~/.claude-profiles/<name>/settings.json
-  ```
-
-The app updates `ccp` in `~/.cc-pilot/` the next time it starts. If you use only the command line tool without the app, copy the new `shell/` directory to `~/.cc-pilot/` again.
-
----
-
-CC Pilot 0.2.0：新建的账号使用自己的一份设置，不再与默认账号共用。
-
-- **设置改为每个账号各一份**。新建账号时（`ccp add`，或在 App 里添加账号），把默认账号的 `~/.claude/settings.json` 复制一次作为初始设置，之后在某个账号里修改设置（比如执行 `/model`、`/advisor`）只影响这个账号。不同订阅等级的账号可以用不同的模型和 advisor 了。
-- **插件仍然共用，但"是否启用"各管各的**。插件的启用状态记在各账号的设置里，之后在一个账号里启用的插件，在其他账号里需要用 `/plugin` 再启用一次。
-- **0.1.0 建立的账号保持不变**，仍与默认账号共用设置。想让某个已有账号使用自己的设置：
-
-  ```sh
-  rm ~/.claude-profiles/<名字>/settings.json && cp ~/.claude/settings.json ~/.claude-profiles/<名字>/settings.json
-  ```
-
-- 想让新账号像以前一样共用设置：
-
-  ```sh
-  rm ~/.claude-profiles/<名字>/settings.json && ln -s ~/.claude/settings.json ~/.claude-profiles/<名字>/settings.json
-  ```
-
-App 下次启动时会自动更新 `~/.cc-pilot/` 里的 `ccp`。只用命令行、没装 App 的话，把新版的 `shell/` 目录重新复制为 `~/.cc-pilot/`。
-]]></description>
-            <enclosure url="https://github.com/xshowee/cc-pilot/releases/download/v0.2.0/CCPilot-0.2.0.dmg" length="2281752" type="application/octet-stream" sparkle:edSignature="ttpMfmo2SE8zaPxMJ2679f4p2WG6CR1eOzzNL3RZxawi4sZuNW2E+pQIekcTiX1XlLV1qgPn4S0Gh3YMXHnrBg=="/>
-        </item>
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: Me0u6SlAPC9vvRyVJZUGXqyV9/NsLRHuhgmvlF/giosUnkphbzcahJADr6u78oPPZH4ngtq0fvfYzdWLxgaDCQ==
-length: 9286
+edSignature: YChLrVZ0prLRbEPW746II6qlsXKdqn9lsGtB1DwWxWl++W1thcQJuADN1HP42YA8jcN7BoiZyPD+z2GdsDZhAA==
+length: 7070
 -->
