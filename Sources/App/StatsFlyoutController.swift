@@ -4,8 +4,9 @@
 // 窗口：一个不会成为 key 的非激活 NSPanel，作为主面板窗口（MenuBarExtra 的 .window）的子窗口。
 //   不能成为 key 很要紧：MenuBarExtra 的窗口一失去 key 就会收起，点统计面板里的分段、清空按钮时它必须保持 key。
 //   背景是与主面板相同的系统材质（从主面板窗口里找到它的 NSVisualEffectView、取同一种 material），跟随系统外观。
-// 位置：每次显示、内容高度变化、主面板移动或改变大小时，按主面板此刻的位置重算（App 核心 StatsFlyoutPlacement），
-//   贴着主面板左侧、顶边对齐，压在屏幕可用区域内。主面板过一夜后可能往下掉（PanelPositionGuard 在打开时挪回），这里不假设它在菜单栏下。
+// 位置：每次显示、换行、卡片移动（列表滚动、变高）、内容高度变化、主面板移动或改变大小时，按主面板此刻的位置重算
+//   （App 核心 StatsFlyoutPlacement），贴着主面板左侧，参照 iStat 让面板内容与鼠标停着的卡片顶边对齐，压在屏幕可用区域内。
+//   卡片的位置由 PanelView 用 statsFlyoutAnchor 报告（SwiftUI 的 .global 坐标，即主面板窗口内容里的位置）。主面板过一夜后可能往下掉（PanelPositionGuard 在打开时挪回），这里不假设它在菜单栏下。
 // 弹出与收起：鼠标在行与面板之间怎么移动由 App 核心 StatsFlyoutHover 判断；离开后等 0.25 秒再收起，
 //   留出从行移到面板的时间。主面板关闭（PanelView 消失、窗口失去 key）时立即收起。
 
@@ -28,6 +29,8 @@ final class StatsFlyoutController: ObservableObject {
     private weak var anchor: NSWindow?
     private var anchorObservers: [NSObjectProtocol] = []
     private var settleWork: DispatchWorkItem?
+    /// 各行卡片的顶边（SwiftUI .global 坐标，原点在主面板窗口内容的左上角）
+    private var rowTops: [StatsFlyoutRow: CGFloat] = [:]
     /// 面板内容的大小（由 StatsFlyoutRoot 报告）
     private var contentSize = CGSize(width: StatsFlyoutRoot.width, height: 560)
 
@@ -109,6 +112,13 @@ final class StatsFlyoutController: ObservableObject {
         reposition()
     }
 
+    /// 一行卡片的位置变了（出现、列表滚动、上面的卡片变高）：面板正显示这一行时跟着它
+    func rowMoved(_ row: StatsFlyoutRow, top: CGFloat) {
+        guard rowTops[row] != top else { return }
+        rowTops[row] = top
+        if hover.row == row { reposition() }
+    }
+
     // MARK: - 内部
 
     private func scheduleSettle() {
@@ -143,6 +153,7 @@ final class StatsFlyoutController: ObservableObject {
             reposition()
             anchor.addChildWindow(panel, ordered: .above)
         }
+        else { reposition() }   // 换了一行
         if !panel.isVisible { panel.orderFront(nil) }
     }
 
@@ -157,10 +168,19 @@ final class StatsFlyoutController: ObservableObject {
         guard let panel, let anchor else { return }
         let screen = anchor.screen ?? NSScreen.screens.first { $0.frame.intersects(anchor.frame) } ?? NSScreen.main
         let visible = screen?.visibleFrame ?? anchor.frame
-        let frame = StatsFlyoutPlacement.frame(size: contentSize, beside: anchor.frame, within: visible, gap: Self.gap)
+        let rowTop = hover.row.flatMap { rowTops[$0] }.flatMap { Self.screenY(of: $0, in: anchor) }
+        let frame = StatsFlyoutPlacement.frame(size: contentSize, beside: anchor.frame, rowTop: rowTop,
+                                               inset: StatsFlyoutView.inset, within: visible, gap: Self.gap)
         guard frame != panel.frame else { return }
         panel.setFrame(frame, display: true)
         panel.invalidateShadow()
+    }
+
+    /// 主面板窗口内容里的竖直位置（SwiftUI .global，自上往下）换成屏幕坐标（自下往上）
+    private static func screenY(of y: CGFloat, in window: NSWindow) -> CGFloat? {
+        guard let content = window.contentView else { return nil }
+        let point = NSPoint(x: 0, y: content.isFlipped ? y : content.bounds.height - y)
+        return window.convertPoint(toScreen: content.convert(point, to: nil)).y
     }
 
     /// 主面板窗口背景用的材质（MenuBarExtra 内部的视图层次不公开，找不到时用 popover）
@@ -210,4 +230,16 @@ final class StatsFlyoutPanel: NSPanel {
 /// 面板不是 key 窗口，第一次点击也要直接交给按钮
 private final class StatsFlyoutHostingView: NSHostingView<AnyView> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+}
+
+extension View {
+    /// 报告这张卡片在主面板窗口里的顶边，统计面板显示它时与之对齐
+    func statsFlyoutAnchor(_ row: StatsFlyoutRow, controller: StatsFlyoutController) -> some View {
+        background(GeometryReader { geometry in
+            let top = geometry.frame(in: .global).minY
+            Color.clear
+                .onAppear { controller.rowMoved(row, top: top) }
+                .onChange(of: top) { controller.rowMoved(row, top: $0) }
+        })
+    }
 }

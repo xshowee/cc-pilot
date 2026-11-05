@@ -217,13 +217,18 @@ struct StatsFlyoutHover: Equatable {
     }
 }
 
-/// 统计面板窗口放在哪（AppKit 屏幕坐标，原点在左下）。每次显示、内容大小变化、主面板移动时都按主面板
+/// 统计面板窗口放在哪（AppKit 屏幕坐标，原点在左下）。每次显示、换行、内容大小变化、主面板移动时都按主面板
 /// 此刻的位置重算，不缓存：主面板（MenuBarExtra 的窗口）过一夜后可能离开菜单栏往下掉（未解决），
 /// 弹出面板跟着它，但无论主面板在哪都压在屏幕可用区域内，不会出界。
+/// 竖直方向参照 iStat：面板里的内容与鼠标停着的那张卡片顶边对齐（面板窗口比卡片高出内边距），
+/// 下面放不下时整体往上推，直到底边贴着可用区域。
 enum StatsFlyoutPlacement {
     /// - anchor: 主面板窗口此刻的位置
+    /// - rowTop: 鼠标停着的那张卡片此刻的顶边（屏幕坐标）；还不知道时为 nil，面板顶边与主面板对齐
+    /// - inset: 面板内容距窗口顶边的内边距（StatsFlyoutView.inset）
     /// - visible: 主面板所在屏幕的可用区域（visibleFrame）
-    static func frame(size: CGSize, beside anchor: CGRect, within visible: CGRect, gap: CGFloat) -> CGRect {
+    static func frame(size: CGSize, beside anchor: CGRect, rowTop: CGFloat? = nil, inset: CGFloat = 0,
+                      within visible: CGRect, gap: CGFloat) -> CGRect {
         // 优先放左边；左边放不下就放右边；两边都放不下就压在屏幕内
         var x = anchor.minX - gap - size.width
         if x < visible.minX {
@@ -232,8 +237,9 @@ enum StatsFlyoutPlacement {
         }
         // 比可用区域还高时窗口只有可用区域那么高，内容在里面滚动（StatsFlyoutRoot）
         let height = min(size.height, visible.height)
-        // 顶边与主面板对齐，再压进可用区域
-        var y = min(anchor.maxY, visible.maxY) - height
+        // 内容顶边与卡片对齐（不知道卡片在哪时窗口顶边与主面板对齐），再压进可用区域
+        let top = rowTop.map { $0 + inset } ?? anchor.maxY
+        var y = min(top, visible.maxY) - height
         y = max(y, visible.minY)
         return CGRect(x: x, y: y, width: size.width, height: height)
     }

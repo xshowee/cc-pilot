@@ -90,6 +90,7 @@ struct PanelView: View {
                         ) {
                             current.switchTo(profile.name)
                         }
+                        .statsFlyoutAnchor(StatsFlyoutRow(tool: .claudeCode, name: profile.name), controller: flyout)
                     }
                     if chatgpt.isVisible {
                         chatgptSection
@@ -182,6 +183,7 @@ struct PanelView: View {
                 onHover: StatsFlyoutTarget(chatgpt: profile) == nil ? nil : { hovering in
                     flyout.row(StatsFlyoutRow(tool: .chatgpt, name: profile.name), hovering: hovering)
                 })
+            .statsFlyoutAnchor(StatsFlyoutRow(tool: .chatgpt, name: profile.name), controller: flyout)
         }
     }
 

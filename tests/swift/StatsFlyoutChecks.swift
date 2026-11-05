@@ -20,7 +20,7 @@ final class StatsFlyoutChecks: CheckSuite {
             Check("哪一行显示哪个账号：同一账号的多个档案显示同一份；未登录的档案没有面板", targets),
             Check("鼠标停在行上弹出，移到另一行就换，移到面板上不收起，都离开后收起", hover),
             Check("停着的行被删除或登出（收不到离开）：立即收起；别的行变化不影响", hoveredRowDisappears),
-            Check("位置：贴着主面板左侧、顶边对齐；主面板往下掉或靠近屏幕边缘时不出界", placement),
+            Check("位置：贴着主面板左侧，内容与停着的卡片顶边对齐；主面板往下掉或靠近屏幕边缘时不出界", placement),
             Check("历史悬停：按横向位置吸附到最近的一格，图外夹到两端；提示框放竖线右边，放不下换左边，不出卡片", historyHover),
         ]
     }
@@ -230,6 +230,20 @@ final class StatsFlyoutChecks: CheckSuite {
         try expectEqual(place(CGRect(x: -500, y: 375, width: 340, height: 500),
                               CGRect(x: -1920, y: 0, width: 1920, height: 875)),
                         CGRect(x: -826, y: 275, width: 320, height: 600))
+
+        func beside(row top: CGFloat, _ anchor: CGRect = CGRect(x: 1000, y: 75, width: 340, height: 800),
+                    height: CGFloat = 600) -> CGRect {
+            StatsFlyoutPlacement.frame(size: CGSize(width: 320, height: height), beside: anchor, rowTop: top,
+                                       inset: 8, within: screen, gap: 6)
+        }
+        // 停在卡片上：面板内容与卡片顶边对齐，窗口顶边高出内边距
+        try expectEqual(beside(row: 700), CGRect(x: 674, y: 108, width: 320, height: 600))
+        // 卡片靠下、下面放不下：往上推到底边贴着可用区域
+        try expectEqual(beside(row: 300), CGRect(x: 674, y: 0, width: 320, height: 600))
+        // 第一张卡片离菜单栏不到内边距：窗口顶边不出可用区域
+        try expectEqual(beside(row: 870), CGRect(x: 674, y: 275, width: 320, height: 600))
+        // 面板矮：仍跟着卡片
+        try expectEqual(beside(row: 400, height: 200), CGRect(x: 674, y: 208, width: 320, height: 200))
     }
 
     static func historyHover() throws {

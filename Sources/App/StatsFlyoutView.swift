@@ -11,6 +11,9 @@
 import SwiftUI
 
 struct StatsFlyoutView: View {
+    /// 内容距窗口边缘的内边距（StatsFlyoutPlacement 按它让内容与卡片顶边对齐）
+    static let inset: CGFloat = 8
+
     let title: String
     let tier: String?
     let account: UsageAccount
@@ -41,7 +44,7 @@ struct StatsFlyoutView: View {
             TokenHistoryCard(bars: tokens.map { HistoryBar.bars($0, range: range) } ?? [], range: $range)
             clearRow
         }
-        .padding(8)
+        .padding(Self.inset)
         .onChange(of: account) { _ in confirmingClear = false }
     }
 
