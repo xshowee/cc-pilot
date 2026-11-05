@@ -9,6 +9,9 @@
 // Claude Code 一段总是显示（保持原有行为）。
 // 打开面板只重读档案列表、当前档案和 zsh 接入状态，不刷新额度。
 // 打开时面板若离开了菜单栏（过夜后可能往下掉），PanelPositionGuard 把它挪回菜单栏下。
+// 档案列表不设固定的最大高度：面板随档案多少一起变高，平时不滚动、不显示滚动条。只有档案多到面板放不下
+// （超出所在屏幕的可用区域，PanelScreenTracker）时，列表才限高到屏幕放得下的高度并可以滚动（不显示滚动条），
+// 标题和底栏始终在屏幕内（MenuBarPanelPlacement.listHeightLimit）。
 
 import SwiftUI
 
@@ -22,32 +25,42 @@ struct PanelView: View {
     @EnvironmentObject private var tokenStats: TokenStatsModel
     @StateObject private var flyout = StatsFlyoutController()
     @StateObject private var positionGuard = PanelPositionGuard()
+    @StateObject private var screen = PanelScreenTracker()
     /// 点击 ChatGPT 档案时的切换（后台执行 ccp chatgpt use，ticket 04）
     @StateObject private var chatgptSwitch = ChatGPTSwitchModel()
 
     @State private var addingProfile = false
-    /// 档案列表内容的实际高度（用来决定要不要显示滚动条）
+    /// 档案列表内容本身的高度（不受限高影响）
     @State private var listHeight: CGFloat = 0
+    /// 列表上方（标题、提示条）和下方（确认条、添加表单、底栏）的高度
+    @State private var headerHeight: CGFloat = 0
+    @State private var footerHeight: CGFloat = 0
 
-    /// 档案列表最多这么高，再多就滚动
-    private static let maxListHeight: CGFloat = 460
+    /// 档案列表最多多高：还不知道面板在哪个屏幕时不限
+    private var listHeightLimit: CGFloat {
+        screen.visibleFrame.map { MenuBarPanelPlacement.listHeightLimit(chrome: headerHeight + footerHeight, within: $0) } ?? .infinity
+    }
 
     var body: some View {
+        let overflowing = listHeight > listHeightLimit
         VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .center) {
-                Text("Profiles")
-                    .font(.system(size: 13, weight: .semibold))
-                Spacer()
-                refreshAllButton
-            }
-            .padding(.leading, 16)
-            .padding(.trailing, 12)
-            .padding(.top, 12)
-            .padding(.bottom, 8)
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .center) {
+                    Text("Profiles")
+                        .font(.system(size: 13, weight: .semibold))
+                    Spacer()
+                    refreshAllButton
+                }
+                .padding(.leading, 16)
+                .padding(.trailing, 12)
+                .padding(.top, 12)
+                .padding(.bottom, 8)
 
-            if shellIntegration.showsNotConnectedHint {
-                ShellIntegrationBanner { shellIntegration.connectWithConsent() }
+                if shellIntegration.showsNotConnectedHint {
+                    ShellIntegrationBanner { shellIntegration.connectWithConsent() }
+                }
             }
+            .background(measuring($headerHeight))
 
             ScrollView {
                 VStack(spacing: 6) {
@@ -84,35 +97,37 @@ struct PanelView: View {
                 }
                 .padding(.horizontal, 8)
                 .padding(.bottom, 8)
-                .background(GeometryReader { geometry in
-                    Color.clear.preference(key: ListHeightKey.self, value: geometry.size.height)
-                })
+                .background(measuring($listHeight))
             }
-            // 内容高度一变（展开/收起额度详情），系统就会闪一下滚动条；放得下时干脆不显示，
-            // 只有档案多到超出最大高度、真的需要滚动时才显示
-            .scrollIndicators(listHeight > Self.maxListHeight ? .automatic : .never)
-            .onPreferenceChange(ListHeightKey.self) { listHeight = $0 }
-            .frame(maxHeight: Self.maxListHeight)
+            // 从不显示滚动条（接着鼠标时系统会让它一直显示，不好看）；放得下时也不能滚动，
+            // 看起来和没有 ScrollView 一样
+            .scrollIndicators(.never)
+            .scrollDisabled(!overflowing)
+            .frame(maxHeight: listHeightLimit)
             .fixedSize(horizontal: false, vertical: true)
 
-            if let pending = actions.pending {
-                PendingChangeBanner(change: pending.change) { actions.dismissPending() }
-            }
-            if tokenStats.confirmingClearAll {
-                ClearAllBanner(onCancel: { tokenStats.confirmingClearAll = false },
-                               onClear: { tokenStats.clearAll() })
-            }
-            if addingProfile {
+            VStack(alignment: .leading, spacing: 0) {
+                if let pending = actions.pending {
+                    PendingChangeBanner(change: pending.change) { actions.dismissPending() }
+                }
+                if tokenStats.confirmingClearAll {
+                    ClearAllBanner(onCancel: { tokenStats.confirmingClearAll = false },
+                                   onClear: { tokenStats.clearAll() })
+                }
+                if addingProfile {
+                    Divider()
+                    AddProfileForm(actions: actions, isPresented: $addingProfile, offersChatGPT: chatgpt.isVisible)
+                }
                 Divider()
-                AddProfileForm(actions: actions, isPresented: $addingProfile, offersChatGPT: chatgpt.isVisible)
+                PanelFooter(addDisabled: addingProfile || actions.isOpening) { addingProfile = true }
             }
-            Divider()
-            PanelFooter(addDisabled: addingProfile || actions.isOpening) { addingProfile = true }
+            .background(measuring($footerHeight))
         }
         .frame(width: 340)
         .background(WindowReader { window in
             flyout.attach(to: window)
             positionGuard.attach(to: window)
+            screen.attach(to: window)
         })
         .onAppear {
             profiles.reload(); current.reload(); actions.update(with: profiles.profiles)
@@ -191,9 +206,14 @@ struct PanelView: View {
         .help(Text("Refresh usage for all accounts"))
         .accessibilityLabel(Text("Refresh All"))
     }
-}
 
-private struct ListHeightKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+    /// 把所在视图的高度写进 height（放在 background 里）。直接写 @State 而不用 PreferenceKey：
+    /// 实测（macOS，2026-11-05）用 PreferenceKey 从 ScrollView 里报出的列表高度一直是 0。
+    private func measuring(_ height: Binding<CGFloat>) -> some View {
+        GeometryReader { geometry in
+            Color.clear
+                .onAppear { height.wrappedValue = geometry.size.height }
+                .onChange(of: geometry.size.height) { height.wrappedValue = $0 }
+        }
+    }
 }

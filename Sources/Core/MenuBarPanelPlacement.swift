@@ -2,6 +2,9 @@
 // 过夜（显示器休眠、唤醒）后第一次打开，面板顶边可能离开菜单栏、往下掉一截（两次真机复现都掉了约 360pt，
 // 正好是屏幕高 1440 与 1080 之差，猜测是显示器重连时先按较低的分辨率接上、菜单栏图标的位置没跟着更新）。
 // 系统每次打开都会重新定位面板，所以只在打开时对照所在屏幕的可用区域检查，掉了就挪回菜单栏下。
+//
+// 面板随档案多少变高、平时不滚动；档案多到面板放不下时，档案列表最多到 listHeightLimit，超出的部分滚动，
+// 保证标题和底栏始终在屏幕内。
 
 import CoreGraphics
 
@@ -18,5 +21,17 @@ enum MenuBarPanelPlacement {
         let top = visible.maxY - gap
         guard frame.maxY < top - tolerance else { return nil }
         return CGPoint(x: frame.minX, y: top - frame.height)
+    }
+
+    /// 面板底边离可用区域底边至少留这么多
+    static let bottomMargin: CGFloat = 8
+    /// 档案列表至少这么高（屏幕再矮也能看到一两个档案）
+    static let minimumListHeight: CGFloat = 120
+
+    /// 档案列表最多能有多高：面板从菜单栏下（可用区域顶边下 gap）往下，到可用区域底边上方 bottomMargin 为止，
+    /// 减去列表以外部分（标题、提示条、底栏等）的高度 chrome。
+    /// - visible: 面板所在屏幕的可用区域（visibleFrame，不含菜单栏和程序坞）
+    static func listHeightLimit(chrome: CGFloat, within visible: CGRect) -> CGFloat {
+        max(visible.height - gap - bottomMargin - chrome, minimumListHeight)
     }
 }

@@ -11,6 +11,8 @@ final class MenuBarPanelPlacementChecks: CheckSuite {
     override class var checks: [Check] {
         [
             Check("菜单栏面板：顶边贴着菜单栏时不动；往下掉了就挪回菜单栏下，横向不变", corrected),
+            Check("档案列表的最大高度：可用区域高减去菜单栏下的间隙、底部留白和列表以外的部分，屏幕再矮也有下限",
+                  listHeightLimit),
         ]
     }
 
@@ -31,5 +33,17 @@ final class MenuBarPanelPlacementChecks: CheckSuite {
         try expectEqual(fix(CGRect(x: -500, y: 200, width: 340, height: 400),
                             CGRect(x: -1920, y: 300, width: 1920, height: 1050)),
                         CGPoint(x: -500, y: 948))
+    }
+
+    static func listHeightLimit() throws {
+        let visible = CGRect(x: 0, y: 59, width: 2560, height: 1351)
+        // 1351 - 2（菜单栏下的间隙）- 8（底部留白）- 141（标题、底栏等）
+        try expectEqual(MenuBarPanelPlacement.listHeightLimit(chrome: 141, within: visible), 1200)
+        // 副屏原点不影响结果，只看高度
+        try expectEqual(MenuBarPanelPlacement.listHeightLimit(chrome: 141, within: visible.offsetBy(dx: -2560, dy: 300)),
+                        1200)
+        // 屏幕很矮（或列表以外的部分很高）时不小于下限
+        try expectEqual(MenuBarPanelPlacement.listHeightLimit(chrome: 600, within: CGRect(x: 0, y: 0, width: 1280, height: 700)),
+                        MenuBarPanelPlacement.minimumListHeight)
     }
 }
