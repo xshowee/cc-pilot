@@ -7,6 +7,8 @@
 // 档案分 Claude Code、ChatGPT 上下两段（chatgpt-profiles ticket 02）；两段都显示时，每段前面是带工具标识的
 // 分割线（ToolSectionDivider）；没有 ChatGPT 默认档案 ~/.codex 时不显示 ChatGPT 一段（也就没有分割线）。
 // Claude Code 一段总是显示（保持原有行为）。
+// 添加过 Kimi Code 账号时，最下面多一段 Kimi Code（ADR 0007）：每个账号一张额度卡片（KimiCard），
+// 不能切换、没有统计面板；添加入口同其他账号（AddProfileForm 里选 Kimi Code），删除先在底栏上方确认（KimiRemovalBanner）。
 // 打开面板只重读档案列表、当前档案和 zsh 接入状态，不刷新额度。
 // 打开时面板若离开了菜单栏（过夜后可能往下掉），PanelPositionGuard 把它挪回菜单栏下。
 // 档案列表不设固定的最大高度：面板随档案多少一起变高，平时不滚动、不显示滚动条。只有档案多到面板放不下
@@ -23,6 +25,7 @@ struct PanelView: View {
     @ObservedObject var chatgpt: ChatGPTProfileListModel
     @EnvironmentObject private var shellIntegration: ShellIntegrationModel
     @EnvironmentObject private var tokenStats: TokenStatsModel
+    @EnvironmentObject private var kimi: KimiModel
     @StateObject private var flyout = StatsFlyoutController()
     @StateObject private var positionGuard = PanelPositionGuard()
     @StateObject private var screen = PanelScreenTracker()
@@ -64,7 +67,7 @@ struct PanelView: View {
 
             ScrollView {
                 VStack(spacing: 6) {
-                    if chatgpt.isVisible {
+                    if chatgpt.isVisible || kimi.isVisible {
                         ToolSectionDivider(tool: .claudeCode)
                     }
                     ForEach(profiles.profiles) { profile in
@@ -95,6 +98,18 @@ struct PanelView: View {
                     if chatgpt.isVisible {
                         chatgptSection
                     }
+                    if kimi.isVisible {
+                        KimiSectionDivider()
+                            .padding(.top, 4)
+                        ForEach(kimi.names, id: \.self) { name in
+                            KimiCard(name: name, usage: usage.kimiUsage(name), now: usage.now,
+                                     isRefreshing: usage.isRefreshingKimi(name),
+                                     onRefresh: { usage.refreshKimi(name) },
+                                     onDelete: { kimi.confirmingRemoval = name },
+                                     onCopyKey: { kimi.copyKey(name) },
+                                     copyNotice: kimi.copyNotice?.name == name ? kimi.copyNotice : nil)
+                        }
+                    }
                 }
                 .padding(.horizontal, 8)
                 .padding(.bottom, 8)
@@ -115,9 +130,14 @@ struct PanelView: View {
                     ClearAllBanner(onCancel: { tokenStats.confirmingClearAll = false },
                                    onClear: { tokenStats.clearAll() })
                 }
+                if let name = kimi.confirmingRemoval {
+                    KimiRemovalBanner(name: name, onCancel: { kimi.confirmingRemoval = nil },
+                                      onDelete: { kimi.remove(name) })
+                }
                 if addingProfile {
                     Divider()
-                    AddProfileForm(actions: actions, isPresented: $addingProfile, offersChatGPT: chatgpt.isVisible)
+                    AddProfileForm(actions: actions, kimi: kimi, isPresented: $addingProfile,
+                                   offersChatGPT: chatgpt.isVisible)
                 }
                 Divider()
                 PanelFooter(addDisabled: addingProfile || actions.isOpening) { addingProfile = true }
@@ -135,12 +155,14 @@ struct PanelView: View {
             chatgpt.reload(); actions.update(withChatGPT: chatgpt.profiles)
             // 终端里可能 ccp init / ccp uninstall 过（ticket 25 的提示随之更新）
             shellIntegration.refresh()
+            kimi.reload()
             flyout.install(StatsFlyoutRoot(controller: flyout, profiles: profiles, chatgpt: chatgpt, usage: usage,
                                            stats: tokenStats))
         }
         .onDisappear {
             flyout.dismiss()
             tokenStats.confirmingClearAll = false
+            kimi.confirmingRemoval = nil
         }
         .onChange(of: profiles.profiles) { list in
             actions.update(with: list)
@@ -189,7 +211,7 @@ struct PanelView: View {
 
     private var refreshAllButton: some View {
         Button {
-            usage.refreshAll(profiles.profiles, chatgpt: chatgpt.profiles)
+            usage.refreshAll(profiles.profiles, chatgpt: chatgpt.profiles, kimi: kimi.names)
         } label: {
             Group {
                 if usage.isRefreshing {
@@ -204,7 +226,8 @@ struct PanelView: View {
         .buttonStyle(.borderless)
         .foregroundColor(.secondary)
         // 正在刷新，或每个账号都还在频率限制的等待期内（ticket 12）时不可用
-        .disabled(usage.isRefreshing || !usage.canRefreshAny(profiles.profiles, chatgpt: chatgpt.profiles))
+        .disabled(usage.isRefreshing || !usage.canRefreshAny(profiles.profiles, chatgpt: chatgpt.profiles,
+                                                            kimi: kimi.names))
         .help(Text("Refresh usage for all accounts"))
         .accessibilityLabel(Text("Refresh All"))
     }

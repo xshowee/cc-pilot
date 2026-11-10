@@ -17,6 +17,10 @@
 // 进行中会话的 rate_limits 归属到账号，经 chatgptLiveQuotaDidUpdate 通知在主线程按账号并入 board
 // （UsageBoard.recordLive(_:for:)）。同样只读本地文件，不发请求，不碰刷新的状态。
 //
+// Kimi Code（ADR 0007）：只显示额度，每个账号（名称 + API key）一个键（KimiUsageRefresher.account(名称)），
+// 记在同一个 board 里，由 KimiUsageRefresher 在同一个后台队列上刷新；"刷新全部"也刷新它们。没有实时额度。
+// 添加、删除账号时 forgetKimi(名称)：忘掉旧数字，并作废还没回来的刷新结果（那是旧 key 的）。
+//
 // now 是界面用的时钟：每 15 秒前进一次，只用来重算"N 分钟前获取"、变灰、已重置、还要等多久，
 // 让菜单栏和面板随时间更新；它不触发任何请求。拿到新数据时 now 也会拨到此刻。
 
@@ -44,6 +48,9 @@ final class UsageModel: ObservableObject {
 
     private let refresher: UsageRefresher
     private let chatgptRefresher: ChatGPTUsageRefresher
+    private let kimiRefresher: KimiUsageRefresher
+    /// 各 Kimi Code 账号名称 forgetKimi 的次数：刷新结果回来时与发出时不同，说明 key 已经换过，结果作废
+    private var kimiGenerations: [String: Int] = [:]
     private let queue = DispatchQueue(label: "com.ccpilot.usage-refresh", qos: .userInitiated)
     private var clock: AnyCancellable?
 
@@ -60,6 +67,7 @@ final class UsageModel: ObservableObject {
     init(environment: CoreEnvironment = .live, changes: ProfileChangeFeed) {
         refresher = UsageRefresher(environment: environment)
         chatgptRefresher = ChatGPTUsageRefresher(environment: environment)
+        kimiRefresher = KimiUsageRefresher(environment: environment)
         liveFiles = LiveQuotaFiles(environment: environment)
         clock = Timer.publish(every: 15, tolerance: 5, on: .main, in: .common)
             .autoconnect()
@@ -150,15 +158,33 @@ final class UsageModel: ObservableObject {
         profile.usageAccount.flatMap { reportedPlans[$0] }
     }
 
-    /// "刷新全部"现在能否点：两段里有不在等待期、也没在刷新的账号
-    func canRefreshAny(_ profiles: [Profile], chatgpt: [ChatGPTProfile] = []) -> Bool {
-        !pending(UsageRefresher.accounts(in: profiles) + ChatGPTUsageRefresher.accounts(in: chatgpt)).isEmpty
+    /// 这个 Kimi Code 账号的额度状态；还没刷新过时为 nil
+    func kimiUsage(_ name: String) -> AccountUsage? { board.usage(for: KimiUsageRefresher.account(name)) }
+
+    func isRefreshingKimi(_ name: String) -> Bool { refreshing.contains(KimiUsageRefresher.account(name)) }
+
+    /// 刷新这个 Kimi Code 账号的额度
+    func refreshKimi(_ name: String) {
+        start([kimiJob(name)])
     }
 
-    /// "刷新全部"：两段列表里每个账号请求一次（正在刷新、还在等待期内的账号跳过）
-    func refreshAll(_ profiles: [Profile], chatgpt: [ChatGPTProfile] = []) {
+    /// 添加、删除 Kimi Code 账号时：忘掉这个名称的额度，还没回来的刷新结果作废
+    func forgetKimi(_ name: String) {
+        kimiGenerations[name, default: 0] += 1
+        board.forget(KimiUsageRefresher.account(name))
+    }
+
+    /// "刷新全部"现在能否点：各段里有不在等待期、也没在刷新的账号。kimi：Kimi Code 账号的名称
+    func canRefreshAny(_ profiles: [Profile], chatgpt: [ChatGPTProfile] = [], kimi: [String] = []) -> Bool {
+        !pending(UsageRefresher.accounts(in: profiles) + ChatGPTUsageRefresher.accounts(in: chatgpt)
+                 + kimi.map(KimiUsageRefresher.account)).isEmpty
+    }
+
+    /// "刷新全部"：各段里每个账号请求一次（正在刷新、还在等待期内的账号跳过）
+    func refreshAll(_ profiles: [Profile], chatgpt: [ChatGPTProfile] = [], kimi: [String] = []) {
         start(UsageRefresher.accounts(in: profiles).map { claudeJob($0, profiles) }
-              + ChatGPTUsageRefresher.accounts(in: chatgpt).map { chatgptJob($0, chatgpt) })
+              + ChatGPTUsageRefresher.accounts(in: chatgpt).map { chatgptJob($0, chatgpt) }
+              + kimi.map(kimiJob))
     }
 
     /// 刷新这个档案所在的账号
@@ -176,6 +202,8 @@ final class UsageModel: ObservableObject {
     /// 一个账号的刷新：在后台队列上执行 fetch，结果回到主线程交给 apply
     private struct Job {
         let account: UsageAccount
+        /// Kimi Code 的刷新：账号名称与发出时的 kimiGenerations[名称]；其他为 nil
+        var kimi: (name: String, generation: Int)? = nil
         let fetch: () -> RefreshResult
     }
 
@@ -200,6 +228,13 @@ final class UsageModel: ObservableObject {
         }
     }
 
+    private func kimiJob(_ name: String) -> Job {
+        let refresher = kimiRefresher
+        return Job(account: KimiUsageRefresher.account(name), kimi: (name, kimiGenerations[name, default: 0])) {
+            RefreshResult(outcome: refresher.refresh(name, now: Date()), reported: nil)
+        }
+    }
+
     private func pending(_ accounts: [UsageAccount]) -> [UsageAccount] {
         board.accountsAllowedToRefresh(accounts, now: Date()).filter { !refreshing.contains($0) }
     }
@@ -215,10 +250,17 @@ final class UsageModel: ObservableObject {
                 let result = job.fetch()
                 Task { @MainActor in
                     guard let self else { return }
-                    self.board.record(result.outcome)
-                    if let reported = result.reported { self.reportedPlans[job.account] = reported.planType }
                     self.refreshing.remove(job.account)
                     self.now = Date()
+                    // 发出之后换过 key：这是旧 key 的结果，不记
+                    if let kimi = job.kimi, kimi.generation != self.kimiGenerations[kimi.name, default: 0] { return }
+                    if job.kimi != nil {
+                        // 只有刷新这一个来源：成功就替换，不合并（见 UsageBoard.recordReplacing）
+                        self.board.recordReplacing(result.outcome)
+                    } else {
+                        self.board.record(result.outcome)
+                    }
+                    if let reported = result.reported { self.reportedPlans[job.account] = reported.planType }
                 }
             }
         }

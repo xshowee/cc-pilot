@@ -269,6 +269,21 @@ struct UsageBoard: Equatable {
         accounts[account] = usage
     }
 
+    /// 保存一次刷新的结果，用于只有刷新这一个数据来源的账号（Kimi Code：没有实时额度）。
+    /// 成功的刷新就是此刻的全部事实，直接替换旧数字，不走合并规则——合并规则假定同一窗口内用量只增不减，
+    /// 那是为了挡住实时额度带来的旧数据；滚动窗口的已用比例会下降，照合并规则会停在较高的旧数字上。
+    /// 失败时与 record(_:) 相同（保留上一次的数据）。
+    mutating func recordReplacing(_ outcome: UsageRefreshOutcome) {
+        if case .success = outcome.result { accounts[outcome.account] = nil }
+        record(outcome)
+    }
+
+    /// 忘掉一个账号的全部额度状态（数据、失败原因、频率限制等待时间）。
+    /// 删除 Kimi Code 账号时用：之后可能用同一个名称加另一个 key（见 KimiUsageRefresher）。
+    mutating func forget(_ account: UsageAccount) {
+        accounts[account] = nil
+    }
+
     /// 这个档案所在账号的额度状态；还没有数据、或档案未登录时为 nil
     func usage(for profile: Profile) -> AccountUsage? {
         profile.usageAccount.flatMap { usage(for: $0) }

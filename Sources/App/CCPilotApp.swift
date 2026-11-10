@@ -15,6 +15,7 @@ struct CCPilotApp: App {
     @StateObject private var usage: UsageModel
     @StateObject private var actions = ProfileActionsModel()
     @StateObject private var chatgpt: ChatGPTProfileListModel
+    @StateObject private var kimi: KimiModel
     @AppStorage(MenuBarPreferences.iconOnlyKey) private var menuBarIconOnly = false
     @AppStorage(MenuBarPreferences.hidesClaudeCodeKey) private var menuBarHidesClaudeCode = false
     @AppStorage(MenuBarPreferences.hidesChatGPTKey) private var menuBarHidesChatGPT = false
@@ -30,6 +31,8 @@ struct CCPilotApp: App {
         _profiles = StateObject(wrappedValue: profiles)
         _current = StateObject(wrappedValue: CurrentProfileModel(changes: changes))
         _usage = StateObject(wrappedValue: usage)
+        // Kimi Code 只显示额度（ADR 0007）：换 key 时要让 usage 忘掉旧数字
+        _kimi = StateObject(wrappedValue: KimiModel(usage: usage))
         // ChatGPT 的档案另用一个文件监听（~/.codex-profiles 与各档案 auth.json），与 Claude 一侧互不触发
         _chatgpt = StateObject(wrappedValue: ChatGPTProfileListModel(changes: ProfileChangeFeed(watching: .chatgptAuth)))
     }
@@ -42,6 +45,7 @@ struct CCPilotApp: App {
                 .environmentObject(appDelegate.shellIntegration)
                 .environmentObject(appDelegate.tokenStats)
                 .environmentObject(chatgpt)
+                .environmentObject(kimi)
         } label: {
             MenuBarLabel(content: usage.board.menuBarContent(
                             claudeCode: current.name, profiles: profiles.profiles,

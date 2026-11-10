@@ -13,6 +13,8 @@
 //     菜单栏两行文字的左侧用，ChatGPT 14pt（14、28 像素），Claude 15pt（15、30 像素）
 //     名字与边长须与 Core 的 Tool.iconResourceName、ToolIconResource.points 一致（tests/swift/AppIconChecks.swift 核对）。
 //     素材本身是灰色，出图时只保留形状（透明度）、涂成黑色，做成与 MenuBarIcon 一样的单色模板图。
+//   KimiIcon.png 与 @2x   Kimi Code 一段的分割线用（ADR 0007），来自 kimi.svg，14pt（14、28 像素）。
+//     彩色图（黑底圆角方块、白色 K、蓝点），不是模板图：原样出图，不涂黑。Kimi Code 不是 Tool，只有这一个用途。
 //
 // SVG 由系统的 NSImage（CoreSVG）解析，不依赖任何需要安装的工具。
 // 菜单栏图不做成 PDF：CoreSVG 画进 PDF 时会把 <mask>（镂空的提示符）按 24×24 栅格化，放大后发糊；
@@ -31,6 +33,8 @@ let iconset = output.appendingPathComponent("AppIcon.iconset", isDirectory: true
 
 /// 菜单栏模板图的边长（pt）
 let menuBarPoints = 18
+/// Kimi Code 图标的边长（pt），同 App 的 KimiSectionDivider.iconPoints
+let kimiIconPoints = 14
 /// 工具图标：资源名后缀与各工具的边长（pt），同 Core 的 Tool.iconResourceName、ToolIconResource.points
 let toolIconSizes: [(String, [String: Int])] = [
     ("Icon", ["Claude": 12, "ChatGPT": 12]),
@@ -99,3 +103,7 @@ for (source, tool) in [("claude.svg", "Claude"), ("chatgpt.svg", "ChatGPT")] {
                  to: output.appendingPathComponent("\(tool)\(suffix)@2x.png"))
     }
 }
+
+let kimi = load("kimi.svg")
+writePNG(kimi, points: kimiIconPoints, scale: 1, to: output.appendingPathComponent("KimiIcon.png"))
+writePNG(kimi, points: kimiIconPoints, scale: 2, to: output.appendingPathComponent("KimiIcon@2x.png"))

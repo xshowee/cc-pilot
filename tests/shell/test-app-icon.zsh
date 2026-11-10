@@ -77,6 +77,16 @@ test_resources_contain_both_tool_icons() {
   done
 }
 
+# Kimi Code 一段分割线的图标（ADR 0007）：14pt 见方，1x 为 14 像素，@2x 为 28 像素
+test_resources_contain_the_kimi_icon() {
+  local name size
+  for name size in KimiIcon.png 14x14 KimiIcon@2x.png 28x28; do
+    [[ -f $ROOT/Resources/$name ]] || { fail "缺少 Resources/$name"; continue }
+    assert_eq "$(/usr/bin/sips -g pixelWidth -g pixelHeight $ROOT/Resources/$name | awk '/pixel/ {print $2}' | paste -sd x -)" \
+      $size "$name 的像素尺寸"
+  done
+}
+
 test_menu_bar_icon_is_18pt_with_2x() {
   assert_menu_bar_icon $ROOT/Resources
 }

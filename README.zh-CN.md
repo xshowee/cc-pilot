@@ -54,21 +54,23 @@ cc-pilot 让每个账号各自独立：
 
 ## 联网与隐私
 
-CC Pilot 只访问下面三个地址：
+CC Pilot 只访问下面四个地址：
 
 | 地址 | 什么时候访问 |
 | --- | --- |
 | Claude Code 额度接口 `https://api.anthropic.com/api/oauth/usage` | **只在你点击**"刷新全部"或某个账号的刷新按钮时。启动 App、打开面板、切换账号都不会请求。请求头如实标明 `User-Agent: cc-pilot/<版本>`，不冒充官方客户端。 |
 | ChatGPT 额度接口 `https://chatgpt.com/backend-api/wham/usage` | 与上一行相同：**只在你点击**"刷新全部"或某个 ChatGPT 账号的刷新按钮时。请求只带这个账号的 access token（`Authorization`）、工作区 ID（`ChatGPT-Account-Id`）和 `User-Agent: cc-pilot/<版本>`。 |
+| Kimi Code 额度接口 `https://api.kimi.com/coding/v1/usages` | 只有你添加了 Kimi Code 账号才会访问，同样**只在你点击**"刷新全部"或某个 Kimi Code 账号的刷新按钮时。请求只带这个账号的 API key（`Authorization`）和 `User-Agent: cc-pilot/<版本>`。 |
 | 更新检查地址 `https://raw.githubusercontent.com/xshowee/cc-pilot/main/appcast.xml` | 由 [Sparkle](https://sparkle-project.org) 访问：开启"自动检查更新"（默认开启）时每天检查一次，距上次检查已满一天时会在 App 启动后不久检查；点"检查更新…"时立即检查。请求不附带系统信息。 |
 
 确认安装更新后，Sparkle 从本仓库的 GitHub Releases 下载新版本的 DMG。不想自动检查，可以在面板右下角的齿轮菜单里关掉"自动检查更新"。
 
 - **不收集任何使用数据**，不上报崩溃信息，没有任何统计或分析代码。
-- **App 只读取凭据**。Claude Code 的凭据在钥匙串里，App 通过系统自带的 `/usr/bin/security` 读取；ChatGPT 的凭据在每个 ChatGPT 账号的 `auth.json` 里，App 从中读取邮箱、套餐、用户 ID 和工作区 ID，以及 access token 的过期时间。无论哪一边，token 都只在单次请求期间保存在内存里，从不写进日志、缓存文件或错误信息。
-- **cc-pilot 从不写入、也从不续期凭据**。续期始终由 Claude Code 或 codex 自己完成。凭据只会在登出时由工具自己删除：Claude Code 由你执行 `/logout`（`ccp rm` 会为此打开 Claude Code）；`ccp chatgpt rm` 在你确认后，在该账号里执行 `codex logout`。凭据还在时，这两个命令都不会删除账号。
+- **App 只读取 Claude Code 和 ChatGPT 的凭据**。Claude Code 的凭据在钥匙串里，App 通过系统自带的 `/usr/bin/security` 读取；ChatGPT 的凭据在每个 ChatGPT 账号的 `auth.json` 里，App 从中读取邮箱、套餐、用户 ID 和工作区 ID，以及 access token 的过期时间。无论哪一边，token 都只在单次请求期间保存在内存里，从不写进日志、缓存文件或错误信息。
+- **Kimi Code 的 API key 是 cc-pilot 唯一自己保存的凭据**。Kimi Code 只显示额度，没有账号切换。在面板的"添加账号…"里选 Kimi Code，填一个名称和在 Kimi Code 控制台创建的 API key 即可，可以添加多个。key 保存在登录钥匙串里（每个账号一项，名为 `cc-pilot Kimi Code API key`），只在刷新这个账号的额度、或你在卡片上点"复制 API key"时读取，同样不写进日志、缓存文件或错误信息。复制的 key 只留在本机剪贴板（不经通用剪贴板同步到其他设备），并标记为机密，遵守 nspasteboard.org 约定的剪贴板管理工具不会记进历史；1 分钟后或 App 退出时，剪贴板如果还是这个 key 就自动清空。在面板里删除这个账号即从钥匙串删除。
+- **cc-pilot 从不写入、也从不续期 Claude Code 和 ChatGPT 的凭据**。续期始终由 Claude Code 或 codex 自己完成。凭据只会在登出时由工具自己删除：Claude Code 由你执行 `/logout`（`ccp rm` 会为此打开 Claude Code）；`ccp chatgpt rm` 在你确认后，在该账号里执行 `codex logout`。凭据还在时，这两个命令都不会删除账号。
 - `ccp` 不读取凭据，只检查它们是否存在：`ccp rm` 检查该账号的钥匙串项是否还在（不读取内容），`ccp chatgpt add` 和 `ccp chatgpt rm` 检查该账号的 `auth.json` 是否还在。
-- 读取凭据不应该弹出钥匙串授权窗口。如果哪天出现了弹窗，请不要点"允许"：这说明 cc-pilot 与当前的 Claude Code 版本不兼容，App 也会这样提示你。
+- 读取 Claude Code 的凭据不应该弹出钥匙串授权窗口。如果哪天出现了针对 `Claude Code-credentials` 的弹窗，请不要点"允许"：这说明 cc-pilot 与当前的 Claude Code 版本不兼容，App 也会这样提示你。（自己从源码构建的 App 每次重新构建后签名不同，读取 `cc-pilot Kimi Code API key` 时可能要你重新授权，这是正常的。）
 - **进程**。为了判断正在进行的会话属于哪个 ChatGPT 账号，App 会查看你自己的、名字以 `codex` 开头的进程：每个进程读一次环境变量、只保留 `CODEX_HOME`，并列出它们打开的文件。用的是 `lsof` 所用的同一套系统接口（libproc、sysctl），不为此启动任何程序。`ccp chatgpt rm` 为了确认账号是否仍在使用，执行一次 `ps -A -E`，只找 `CODEX_HOME` 是这个账号的 `codex` 进程和 ChatGPT 桌面 App。进程环境里的其他内容一概不保留。
 
 ## 它会碰哪些东西
@@ -79,7 +81,7 @@ CC Pilot 只访问下面三个地址：
 | `~/.cc-pilot/` | `ccp` 命令和 `claude`、`codex` 包装函数的安装位置，由 App 安装和更新。 |
 | `~/.claude-profiles/` | 除默认账号以外的账号，每个账号一个目录：`~/.claude-profiles/<名字>/`；以及记录当前账号的文件 `~/.claude-profiles/active`，和存放各账号最新实时额度的 `~/.claude-profiles/.live-quota/`。 |
 | `~/.claude/`、`~/.claude.json`（默认账号） | **只读**。新建账号时，从 `~/.claude.json` 复制 MCP 服务器和项目信任设置、从 `~/.claude/settings.json` 复制设置；新账号里的共享资源是指向 `~/.claude/` 的软链接；App 从 `.claude.json` 读取账号资料（邮箱、组织、订阅等级）用于显示。 |
-| 钥匙串 | **只读**，见上面"联网与隐私"。 |
+| 钥匙串 | Claude Code 的凭据**只读**；只有你添加 Kimi Code 账号时，cc-pilot 才写入自己的项 `cc-pilot Kimi Code API key`（每个账号一项）。见上面"联网与隐私"。 |
 | `~/.codex-profiles/` | 除默认账号以外的 ChatGPT 账号，每个账号一个目录：`~/.codex-profiles/<名字>/`（即它的 `CODEX_HOME`）；以及记录 ChatGPT 当前账号的文件 `~/.codex-profiles/active`。新账号一开始只有 `config.toml` 和指向 `~/.codex/` 的软链接，`auth.json` 由 `codex login` 写入。 |
 | `~/.codex/`（ChatGPT 默认账号） | cc-pilot 不修改默认账号的登录、设置和其中的文件。`ccp chatgpt add` 在 `~/.codex/` 或其中的共享目录（`sessions`、`archived_sessions`、`thread-writer-locks`、`.tmp`、`skills`、`plugins`、`rules`）不存在时创建它们，并把其中的 `config.toml` 复制到新账号。之后，在其他账号里运行的 codex 也会写入这里：会话数据库经账号 `config.toml` 里的 `sqlite_home`，会话文件经软链接。App 读取 `sessions`、`archived_sessions` 里的会话记录，以及每个 ChatGPT 账号的 `auth.json` 和 `history.jsonl`。 |
 | launchd 环境变量 `CODEX_HOME` | `ccp chatgpt use` 用 `launchctl setenv` 把它设为 ChatGPT 当前账号的目录，之后打开的 App 都使用这个账号；切回 `default` 时用 `launchctl unsetenv` 删除它。它在注销或重启前一直有效；App 每次启动时按 ChatGPT 当前账号重新设置一次（只在 `~/.codex-profiles/` 存在时）。不安装 LaunchAgent。 |
@@ -191,6 +193,7 @@ ccp chatgpt use default      # 切回 ~/.codex
 - **设置只在创建时复制一次**。`ccp add` 把默认账号的 `~/.claude/settings.json` 复制为新账号的初始设置（`ccp chatgpt add` 对 `~/.codex/config.toml` 也是这样），之后各账号各自独立变化：在一个账号里改主题、状态栏、hooks 等，其他账号不会跟着变。这样不同订阅等级的账号可以用不同的模型和 advisor。插件是共享的，但"是否启用"记在各账号的设置里：在一个账号里装好并启用的插件，在其他账号里需要用 `/plugin` 再启用一次。
 - **账号不能改名**。钥匙串里存凭据的那一项，名字是由账号目录的路径算出来的，改名就会丢失登录状态。想换名字，正确的做法是：用新名字 `ccp add` 新建一个账号并登录，再用 `ccp rm` 删除旧账号（删除时会引导你先登出）。
 - **依赖 Claude Code 的内部实现**。钥匙串项的命名方式、`.claude.json` 里账号资料的结构、额度接口的地址和字段都没有官方文档，是按 Claude Code 2.1.309 的实际行为实现的。Claude Code 更新后如果不再兼容，App 会提示"与当前 Claude Code 版本不兼容"或"接口可能已变化，请更新 cc-pilot"，而不是显示猜出来的数字。
+- **Kimi Code 的额度接口是实验性的**。它没有官方文档，按 2026-11-10 的实际响应实现；格式变了，App 会提示"接口可能已变化，请更新 cc-pilot"。Kimi Code 没有实时额度，也不显示在菜单栏里。接口不返回邮箱，两个 key 属于同一个 Kimi 账户时也各显示各的。
 - **也依赖 Codex 的内部实现**。`auth.json` 的结构、ChatGPT 额度接口和会话记录的格式都没有官方文档，是按 ChatGPT 桌面 App 26.1027 和 Codex CLI 0.153.4 的实际行为实现的。更新后如果不再兼容，App 会提示"与当前 ChatGPT 版本不兼容"或额度接口可能已变化。
 - ChatGPT 桌面 App 和 Zed（codex-acp）不写 `history.jsonl`。它们在 CC Pilot 没有运行时进行的会话，既没有写入进程、也没有 `history.jsonl` 记录，按创建会话的那个账号计；只有创建者在你的账号里对应不到、或对应不止一个时，它的 Token 用量才不计入。
 - 使用 API key（Claude Code 或 ChatGPT）或 `setup-token` 生成的长期 token 登录时，不支持额度显示。
@@ -208,6 +211,7 @@ ccp chatgpt use default      # 切回 ~/.codex
 
 - `~/.cc-pilot/`：`ccp` 和包装函数（`ccp uninstall` 保留它）；
 - `~/.claude-profiles/`：其余账号和当前账号记录。没有先 `ccp rm` 就直接删除时，这些账号的凭据还留在钥匙串里（名为 `Claude Code-credentials-` 加 8 位十六进制的项），可以用"钥匙串访问"删除；
+- 钥匙串里名为 `cc-pilot Kimi Code API key` 的项：添加过 Kimi Code 账号才有。卸载前在面板里删除这些账号，或者用"钥匙串访问"删除；
 - `~/.codex-profiles/`：其余 ChatGPT 账号和 ChatGPT 当前账号记录。没有先 `ccp chatgpt rm` 就直接删除时，这些账号的 `auth.json` 会被删掉，但没有经 codex 登出。它们开始的会话留在共用的 `~/.codex` 里；
 - `~/Library/Application Support/cc-pilot/`：Token 用量账本；
 - App 的偏好设置：`defaults delete com.ccpilot.app`。

@@ -186,3 +186,17 @@
 
 /* 切换 ChatGPT 档案（chatgpt-profiles ticket 04） */
 "Couldn’t switch the ChatGPT profile" = "无法切换 ChatGPT 账号";
+
+/* Kimi Code 额度（ADR 0007） */
+"API key" = "API key";
+"Paste" = "粘贴";
+"Create a key in the Kimi Code console. It’s stored in your keychain and only sent to Kimi when you refresh usage." = "在 Kimi Code 控制台创建 key。它保存在你的钥匙串里，只在你刷新额度时发给 Kimi。";
+"Couldn’t save the API key to the keychain." = "无法把 API key 保存到钥匙串。";
+"Weekly" = "周窗口";
+"Click refresh to fetch usage." = "点刷新按钮获取额度。";
+"Couldn’t read the API key from the keychain." = "无法从钥匙串读取 API key。";
+"Kimi rejected the API key. Delete this account and add it again with a new key." = "Kimi 拒绝了这个 API key，请删除这个账号后用新的 key 重新添加。";
+"Delete “%@” and remove its API key from the keychain?" = "删除“%@”并从钥匙串移除它的 API key？";
+"Delete" = "删除";
+"Copy API Key" = "复制 API key";
+"Copied. The clipboard clears in 1 minute." = "已复制，剪贴板 1 分钟后清空";

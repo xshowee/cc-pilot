@@ -14,6 +14,9 @@
 // 进程：`environment` 里的 codex 进程查询一律是 `codexProcesses`（假的，见 FakeCodexProcesses.swift），
 // 绝不列出、读取用户真实的进程。
 //
+// Kimi Code 的 API key：`environment` 里的存放处一律是 `kimiKeys`（假的，见 FakeKimiKeyStore.swift），
+// 绝不读写真实的钥匙串。
+//
 // ccp 按 PATH 调用的 codex、launchctl、osascript、open（chatgpt-profiles ticket 04）：`searchPath` 最前面的 root/bin
 // 里有同名包装脚本，带上 FAKE_CODEX_LOG_DIR = root/codex、FAKE_LAUNCHCTL_DIR = root/launchctl、
 // FAKE_CHATGPT_APP_DIR = root/chatgpt-app 再执行 tests/fakes/ 里的同名假程序。所以经 `environment.searchPath`
@@ -52,6 +55,8 @@ final class TempHome {
     let transport = FakeUsageTransport()
     /// 注入给 App 核心的假进程查询（默认没有进程），绝不查看真实的进程
     let codexProcesses = FakeCodexProcesses()
+    /// 注入给 App 核心的假 Kimi Code key 存放处（内存里，默认没有 key），绝不读写真实的钥匙串
+    let kimiKeys = FakeKimiKeyStore()
 
     init(homeName: String = "home dir") throws {
         let fm = FileManager.default
@@ -119,7 +124,7 @@ final class TempHome {
         CoreEnvironment(home: url, security: securityTool, userName: Self.userName, securityTimeout: 10,
                         searchPath: searchPath, transport: transport, appVersion: Self.appVersion,
                         osascript: osascriptTool, launchctl: root.appendingPathComponent("bin/launchctl"),
-                        codexProcesses: codexProcesses)
+                        codexProcesses: codexProcesses, kimiKeys: kimiKeys)
     }
 
     /// 交给 App 核心运行 shell 脚本时的 PATH：最前面是本目录的包装（假 security、codex、launchctl、osascript、open），

@@ -34,6 +34,8 @@ struct CoreEnvironment: Sendable {
     /// 运行中的 codex 进程查询（ChatGPT 会话由哪个档案的进程写入，见 ChatGPTSessionWriters）。
     /// 测试换成假的，绝不能让检查程序查看用户真实的进程。
     var codexProcesses: CodexProcessQuery
+    /// Kimi Code 的 API key 存放处（ADR 0007）。测试换成内存里的假实现，绝不能让检查程序读写真实的钥匙串。
+    var kimiKeys: KimiKeyStore
 
     init(home: URL = CoreEnvironment.userHome(),
          security: URL = URL(fileURLWithPath: "/usr/bin/security"),
@@ -44,7 +46,8 @@ struct CoreEnvironment: Sendable {
          appVersion: String = CoreEnvironment.bundleVersion(),
          osascript: URL = URL(fileURLWithPath: "/usr/bin/osascript"),
          launchctl: URL = URL(fileURLWithPath: "/bin/launchctl"),
-         codexProcesses: CodexProcessQuery = LiveCodexProcessQuery()) {
+         codexProcesses: CodexProcessQuery = LiveCodexProcessQuery(),
+         kimiKeys: KimiKeyStore = KeychainKimiKeyStore()) {
         self.home = home
         self.security = security
         self.userName = userName
@@ -55,6 +58,7 @@ struct CoreEnvironment: Sendable {
         self.osascript = osascript
         self.launchctl = launchctl
         self.codexProcesses = codexProcesses
+        self.kimiKeys = kimiKeys
     }
 
     /// 真实环境

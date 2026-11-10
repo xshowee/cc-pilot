@@ -8,6 +8,7 @@
 #   Claude/ChatGPTMenuBarIcon.png 与 @2x   工具图标，菜单栏行首用（ChatGPT 10pt、Claude 11pt，单色模板图）
 #   Claude/ChatGPTMenuBarSummaryIcon.png 与 @2x   工具图标，只显示一个工具时菜单栏两行文字的左侧用
 #                                         （ChatGPT 14pt、Claude 15pt）
+#   KimiIcon.png 与 @2x                    Kimi Code 一段的分割线用（14pt，彩色图，不是模板图，ADR 0007）
 # 只用 macOS 自带的 swift（NSImage 解析 SVG，见 scripts/render-icons.swift）和 iconutil，不联网。
 # 改了 SVG 后运行本脚本，把源文件和产物一起提交。
 
