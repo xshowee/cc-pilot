@@ -6,6 +6,30 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>CC Pilot</title>
         <item>
+            <title>0.5.0</title>
+            <pubDate>Tue, 10 Nov 2026 21:14:07 +0800</pubDate>
+            <link>https://github.com/xshowee/cc-pilot</link>
+            <sparkle:fullReleaseNotesLink>https://github.com/xshowee/cc-pilot/releases</sparkle:fullReleaseNotesLink>
+            <sparkle:version>7</sparkle:version>
+            <sparkle:shortVersionString>0.5.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <description sparkle:format="markdown"><![CDATA[CC Pilot 0.5.0: Kimi Code usage.
+
+- **Kimi Code usage**: choose Kimi Code under "Add Profile…" and enter a name and an API key created in the Kimi Code console. The panel shows its 5-hour and weekly usage when you refresh. You can add several keys. Kimi Code is usage-only: there is no switching, and it isn't shown in the menu bar.
+- The API key is stored in your login keychain and sent only to Kimi when you refresh. You can copy it from the account's card: the copy stays on this Mac, is marked so that clipboard managers following the standard convention skip it, and is cleared after 1 minute.
+- Kimi's usage API is experimental and undocumented. If it changes, the app will tell you to update.
+
+---
+
+CC Pilot 0.5.0：显示 Kimi Code 额度。
+
+- **Kimi Code 额度**：在"添加账号…"里选 Kimi Code，填一个名称和在 Kimi Code 控制台创建的 API key。点刷新后，面板会显示它的 5 小时和周额度。可以添加多个 key。Kimi Code 只显示额度，不能切换，也不显示在菜单栏里。
+- API key 保存在你的登录钥匙串里，只在刷新时发给 Kimi。可以在账号卡片上复制它：复制的内容只留在本机、遵守约定的剪贴板管理工具不会记录，1 分钟后自动清空。
+- Kimi 的额度接口是实验性的，没有官方文档。接口变了，App 会提示你更新。
+]]></description>
+            <enclosure url="https://github.com/xshowee/cc-pilot/releases/download/v0.5.0/CCPilot-0.5.0.dmg" length="3844622" type="application/octet-stream" sparkle:edSignature="HbMBhDRX3B58JgEdou1x06y4ycbnf3ZYG/aSPiiXI8smEjmlaE9FX9veJr9q4J696yoBU6n6vBaXEMWBEmIWAQ=="/>
+        </item>
+        <item>
             <title>0.4.2</title>
             <pubDate>Fri, 06 Nov 2026 01:21:15 +0800</pubDate>
             <link>https://github.com/xshowee/cc-pilot</link>
@@ -45,41 +69,9 @@ CC Pilot 0.4.1
 ]]></description>
             <enclosure url="https://github.com/xshowee/cc-pilot/releases/download/v0.4.1/CCPilot-0.4.1.dmg" length="3684545" type="application/octet-stream" sparkle:edSignature="kKZBps5cL+9sWSJV03OQKz6sTNNK0AtYBxvcOcy/RTOS00bxI3y2o4xI6MTHwf+RtLq6Cz5Ii43sbyzqIfSJDA=="/>
         </item>
-        <item>
-            <title>0.4.0</title>
-            <pubDate>Thu, 05 Nov 2026 19:22:38 +0800</pubDate>
-            <link>https://github.com/xshowee/cc-pilot</link>
-            <sparkle:fullReleaseNotesLink>https://github.com/xshowee/cc-pilot/releases</sparkle:fullReleaseNotesLink>
-            <sparkle:version>4</sparkle:version>
-            <sparkle:shortVersionString>0.4.0</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
-            <description sparkle:format="markdown"><![CDATA[CC Pilot 0.4.0: ChatGPT accounts, alongside Claude Code.
-
-- **ChatGPT profiles**: manage the ChatGPT accounts you use with `codex` and the ChatGPT desktop app the same way as Claude Code: `ccp chatgpt add`, `ls`, `use` and `rm`, or from the panel. Your existing `~/.codex` is the profile `default` and stays as it is; session history, skills and plugins are shared by all ChatGPT profiles. Switching never quits or reopens the ChatGPT desktop app: quit and reopen it yourself to use the new profile.
-- **ChatGPT usage**: the panel shows each ChatGPT account's 5-hour and weekly usage, and the menu bar shows one line per tool. Usage updates live while a `codex` or desktop app session is running, and when the app launches it restores each account's most recent numbers from the local session transcripts.
-- **ChatGPT token usage**: hover over a ChatGPT account to see its token usage, like Claude Code accounts.
-- The token usage panel now lines up with the account you're hovering over.
-- The panel grows with your profiles and only scrolls when it doesn't fit on the screen, without scroll bars.
-
-The app updates `ccp` in `~/.cc-pilot/` the next time it starts. If you use only the command line tool without the app, copy the new `shell/` directory to `~/.cc-pilot/` again.
-
----
-
-CC Pilot 0.4.0：支持 ChatGPT 账号，与 Claude Code 并列。
-
-- **ChatGPT 档案**：用 `codex` 和 ChatGPT 桌面 App 的 ChatGPT 账号，可以像 Claude Code 一样管理：`ccp chatgpt add`、`ls`、`use`、`rm`，或者在面板里操作。原有的 `~/.codex` 就是档案 `default`，保持不变；会话记录、技能、插件由所有 ChatGPT 档案共用。切换时不会退出或重新打开 ChatGPT 桌面 App，要用新档案时自己退出再打开即可。
-- **ChatGPT 额度**：面板里显示各 ChatGPT 账号的 5 小时和周额度，菜单栏按工具各显示一行。`codex` 或桌面 App 的会话运行时额度会实时更新；App 启动时还会从本地会话记录补回各账号最近一次的额度。
-- **ChatGPT Token 用量**：鼠标停在 ChatGPT 账号上，可以像 Claude Code 账号一样查看 Token 用量。
-- Token 用量面板改为与鼠标停着的账号对齐。
-- 面板随档案多少变高，屏幕放不下时才可以滚动，不显示滚动条。
-
-App 下次启动时会自动更新 `~/.cc-pilot/` 里的 `ccp`。只用命令行、没装 App 的话，把新版的 `shell/` 目录重新复制为 `~/.cc-pilot/`。
-]]></description>
-            <enclosure url="https://github.com/xshowee/cc-pilot/releases/download/v0.4.0/CCPilot-0.4.0.dmg" length="3678860" type="application/octet-stream" sparkle:edSignature="wgaNA1N09HVaJosZd63w1kkqP5/Ogejzmjrsn5X0JGn74A0mFaaekTILRHBBSkbRs3litV6VQMfeTA637yKUCg=="/>
-        </item>
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: yJ8VldVKEfr/WNFIP+uqPgr51N0OKIXFQkd57+5TNpb8oilG2nYdhkheiZzr4DnhaIPY6sacL+f5kuuA1q1zBA==
-length: 6132
+edSignature: 3xSOER+xMccXxW+gvtHK3ZAUHoPB+bNlY1QwVk8qCqxWr6TP+20neeoyQGcZqRG7LgH05r5sTHKokXCpO0ESDg==
+length: 5029
 -->
