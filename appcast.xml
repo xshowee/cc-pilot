@@ -6,6 +6,32 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>CC Pilot</title>
         <item>
+            <title>0.6.0</title>
+            <pubDate>Wed, 11 Nov 2026 20:19:38 +0800</pubDate>
+            <link>https://github.com/xshowee/cc-pilot</link>
+            <sparkle:fullReleaseNotesLink>https://github.com/xshowee/cc-pilot/releases</sparkle:fullReleaseNotesLink>
+            <sparkle:version>8</sparkle:version>
+            <sparkle:shortVersionString>0.6.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <description sparkle:format="markdown"><![CDATA[CC Pilot 0.6.0: Kimi Code base URLs, models and plan expiry.
+
+- **Base URLs and models**: hover over a Kimi Code card to show a side panel with the Anthropic-compatible and OpenAI-compatible base URLs, plus the models available to the key with their context length and reasoning efforts. Everything can be copied with one click.
+- **Plan name**: the card shows your Kimi plan, and keys that belong to the same Kimi account are marked as such.
+- **Plan expiry**: Kimi's API doesn't provide the expiry date, so you can enter it yourself from the subscription page on kimi.com (calendar button or right-click menu on the card). The card shows how many days are left, in amber during the last 7 days and in red once expired.
+- Refreshing a Kimi account now also asks Kimi for the model list and your plan, using the same API key. Only the plan name and account ID are read; nickname and phone number are ignored, and nothing is written to disk.
+
+---
+
+CC Pilot 0.6.0：Kimi Code 显示 Base URL、可用模型和套餐有效期。
+
+- **Base URL 和模型列表**：鼠标停在 Kimi Code 卡片上，侧边会弹出面板，显示 Anthropic 兼容和 OpenAI 兼容的 Base URL，以及这个 key 可用的模型、上下文长度和推理强度，都可以一键复制。
+- **套餐名**：卡片上显示 Kimi 套餐名；属于同一个 Kimi 账户的多个 key 会标出来。
+- **套餐有效期**：Kimi 的接口不提供到期时间，可以照着 kimi.com 订阅页自己填（卡片上的日历按钮或右键菜单）。卡片显示还剩几天，最后 7 天变成琥珀色，过期后变成红色。
+- 刷新 Kimi 账号时，会用同一个 API key 顺带向 Kimi 请求模型列表和套餐信息。只读套餐名和账户 ID，昵称、手机号不读，也不写进磁盘。
+]]></description>
+            <enclosure url="https://github.com/xshowee/cc-pilot/releases/download/v0.6.0/CCPilot-0.6.0.dmg" length="4054743" type="application/octet-stream" sparkle:edSignature="akZBV+uU9wbtZMz1WU9nV7IrZBQHKdhRYgL3shHtw/cHCdOjyiofx1naBmPff3ozxcWbXClF4thG54YxWTU6AA=="/>
+        </item>
+        <item>
             <title>0.5.0</title>
             <pubDate>Tue, 10 Nov 2026 21:14:07 +0800</pubDate>
             <link>https://github.com/xshowee/cc-pilot</link>
@@ -49,29 +75,9 @@ CC Pilot 0.4.2
 ]]></description>
             <enclosure url="https://github.com/xshowee/cc-pilot/releases/download/v0.4.2/CCPilot-0.4.2.dmg" length="3687703" type="application/octet-stream" sparkle:edSignature="SVdlxhsJLjrvcbGpPySW/llTVjuJxo88psmntC6f0Pzvwhtyr6fLn1HfQXmCMtjHGzRJ1z4SMKV34PanNlF1AA=="/>
         </item>
-        <item>
-            <title>0.4.1</title>
-            <pubDate>Thu, 05 Nov 2026 23:54:38 +0800</pubDate>
-            <link>https://github.com/xshowee/cc-pilot</link>
-            <sparkle:fullReleaseNotesLink>https://github.com/xshowee/cc-pilot/releases</sparkle:fullReleaseNotesLink>
-            <sparkle:version>5</sparkle:version>
-            <sparkle:shortVersionString>0.4.1</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
-            <description sparkle:format="markdown"><![CDATA[CC Pilot 0.4.1
-
-- When the menu bar shows only one tool, its icon now appears to the left of the two lines, so you can tell at a glance whether the plan and usage are for Claude Code or ChatGPT.
-
----
-
-CC Pilot 0.4.1
-
-- 菜单栏只显示一个工具时，两行文字左侧会显示这个工具的图标，一眼就能看出套餐和额度是 Claude Code 还是 ChatGPT 的。
-]]></description>
-            <enclosure url="https://github.com/xshowee/cc-pilot/releases/download/v0.4.1/CCPilot-0.4.1.dmg" length="3684545" type="application/octet-stream" sparkle:edSignature="kKZBps5cL+9sWSJV03OQKz6sTNNK0AtYBxvcOcy/RTOS00bxI3y2o4xI6MTHwf+RtLq6Cz5Ii43sbyzqIfSJDA=="/>
-        </item>
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: 3xSOER+xMccXxW+gvtHK3ZAUHoPB+bNlY1QwVk8qCqxWr6TP+20neeoyQGcZqRG7LgH05r5sTHKokXCpO0ESDg==
-length: 5029
+edSignature: TQS5tX2I1MV7fmm5qwhWO5YzImTXq036EMPtTCp77E82j2CBOPLiEWCFVWNMY71MRXvIVo/w+spXPNHcggJjCw==
+length: 6439
 -->
