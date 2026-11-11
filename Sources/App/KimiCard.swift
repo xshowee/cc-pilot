@@ -1,7 +1,11 @@
-// 面板里的 Kimi Code 账号卡片（ADR 0007）：样式同 ChatGPTProfileCard，但不可点击（没有档案可切换）、没有统计面板。
+// 面板里的 Kimi Code 账号卡片（ADR 0007）：样式同 ChatGPTProfileCard，但不可点击（没有档案可切换）。
+// 鼠标停在卡片上时，左侧弹出 Base URL 和模型列表（KimiFlyoutView，与统计面板同一个窗口）；正在显示时描边同其他卡片。
 // 标题是账号名称，副标题说明额度来自 API key（接口不返回邮箱、套餐）。右上角是刷新按钮；删除按钮在它左边，
 // 鼠标停在卡片上时才显示，同其他账号行（点了之后面板里出现确认条，KimiRemovalBanner）。
-// 复制 API key 的按钮在删除按钮左边，同样悬停才显示；右键菜单里也有。复制后在副标题位置短暂显示结果
+// 复制 API key 的按钮在删除按钮左边，设置有效期的日历按钮再左边，同样悬停才显示；右键菜单里也有。
+// 名称右边是套餐标签（/me 的 user_level_name，刷新后才有，KimiAccountInfo.swift）；两个 key 属于同一个 Kimi 账户时，
+// 头部下面标注"与某某是同一账号"（样式同 ProfileRow）。
+// 副标题：填了套餐有效期（KimiExpiry.swift）时显示有效期，还剩 7 天以内琥珀色、过期红色；没填时是"API key"。复制后在副标题位置短暂显示结果
 // （KimiModel.copyNotice），剪贴板一分钟后自动清空。
 // 额度：5 小时窗口、周窗口（剩余百分比、重置时间、进度条）、获取时间、失败原因，显示规则复用 Claude 一侧
 // （UsageWindowLine、UsageSummaryView）。周窗口不分模型，标题是"周窗口"；key 相关的失败原因用这里自己的文字
@@ -25,6 +29,18 @@ struct KimiCard: View {
     let onCopyKey: () -> Void
     /// 最近一次复制的结果；不是这个账号的或没有时为 nil
     let copyNotice: KimiModel.CopyNotice?
+    /// 用户填的套餐有效期；没填时为 nil
+    var expiry: KimiExpiryDate? = nil
+    /// 点设置有效期（面板随后显示编辑条）
+    var onEditExpiry: () -> Void = {}
+    /// 套餐名（最近一次刷新拿到的）；没有时为 nil
+    var plan: String? = nil
+    /// 属于同一个 Kimi 账户的其他账号名称
+    var sameAccountAs: [String] = []
+    /// 侧边面板正显示这张卡片
+    var isViewing = false
+    /// 鼠标进出（侧边面板跟着弹出、收起）
+    var onHover: ((Bool) -> Void)? = nil
 
     @State private var hovering = false
 
@@ -37,6 +53,8 @@ struct KimiCard: View {
                 .padding(12)
                 .accessibilityElement(children: .combine)
             HStack(spacing: 2) {
+                expiryButton
+                    .opacity(hovering ? 1 : 0)
                 copyButton
                     .opacity(hovering ? 1 : 0)
                 DeleteProfileButton(profileName: name, blocker: nil, action: onDelete)
@@ -56,14 +74,33 @@ struct KimiCard: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
+                .strokeBorder(isViewing ? Color.accentColor : Color.primary.opacity(0.06), lineWidth: isViewing ? 2 : 1)
         )
-        .onHover { hovering = $0 }
+        .onHover {
+            hovering = $0
+            onHover?($0)
+        }
         .contextMenu {
             Button("Copy API Key", action: onCopyKey)
+            Button(action: onEditExpiry) { expiryActionTitle }
             Divider()
             Button("Delete “\(name)”…", action: onDelete)
         }
+    }
+
+    private var expiryButton: some View {
+        Button(action: onEditExpiry) {
+            Image(systemName: "calendar")
+                .font(.system(size: 12, weight: .medium))
+                .frame(width: Self.buttonSize, height: Self.buttonSize)
+        }
+        .buttonStyle(.borderless)
+        .help(expiryActionTitle)
+        .accessibilityLabel(expiryActionTitle)
+    }
+
+    private var expiryActionTitle: Text {
+        expiry == nil ? Text("Set Expiry Date…") : Text("Change Expiry Date…")
     }
 
     private var copyButton: some View {
@@ -86,8 +123,29 @@ struct KimiCard: View {
             Label("Couldn’t read the API key from the keychain.", systemImage: "exclamationmark.circle")
                 .foregroundColor(StatusColor.orange)
         case nil:
-            Text("API key")
+            if let expiry {
+                expiryText(KimiExpiryStatus.of(expiry, now: now))
+            } else {
+                Text("API key")
+                    .foregroundColor(.secondary)
+            }
+        }
+    }
+
+    @ViewBuilder private func expiryText(_ status: KimiExpiryStatus) -> some View {
+        switch status {
+        case .valid(let until):
+            Text("Valid until \(until.string)")
                 .foregroundColor(.secondary)
+        case .soon(let days, let until):
+            Text("Expires in \(days) days (\(until.string))")
+                .foregroundColor(StatusColor.orange)
+        case .lastDay:
+            Text("Expires today")
+                .foregroundColor(StatusColor.orange)
+        case .expired(let on):
+            Text("Expired on \(on.string)")
+                .foregroundColor(StatusColor.red)
         }
     }
 
@@ -96,15 +154,30 @@ struct KimiCard: View {
             HStack(alignment: .center, spacing: 10) {
                 ProfileAvatar(source: name, isCurrent: false)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(verbatim: name)
-                        .font(.system(size: 13, weight: .semibold))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
+                    HStack(spacing: 6) {
+                        Text(verbatim: name)
+                            .font(.system(size: 13, weight: .semibold))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        if let plan {
+                            TierBadge(name: plan)
+                        }
+                    }
                     subtitle
                         .font(.caption)
                         .lineLimit(1)
                 }
-                .padding(.trailing, 3 * (Self.buttonSize + 2))
+                .padding(.trailing, 4 * (Self.buttonSize + 2))
+            }
+            if !sameAccountAs.isEmpty {
+                Label {
+                    Text("Same account as \(AccountText.joinedNames(sameAccountAs))")
+                } icon: {
+                    Image(systemName: "link")
+                }
+                .font(.caption)
+                // 只是说明，不是警告（同 ProfileRow）
+                .foregroundColor(.secondary)
             }
             if let usage {
                 summary(usage)

@@ -200,3 +200,32 @@
 "Delete" = "删除";
 "Copy API Key" = "复制 API key";
 "Copied. The clipboard clears in 1 minute." = "已复制，剪贴板 1 分钟后清空";
+
+/* Kimi Code 的 Base URL 和模型列表（ADR 0007，侧边面板） */
+"Anthropic-compatible" = "Anthropic 兼容";
+"OpenAI-compatible" = "OpenAI 兼容";
+"Copy Base URL" = "复制 Base URL";
+"Models" = "可用模型";
+"Models (%lld)" = "可用模型（%lld）";
+"Copy Model ID" = "复制模型 id";
+"Context length" = "上下文长度";
+"Reasoning effort" = "推理强度";
+"Default: %@" = "默认：%@";
+"No models are available for this API key." = "这个 API key 没有可用的模型。";
+"Couldn’t fetch the model list." = "无法获取模型列表。";
+"Couldn’t fetch the model list. Showing the last list fetched." = "无法获取模型列表，显示的是上一次获取的。";
+"Fetching…" = "正在获取…";
+"Click refresh to fetch the model list." = "点刷新按钮获取模型列表。";
+
+/* Kimi Code 套餐有效期（ADR 0007，用户自己填） */
+"Set Expiry Date…" = "设置有效期…";
+"Change Expiry Date…" = "修改有效期…";
+"Plan expiry date for “%@”" = "“%@”的套餐有效期";
+"Valid until" = "有效期至";
+"Copy it from the subscription page on kimi.com." = "照着 kimi.com 订阅页上的填写。";
+"Save" = "保存";
+"Remove Date" = "清除日期";
+"Valid until %@" = "有效期至 %@";
+"Expires in %lld days (%@)" = "%lld 天后到期（%@）";
+"Expires today" = "今天到期";
+"Expired on %@" = "已于 %@ 到期";

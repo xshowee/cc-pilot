@@ -8,6 +8,9 @@
 // 添加入口是面板底栏的"添加账号…"（AddProfileForm 里选 Kimi Code）；删除入口在卡片上，先在面板里确认
 // （KimiRemovalBanner）——key 只在创建时显示一次，删了要去控制台重新生成。
 // 删除后让 UsageModel 忘掉这个账号的额度。添加后不自动请求额度：刷新永远由用户手动触发。
+// 套餐有效期（KimiExpiry.swift）：用户在卡片上填，按账号名称存在 UserDefaults（不是机密，不进钥匙串），
+// 删除账号时一起删；添加账号时也清掉同名的旧值（可能是上一次删除没清干净留下的）。
+// editingExpiry 是正在编辑有效期的账号（面板底栏上方显示编辑条 KimiExpiryBanner）。
 
 import AppKit
 
@@ -16,6 +19,10 @@ final class KimiModel: ObservableObject {
     @Published private(set) var names: [String]
     /// 等待确认删除的账号名称（面板显示确认条）
     @Published var confirmingRemoval: String?
+    /// 各账号的套餐有效期（用户填的）；没填的账号没有
+    @Published private(set) var expiries: [String: KimiExpiryDate]
+    /// 正在编辑有效期的账号名称（面板显示编辑条）
+    @Published var editingExpiry: String?
     /// 最近一次添加失败（钥匙串拒绝写入）；添加表单据此提示
     @Published var addFailed = false
     /// 最近一次复制 key 的结果（卡片上短暂显示）
@@ -25,6 +32,9 @@ final class KimiModel: ObservableObject {
         let name: String
         let copied: Bool
     }
+
+    /// UserDefaults 键：[账号名称: "yyyy-MM-dd"]
+    static let expiriesKey = "kimiExpiryDates"
 
     /// 卡片上的复制结果显示多久
     static let noticeDuration: TimeInterval = 4
@@ -42,6 +52,8 @@ final class KimiModel: ObservableObject {
         store = environment.kimiKeys
         self.usage = usage
         names = store.names()
+        let stored = UserDefaults.standard.dictionary(forKey: Self.expiriesKey) as? [String: String] ?? [:]
+        expiries = stored.compactMapValues(KimiExpiryDate.init(string:))
         terminationObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.willTerminateNotification, object: nil, queue: .main
         ) { [weak self] _ in
@@ -55,6 +67,13 @@ final class KimiModel: ObservableObject {
         let stored = store.names()
         if stored != names { names = stored }
         if let pending = confirmingRemoval, !stored.contains(pending) { confirmingRemoval = nil }
+        if let editing = editingExpiry, !stored.contains(editing) { editingExpiry = nil }
+    }
+
+    /// 设置或清除（nil）这个账号的有效期
+    func setExpiry(_ expiry: KimiExpiryDate?, for name: String) {
+        expiries[name] = expiry
+        UserDefaults.standard.set(expiries.mapValues(\.string), forKey: Self.expiriesKey)
     }
 
     func problem(forNewName name: String) -> ProfileCommands.NewNameProblem? {
@@ -74,6 +93,7 @@ final class KimiModel: ObservableObject {
         }
         addFailed = false
         usage.forgetKimi(name)
+        if expiries[name] != nil { setExpiry(nil, for: name) }
         reload()
         return true
     }
@@ -113,6 +133,7 @@ final class KimiModel: ObservableObject {
             NSLog("CC Pilot: 无法移除 Kimi Code API key：%@", String(describing: error))
         }
         usage.forgetKimi(name)
+        setExpiry(nil, for: name)
         confirmingRemoval = nil
         reload()
     }

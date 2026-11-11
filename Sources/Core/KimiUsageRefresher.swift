@@ -2,12 +2,15 @@
 // 没有档案、不能切换、没有实时额度，也不属于 Tool。
 //
 // 用法（只在用户点"刷新全部"或某张 Kimi Code 卡片的刷新按钮时调用；在后台队列上调用，会阻塞）：
-//   KimiUsageRefresher(environment: env).refresh("work", now: Date())   → 交给 UsageBoard.recordReplacing(_:)
+//   KimiUsageRefresher(environment: env).refreshAccount("work", now: Date())
+//     → usage 交给 UsageBoard.recordReplacing(_:)；models、account 是顺带请求的模型列表和 /me
+//       （KimiModels.swift、KimiAccountInfo.swift，key 只读一次）
+//   refresh(_:now:) 只请求额度（检查程序用）
 // （不是 record(_:)：Kimi Code 只有刷新这一个数据来源，成功的结果直接替换旧数字；5 小时窗口是滚动的，
 // 已用比例会下降，合并规则会停在较高的旧数字上。）
 // 额度记在与 Claude、ChatGPT 共用的看板里。一个 Kimi Code 账号 = 用户起的名称 + 一个 API key（KimiKeyStore），
-// 看板里的键是 account(名称)（"kimi:" 前缀，不会相撞）。响应里没有邮箱、套餐，认不出两个 key 是不是同一个
-// Kimi 账号：各显示各的，不合并。删除账号时要 UsageBoard.forget 它（之后可能用同一个名称加另一个 key）。
+// 看板里的键是 account(名称)（"kimi:" 前缀，不会相撞）。响应里没有邮箱、套餐：额度各显示各的，不合并
+// （同一账户由 /me 的 user_id 认出，只用来标注，见 KimiAccountInfo.swift）。删除账号时要 UsageBoard.forget 它（之后可能用同一个名称加另一个 key）。
 //
 // 接口：GET https://api.kimi.com/coding/v1/usages，头只有 Authorization（Bearer <API key>）和
 // User-Agent（如实标明 cc-pilot）。接口没有官方文档，Kimi 团队称它是实验性的；下面的格式是 2026-11-10 实测：
@@ -46,15 +49,38 @@ struct KimiUsageRefresher: Sendable {
     }
 
     private func fetch(_ name: String, now: Date) -> UsageFetchResult {
-        guard environment.kimiKeys.names().contains(name) else { return .denied(.notLoggedIn) }
-        guard let key = environment.kimiKeys.read(name) else { return .denied(.accountUnreadable) }
+        switch readKey(name) {
+        case .success(let key): return fetchUsage(key: key, now: now)
+        case .failure(let denied): return denied.result
+        }
+    }
 
-        var request = URLRequest(url: Self.usageEndpoint, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData,
+    /// 没有 key、读不到 key 时不发请求
+    struct KeyDenied: Error {
+        let result: UsageFetchResult
+    }
+
+    /// 读这个账号的 key（没有 key 时不读）
+    func readKey(_ name: String) -> Result<String, KeyDenied> {
+        guard environment.kimiKeys.names().contains(name) else { return .failure(KeyDenied(result: .denied(.notLoggedIn))) }
+        guard let key = environment.kimiKeys.read(name) else {
+            return .failure(KeyDenied(result: .denied(.accountUnreadable)))
+        }
+        return .success(key)
+    }
+
+    /// GET 请求，头只有 Authorization 和 User-Agent（额度和模型列表共用）
+    func request(_ url: URL, key: String) -> URLRequest {
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData,
                                  timeoutInterval: Self.timeout)
         request.httpMethod = "GET"
         request.setValue("Bearer " + key, forHTTPHeaderField: "Authorization")
         request.setValue("cc-pilot/" + environment.appVersion, forHTTPHeaderField: "User-Agent")
+        return request
+    }
 
+    func fetchUsage(key: String, now: Date) -> UsageFetchResult {
+        let request = request(Self.usageEndpoint, key: key)
         guard let response = try? environment.transport.send(request) else { return .networkFailure }
         switch response.status {
         case 200:

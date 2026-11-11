@@ -28,7 +28,7 @@ struct UsageSummaryView: View {
             UsageDetailsView(usage: usage, part: part, now: now)
         case .fetchedAt:
             if let updatedAt = usage.updatedAt {
-                Text(verbatim: fetchedText(updatedAt))
+                Text(verbatim: Self.fetchedText(updatedAt, now: now))
                     .foregroundColor(.secondary)
             }
         case .problem:
@@ -47,7 +47,8 @@ struct UsageSummaryView: View {
         }
     }
 
-    private func fetchedText(_ fetchedAt: Date) -> String {
+    /// "N 分钟前获取"（Kimi Code 侧边面板的模型列表也用）
+    static func fetchedText(_ fetchedAt: Date, now: Date) -> String {
         switch UsageDisplay.fetchAge(fetchedAt, now: now) {
         case .justNow: return String(localized: "Updated just now")
         case .minutes(let minutes): return String(localized: "Updated \(minutes) min ago")

@@ -5,7 +5,8 @@
 #   - 命令表：两份 README 的命令表各自列出的 ccp 子命令，与 shell/lib/cmd-*.zsh 完全一致。
 #     命令表的每一行以 "| `ccp <命令>" 开头（README 里约定的写法），其他地方提到 ccp 不算。
 #   - 接入行：README 里写的 ~/.zshrc 接入行与 ccp init 实际写入的逐字节相同。
-#   - 联网承诺：README 写出的四个地址就是代码里的三个额度接口（Claude Code、ChatGPT、Kimi Code）和 Info.plist 的 SUFeedURL。
+#   - 联网承诺：README 写出的六个地址就是代码里的三个额度接口（Claude Code、ChatGPT、Kimi Code）、Kimi Code 的模型列表接口、
+#     账户信息接口和 Info.plist 的 SUFeedURL。
 source "${0:A:h}/lib.zsh"
 
 READMES=($ROOT/README.md $ROOT/README.zh-CN.md)
@@ -51,8 +52,8 @@ test_readmes_show_the_exact_zshrc_line() {
   done
 }
 
-test_readmes_name_the_only_four_network_addresses() {
-  local endpoint chatgpt_endpoint kimi_endpoint feed
+test_readmes_name_the_only_six_network_addresses() {
+  local endpoint chatgpt_endpoint kimi_endpoint kimi_models kimi_me feed
   endpoint=$(sed -n 's/.*static let endpoint = URL(string: "\([^"]*\)").*/\1/p' \
     $ROOT/Sources/Core/UsageRefresher.swift)
   [[ $endpoint == https://* ]] || fail "取不到额度接口地址：[$endpoint]"
@@ -64,6 +65,13 @@ test_readmes_name_the_only_four_network_addresses() {
   kimi_endpoint=$(sed -n 's/.*static let usageEndpoint = URL(string: "\([^"]*\)").*/\1/p' \
     $ROOT/Sources/Core/KimiUsageRefresher.swift)
   [[ $kimi_endpoint == https://* ]] || fail "取不到 Kimi Code 额度接口地址：[$kimi_endpoint]"
+  # Kimi Code 的模型列表接口（ADR 0007，2026-11-11 补充）
+  kimi_models=$(sed -n 's/.*static let modelsEndpoint = URL(string: "\([^"]*\)").*/\1/p' \
+    $ROOT/Sources/Core/KimiModels.swift)
+  [[ $kimi_models == https://* ]] || fail "取不到 Kimi Code 模型列表接口地址：[$kimi_models]"
+  kimi_me=$(sed -n 's/.*static let meEndpoint = URL(string: "\([^"]*\)").*/\1/p' \
+    $ROOT/Sources/Core/KimiAccountInfo.swift)
+  [[ $kimi_me == https://* ]] || fail "取不到 Kimi Code 账户信息接口地址：[$kimi_me]"
   feed=$(/usr/libexec/PlistBuddy -c "Print :SUFeedURL" $ROOT/Resources/Info.plist)
   [[ $feed == https://* ]] || fail "取不到 SUFeedURL：[$feed]"
   local readme
@@ -71,6 +79,8 @@ test_readmes_name_the_only_four_network_addresses() {
     assert_contains "$(< $readme)" "$endpoint" "${readme:t} 写明额度接口"
     assert_contains "$(< $readme)" "$chatgpt_endpoint" "${readme:t} 写明 ChatGPT 额度接口"
     assert_contains "$(< $readme)" "$kimi_endpoint" "${readme:t} 写明 Kimi Code 额度接口"
+    assert_contains "$(< $readme)" "$kimi_models" "${readme:t} 写明 Kimi Code 模型列表接口"
+    assert_contains "$(< $readme)" "$kimi_me" "${readme:t} 写明 Kimi Code 账户信息接口"
     assert_contains "$(< $readme)" "$feed" "${readme:t} 写明更新检查地址"
   done
 }

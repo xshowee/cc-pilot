@@ -1,4 +1,5 @@
 // 假的网络层：替换 App 核心的 UsageTransport，记录每一次请求，按请求里的令牌返回测试准备好的响应。
+// 同一个令牌可以按路径另给响应（respond(toToken:path:_:)，Kimi Code 的额度和模型列表用同一个 key），优先于只按令牌的。
 // TempHome 默认就注入一个（没有准备响应时一律当作网络不通），检查程序绝不会访问真的网络。
 
 import Foundation
@@ -19,6 +20,8 @@ final class FakeUsageTransport: UsageTransport, @unchecked Sendable {
 
     private var _requests: [URLRequest] = []
     private var responses: [String: Response] = [:]
+    /// 键是"令牌 路径"
+    private var pathResponses: [String: Response] = [:]
     private let lock = NSLock()
 
     var requestCount: Int { requests.count }
@@ -26,6 +29,16 @@ final class FakeUsageTransport: UsageTransport, @unchecked Sendable {
     /// 带这个 accessToken 的请求返回 response
     func respond(toToken token: String, _ response: Response) {
         lock.withLock { responses[token] = response }
+    }
+
+    /// 带这个 accessToken、请求这个路径（如 /coding/v1/models）的请求返回 response
+    func respond(toToken token: String, path: String, _ response: Response) {
+        lock.withLock { pathResponses[token + " " + path] = response }
+    }
+
+    /// 带这个 accessToken、请求这个路径的请求当作网络不通（只按令牌准备的响应也不用）
+    func failNetwork(toToken token: String, path: String) {
+        lock.withLock { pathResponses[token + " " + path] = Response(status: -1, body: "") }
     }
 
     /// 带这个 accessToken 的请求当作网络不通
@@ -42,9 +55,10 @@ final class FakeUsageTransport: UsageTransport, @unchecked Sendable {
         let response: Response? = lock.withLock {
             _requests.append(request)
             let auth = request.value(forHTTPHeaderField: "Authorization") ?? ""
-            return responses[String(auth.dropFirst("Bearer ".count))]
+            let token = String(auth.dropFirst("Bearer ".count))
+            return pathResponses[token + " " + (request.url?.path ?? "")] ?? responses[token]
         }
-        guard let response else { throw URLError(.notConnectedToInternet) }
+        guard let response, response.status >= 0 else { throw URLError(.notConnectedToInternet) }
         return UsageHTTPResponse(status: response.status, headers: response.headers, body: Data(response.body.utf8))
     }
 }

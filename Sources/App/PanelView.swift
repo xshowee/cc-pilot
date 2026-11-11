@@ -8,7 +8,8 @@
 // 分割线（ToolSectionDivider）；没有 ChatGPT 默认档案 ~/.codex 时不显示 ChatGPT 一段（也就没有分割线）。
 // Claude Code 一段总是显示（保持原有行为）。
 // 添加过 Kimi Code 账号时，最下面多一段 Kimi Code（ADR 0007）：每个账号一张额度卡片（KimiCard），
-// 不能切换、没有统计面板；添加入口同其他账号（AddProfileForm 里选 Kimi Code），删除先在底栏上方确认（KimiRemovalBanner）。
+// 不能切换；鼠标停在卡片上时，同一个侧边面板显示 Base URL 和模型列表（KimiFlyoutView）；添加入口同其他账号（AddProfileForm 里选 Kimi Code），删除先在底栏上方确认（KimiRemovalBanner）；
+// 套餐有效期在底栏上方的编辑条里填（KimiExpiryBanner）。
 // 打开面板只重读档案列表、当前档案和 zsh 接入状态，不刷新额度。
 // 打开时面板若离开了菜单栏（过夜后可能往下掉），PanelPositionGuard 把它挪回菜单栏下。
 // 档案列表不设固定的最大高度：面板随档案多少一起变高，平时不滚动、不显示滚动条。只有档案多到面板放不下
@@ -102,12 +103,7 @@ struct PanelView: View {
                         KimiSectionDivider()
                             .padding(.top, 4)
                         ForEach(kimi.names, id: \.self) { name in
-                            KimiCard(name: name, usage: usage.kimiUsage(name), now: usage.now,
-                                     isRefreshing: usage.isRefreshingKimi(name),
-                                     onRefresh: { usage.refreshKimi(name) },
-                                     onDelete: { kimi.confirmingRemoval = name },
-                                     onCopyKey: { kimi.copyKey(name) },
-                                     copyNotice: kimi.copyNotice?.name == name ? kimi.copyNotice : nil)
+                            kimiCard(name)
                         }
                     }
                 }
@@ -129,6 +125,15 @@ struct PanelView: View {
                 if tokenStats.confirmingClearAll {
                     ClearAllBanner(onCancel: { tokenStats.confirmingClearAll = false },
                                    onClear: { tokenStats.clearAll() })
+                }
+                if let name = kimi.editingExpiry {
+                    KimiExpiryBanner(name: name, current: kimi.expiries[name],
+                                     onCancel: { kimi.editingExpiry = nil },
+                                     onSave: { expiry in
+                                         kimi.setExpiry(expiry, for: name)
+                                         kimi.editingExpiry = nil
+                                     })
+                        .id(name)
                 }
                 if let name = kimi.confirmingRemoval {
                     KimiRemovalBanner(name: name, onCancel: { kimi.confirmingRemoval = nil },
@@ -157,20 +162,25 @@ struct PanelView: View {
             shellIntegration.refresh()
             kimi.reload()
             flyout.install(StatsFlyoutRoot(controller: flyout, profiles: profiles, chatgpt: chatgpt, usage: usage,
-                                           stats: tokenStats))
+                                           stats: tokenStats, kimi: kimi))
         }
         .onDisappear {
             flyout.dismiss()
             tokenStats.confirmingClearAll = false
             kimi.confirmingRemoval = nil
+            kimi.editingExpiry = nil
         }
         .onChange(of: profiles.profiles) { list in
             actions.update(with: list)
-            flyout.rowsChanged(StatsFlyoutRow.rows(claudeCode: list, chatgpt: chatgpt.profiles))
+            flyout.rowsChanged(StatsFlyoutRow.rows(claudeCode: list, chatgpt: chatgpt.profiles, kimi: kimi.names))
         }
         .onChange(of: chatgpt.profiles) { list in
             actions.update(withChatGPT: list)
-            flyout.rowsChanged(StatsFlyoutRow.rows(claudeCode: profiles.profiles, chatgpt: list))
+            flyout.rowsChanged(StatsFlyoutRow.rows(claudeCode: profiles.profiles, chatgpt: list, kimi: kimi.names))
+        }
+        .onChange(of: kimi.names) { names in
+            // 删除了鼠标停着的 Kimi Code 账号时收起面板
+            flyout.rowsChanged(StatsFlyoutRow.rows(claudeCode: profiles.profiles, chatgpt: chatgpt.profiles, kimi: names))
         }
     }
 
@@ -207,6 +217,33 @@ struct PanelView: View {
                 })
             .statsFlyoutAnchor(StatsFlyoutRow(tool: .chatgpt, name: profile.name), controller: flyout)
         }
+    }
+
+    /// 一张 Kimi Code 卡片（ADR 0007）：额度、套餐、有效期、复制 key、删除；停在上面弹出 Base URL 和模型列表
+    private func kimiCard(_ name: String) -> some View {
+        let row = StatsFlyoutRow.kimi(name)
+        let sameAccount = KimiAccountInfo.sameAccount(as: name, names: kimi.names, infos: usage.kimiAccounts)
+        let notice = kimi.copyNotice?.name == name ? kimi.copyNotice : nil
+        return KimiCard(
+            name: name, usage: usage.kimiUsage(name), now: usage.now,
+            isRefreshing: usage.isRefreshingKimi(name),
+            onRefresh: { usage.refreshKimi(name) },
+            onDelete: {
+                kimi.editingExpiry = nil
+                kimi.confirmingRemoval = name
+            },
+            onCopyKey: { kimi.copyKey(name) },
+            copyNotice: notice,
+            expiry: kimi.expiries[name],
+            onEditExpiry: {
+                kimi.confirmingRemoval = nil
+                kimi.editingExpiry = name
+            },
+            plan: usage.kimiAccounts[name]?.planName,
+            sameAccountAs: sameAccount,
+            isViewing: flyout.hover.row == row,
+            onHover: { flyout.row(row, hovering: $0) })
+        .statsFlyoutAnchor(row, controller: flyout)
     }
 
     private var refreshAllButton: some View {

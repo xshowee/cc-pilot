@@ -164,14 +164,35 @@ struct StatsFlyoutTarget: Equatable {
 }
 
 /// 统计面板里的一行：工具 + 档案名。两个工具可以有同名档案（各自独立），只按档案名会串到另一个工具的行上。
+/// Kimi Code 不是工具（ADR 0007），它的卡片是单独的一种行（.kimi，名称是账号名称），面板显示 Base URL 和模型列表。
 struct StatsFlyoutRow: Hashable {
-    let tool: Tool
+    enum Section: Hashable {
+        case tool(Tool)
+        case kimi
+    }
+
+    let section: Section
     let name: String
 
-    /// 此刻有账号（有统计面板）的行，两个工具的都在里面（StatsFlyoutHover.rowsChanged 要全部的行）
-    static func rows(claudeCode: [Profile], chatgpt: [ChatGPTProfile]) -> Set<StatsFlyoutRow> {
+    init(tool: Tool, name: String) {
+        section = .tool(tool)
+        self.name = name
+    }
+
+    /// Kimi Code 账号的卡片
+    static func kimi(_ name: String) -> StatsFlyoutRow { StatsFlyoutRow(section: .kimi, name: name) }
+
+    private init(section: Section, name: String) {
+        self.section = section
+        self.name = name
+    }
+
+    /// 此刻有面板的行，各段的都在里面（StatsFlyoutHover.rowsChanged 要全部的行）。
+    /// 每个 Kimi Code 账号都有面板（Base URL 不用请求，还没刷新过也能看）
+    static func rows(claudeCode: [Profile], chatgpt: [ChatGPTProfile], kimi: [String] = []) -> Set<StatsFlyoutRow> {
         Set(claudeCode.filter { StatsFlyoutTarget(profile: $0) != nil }.map { StatsFlyoutRow(tool: .claudeCode, name: $0.name) }
-            + chatgpt.filter { StatsFlyoutTarget(chatgpt: $0) != nil }.map { StatsFlyoutRow(tool: .chatgpt, name: $0.name) })
+            + chatgpt.filter { StatsFlyoutTarget(chatgpt: $0) != nil }.map { StatsFlyoutRow(tool: .chatgpt, name: $0.name) }
+            + kimi.map(StatsFlyoutRow.kimi))
     }
 }
 
@@ -204,7 +225,7 @@ struct StatsFlyoutHover: Equatable {
         if overRow == nil && !overFlyout { row = nil }
     }
 
-    /// 档案列表变了：rows 是此刻两个工具全部有账号的行（StatsFlyoutRow.rows）。停着的行、或面板显示的那一行没了
+    /// 档案列表变了：rows 是此刻各段全部有面板的行（StatsFlyoutRow.rows）。停着的行、或面板显示的那一行没了
     /// （删除、登出）时收不到离开，这里清掉；面板显示的那一行没了就立即收起
     mutating func rowsChanged(_ rows: Set<StatsFlyoutRow>) {
         if let overRow, !rows.contains(overRow) { self.overRow = nil }

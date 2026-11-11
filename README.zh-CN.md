@@ -54,20 +54,22 @@ cc-pilot 让每个账号各自独立：
 
 ## 联网与隐私
 
-CC Pilot 只访问下面四个地址：
+CC Pilot 只访问下面六个地址：
 
 | 地址 | 什么时候访问 |
 | --- | --- |
 | Claude Code 额度接口 `https://api.anthropic.com/api/oauth/usage` | **只在你点击**"刷新全部"或某个账号的刷新按钮时。启动 App、打开面板、切换账号都不会请求。请求头如实标明 `User-Agent: cc-pilot/<版本>`，不冒充官方客户端。 |
 | ChatGPT 额度接口 `https://chatgpt.com/backend-api/wham/usage` | 与上一行相同：**只在你点击**"刷新全部"或某个 ChatGPT 账号的刷新按钮时。请求只带这个账号的 access token（`Authorization`）、工作区 ID（`ChatGPT-Account-Id`）和 `User-Agent: cc-pilot/<版本>`。 |
 | Kimi Code 额度接口 `https://api.kimi.com/coding/v1/usages` | 只有你添加了 Kimi Code 账号才会访问，同样**只在你点击**"刷新全部"或某个 Kimi Code 账号的刷新按钮时。请求只带这个账号的 API key（`Authorization`）和 `User-Agent: cc-pilot/<版本>`。 |
+| Kimi Code 模型列表接口 `https://api.kimi.com/coding/v1/models` | 紧跟在上一行的额度请求之后，同样只带这个账号的 API key 和 `User-Agent: cc-pilot/<版本>`。额度请求被拒绝、被限流或网络不通时不请求。 |
+| Kimi Code 账户信息接口 `https://api.kimi.com/coding/v1/me` | 与模型列表相同，紧跟在额度请求之后。只读取其中的套餐名和用户 ID，昵称、手机号等个人信息不读取，也不保存。 |
 | 更新检查地址 `https://raw.githubusercontent.com/xshowee/cc-pilot/main/appcast.xml` | 由 [Sparkle](https://sparkle-project.org) 访问：开启"自动检查更新"（默认开启）时每天检查一次，距上次检查已满一天时会在 App 启动后不久检查；点"检查更新…"时立即检查。请求不附带系统信息。 |
 
 确认安装更新后，Sparkle 从本仓库的 GitHub Releases 下载新版本的 DMG。不想自动检查，可以在面板右下角的齿轮菜单里关掉"自动检查更新"。
 
 - **不收集任何使用数据**，不上报崩溃信息，没有任何统计或分析代码。
 - **App 只读取 Claude Code 和 ChatGPT 的凭据**。Claude Code 的凭据在钥匙串里，App 通过系统自带的 `/usr/bin/security` 读取；ChatGPT 的凭据在每个 ChatGPT 账号的 `auth.json` 里，App 从中读取邮箱、套餐、用户 ID 和工作区 ID，以及 access token 的过期时间。无论哪一边，token 都只在单次请求期间保存在内存里，从不写进日志、缓存文件或错误信息。
-- **Kimi Code 的 API key 是 cc-pilot 唯一自己保存的凭据**。Kimi Code 只显示额度，没有账号切换。在面板的"添加账号…"里选 Kimi Code，填一个名称和在 Kimi Code 控制台创建的 API key 即可，可以添加多个。key 保存在登录钥匙串里（每个账号一项，名为 `cc-pilot Kimi Code API key`），只在刷新这个账号的额度、或你在卡片上点"复制 API key"时读取，同样不写进日志、缓存文件或错误信息。复制的 key 只留在本机剪贴板（不经通用剪贴板同步到其他设备），并标记为机密，遵守 nspasteboard.org 约定的剪贴板管理工具不会记进历史；1 分钟后或 App 退出时，剪贴板如果还是这个 key 就自动清空。在面板里删除这个账号即从钥匙串删除。
+- **Kimi Code 的 API key 是 cc-pilot 唯一自己保存的凭据**。Kimi Code 只显示额度，没有账号切换。在面板的"添加账号…"里选 Kimi Code，填一个名称和在 Kimi Code 控制台创建的 API key 即可，可以添加多个。key 保存在登录钥匙串里（每个账号一项，名为 `cc-pilot Kimi Code API key`），只在刷新这个账号的额度、或你在卡片上点"复制 API key"时读取，同样不写进日志、缓存文件或错误信息。复制的 key 只留在本机剪贴板（不经通用剪贴板同步到其他设备），并标记为机密，遵守 nspasteboard.org 约定的剪贴板管理工具不会记进历史；1 分钟后或 App 退出时，剪贴板如果还是这个 key 就自动清空。在面板里删除这个账号即从钥匙串删除。鼠标停在 Kimi Code 卡片上，左侧弹出 Base URL（Anthropic 兼容、OpenAI 兼容两种，可复制）和这个 key 能用的模型（名称、模型 id、上下文长度、推理强度）；模型列表在你刷新这个账号时一起获取，只保存在内存里。刷新后，卡片上还会显示套餐名（如 Moderato）；两个 key 属于同一个 Kimi 账户时，会标注"与某某是同一账号"，额度仍然各显示各的。套餐有效期无法用 API key 获取，可以照着 kimi.com 订阅页自己填（卡片上的日历按钮或右键菜单），保存在 App 的偏好设置里；卡片上显示有效期，还剩 7 天以内变成琥珀色，过期后变成红色。不会发系统通知。
 - **cc-pilot 从不写入、也从不续期 Claude Code 和 ChatGPT 的凭据**。续期始终由 Claude Code 或 codex 自己完成。凭据只会在登出时由工具自己删除：Claude Code 由你执行 `/logout`（`ccp rm` 会为此打开 Claude Code）；`ccp chatgpt rm` 在你确认后，在该账号里执行 `codex logout`。凭据还在时，这两个命令都不会删除账号。
 - `ccp` 不读取凭据，只检查它们是否存在：`ccp rm` 检查该账号的钥匙串项是否还在（不读取内容），`ccp chatgpt add` 和 `ccp chatgpt rm` 检查该账号的 `auth.json` 是否还在。
 - 读取 Claude Code 的凭据不应该弹出钥匙串授权窗口。如果哪天出现了针对 `Claude Code-credentials` 的弹窗，请不要点"允许"：这说明 cc-pilot 与当前的 Claude Code 版本不兼容，App 也会这样提示你。（自己从源码构建的 App 每次重新构建后签名不同，读取 `cc-pilot Kimi Code API key` 时可能要你重新授权，这是正常的。）
@@ -193,7 +195,7 @@ ccp chatgpt use default      # 切回 ~/.codex
 - **设置只在创建时复制一次**。`ccp add` 把默认账号的 `~/.claude/settings.json` 复制为新账号的初始设置（`ccp chatgpt add` 对 `~/.codex/config.toml` 也是这样），之后各账号各自独立变化：在一个账号里改主题、状态栏、hooks 等，其他账号不会跟着变。这样不同订阅等级的账号可以用不同的模型和 advisor。插件是共享的，但"是否启用"记在各账号的设置里：在一个账号里装好并启用的插件，在其他账号里需要用 `/plugin` 再启用一次。
 - **账号不能改名**。钥匙串里存凭据的那一项，名字是由账号目录的路径算出来的，改名就会丢失登录状态。想换名字，正确的做法是：用新名字 `ccp add` 新建一个账号并登录，再用 `ccp rm` 删除旧账号（删除时会引导你先登出）。
 - **依赖 Claude Code 的内部实现**。钥匙串项的命名方式、`.claude.json` 里账号资料的结构、额度接口的地址和字段都没有官方文档，是按 Claude Code 2.1.309 的实际行为实现的。Claude Code 更新后如果不再兼容，App 会提示"与当前 Claude Code 版本不兼容"或"接口可能已变化，请更新 cc-pilot"，而不是显示猜出来的数字。
-- **Kimi Code 的额度接口是实验性的**。它没有官方文档，按 2026-11-10 的实际响应实现；格式变了，App 会提示"接口可能已变化，请更新 cc-pilot"。Kimi Code 没有实时额度，也不显示在菜单栏里。接口不返回邮箱，两个 key 属于同一个 Kimi 账户时也各显示各的。
+- **Kimi Code 的额度接口和模型列表接口是实验性的**。它们没有官方文档，按 2026-11-10、2026-11-11 的实际响应实现；额度的格式变了，App 会提示"接口可能已变化，请更新 cc-pilot"；模型列表获取失败时，面板显示上一次获取的列表。Kimi Code 没有实时额度，也不显示在菜单栏里。两个 key 属于同一个 Kimi 账户时，要刷新过才能认出来。
 - **也依赖 Codex 的内部实现**。`auth.json` 的结构、ChatGPT 额度接口和会话记录的格式都没有官方文档，是按 ChatGPT 桌面 App 26.1027 和 Codex CLI 0.153.4 的实际行为实现的。更新后如果不再兼容，App 会提示"与当前 ChatGPT 版本不兼容"或额度接口可能已变化。
 - ChatGPT 桌面 App 和 Zed（codex-acp）不写 `history.jsonl`。它们在 CC Pilot 没有运行时进行的会话，既没有写入进程、也没有 `history.jsonl` 记录，按创建会话的那个账号计；只有创建者在你的账号里对应不到、或对应不止一个时，它的 Token 用量才不计入。
 - 使用 API key（Claude Code 或 ChatGPT）或 `setup-token` 生成的长期 token 登录时，不支持额度显示。

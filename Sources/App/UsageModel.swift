@@ -20,6 +20,9 @@
 // Kimi Code（ADR 0007）：只显示额度，每个账号（名称 + API key）一个键（KimiUsageRefresher.account(名称)），
 // 记在同一个 board 里，由 KimiUsageRefresher 在同一个后台队列上刷新；"刷新全部"也刷新它们。没有实时额度。
 // 添加、删除账号时 forgetKimi(名称)：忘掉旧数字，并作废还没回来的刷新结果（那是旧 key 的）。
+// 刷新 Kimi Code 账号时顺带请求它的模型列表和 /me（KimiUsageRefresher.refreshAccount，见 KimiModels.swift、
+// KimiAccountInfo.swift），按账号名称记在 kimiModels、kimiAccounts（只在内存里，失败时保留上一次的），
+// 侧边面板显示模型列表，卡片显示套餐名和"与某某是同一账号"；forgetKimi 时一起忘掉。
 //
 // now 是界面用的时钟：每 15 秒前进一次，只用来重算"N 分钟前获取"、变灰、已重置、还要等多久，
 // 让菜单栏和面板随时间更新；它不触发任何请求。拿到新数据时 now 也会拨到此刻。
@@ -45,6 +48,10 @@ final class UsageModel: ObservableObject {
     @Published private(set) var now = Date()
     /// ChatGPT 账号最近一次成功刷新时响应里的套餐（plan_type 原样）；响应没给或邮箱对不上时没有
     @Published private(set) var reportedPlans: [UsageAccount: String] = [:]
+    /// Kimi Code 账号（按名称）的模型列表；还没刷新过的账号没有
+    @Published private(set) var kimiModels: [String: KimiModelList] = [:]
+    /// Kimi Code 账号（按名称）最近一次成功获取的套餐名和用户标识；还没成功过的账号没有
+    @Published private(set) var kimiAccounts: [String: KimiAccountInfo] = [:]
 
     private let refresher: UsageRefresher
     private let chatgptRefresher: ChatGPTUsageRefresher
@@ -172,6 +179,8 @@ final class UsageModel: ObservableObject {
     func forgetKimi(_ name: String) {
         kimiGenerations[name, default: 0] += 1
         board.forget(KimiUsageRefresher.account(name))
+        kimiModels[name] = nil
+        kimiAccounts[name] = nil
     }
 
     /// "刷新全部"现在能否点：各段里有不在等待期、也没在刷新的账号。kimi：Kimi Code 账号的名称
@@ -211,6 +220,9 @@ final class UsageModel: ObservableObject {
         let outcome: UsageRefreshOutcome
         /// ChatGPT 的响应套餐；Claude 为 nil
         let reported: ChatGPTReportedAccount?
+        /// Kimi Code 的模型列表、/me；没有请求时为 nil
+        var kimiModels: KimiModelsFetchResult? = nil
+        var kimiAccount: KimiAccountFetchResult? = nil
     }
 
     private func claudeJob(_ account: UsageAccount, _ profiles: [Profile]) -> Job {
@@ -231,7 +243,9 @@ final class UsageModel: ObservableObject {
     private func kimiJob(_ name: String) -> Job {
         let refresher = kimiRefresher
         return Job(account: KimiUsageRefresher.account(name), kimi: (name, kimiGenerations[name, default: 0])) {
-            RefreshResult(outcome: refresher.refresh(name, now: Date()), reported: nil)
+            let result = refresher.refreshAccount(name, now: Date())
+            return RefreshResult(outcome: result.usage, reported: nil, kimiModels: result.models,
+                                 kimiAccount: result.account)
         }
     }
 
@@ -254,9 +268,13 @@ final class UsageModel: ObservableObject {
                     self.now = Date()
                     // 发出之后换过 key：这是旧 key 的结果，不记
                     if let kimi = job.kimi, kimi.generation != self.kimiGenerations[kimi.name, default: 0] { return }
-                    if job.kimi != nil {
+                    if let kimi = job.kimi {
                         // 只有刷新这一个来源：成功就替换，不合并（见 UsageBoard.recordReplacing）
                         self.board.recordReplacing(result.outcome)
+                        if let models = result.kimiModels {
+                            self.kimiModels[kimi.name, default: KimiModelList()].record(models, at: Date())
+                        }
+                        if case .success(let info)? = result.kimiAccount { self.kimiAccounts[kimi.name] = info }
                     } else {
                         self.board.record(result.outcome)
                     }
