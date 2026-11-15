@@ -1,11 +1,13 @@
 // 统计面板圆环卡里的一个窗口（token-usage ticket 07）：圆环长度是剩余比例，颜色同档案行（UsageTint，ticket 06）；
 // 中间是剩余百分比和窗口名，下方是重置倒计时。没有数字（没有数据、已重置待刷新）时显示"—"、不画弧。
+// label：圆环与倒计时之间的一行区分文字（Antigravity 同组同窗口重复时的桶名，ticket 05），放不下时折行；默认没有。
 
 import SwiftUI
 
 struct QuotaRingView: View {
     let ring: QuotaRing
     let caption: String
+    var label: String? = nil
 
     private static let size: CGFloat = 96
     private static let lineWidth: CGFloat = 8
@@ -30,6 +32,14 @@ struct QuotaRingView: View {
             }
             .padding(Self.lineWidth / 2)
             .frame(width: Self.size, height: Self.size)
+            if let label {
+                Text(verbatim: label)
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             Text(verbatim: countdownText)
                 .font(.caption2)
                 .foregroundColor(.secondary)

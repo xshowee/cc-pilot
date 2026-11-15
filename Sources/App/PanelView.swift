@@ -10,6 +10,12 @@
 // 添加过 Kimi Code 账号时，最下面多一段 Kimi Code（ADR 0007）：每个账号一张额度卡片（KimiCard），
 // 不能切换；鼠标停在卡片上时，同一个侧边面板显示 Base URL 和模型列表（KimiFlyoutView）；添加入口同其他账号（AddProfileForm 里选 Kimi Code），删除先在底栏上方确认（KimiRemovalBanner）；
 // 套餐有效期在底栏上方的编辑条里填（KimiExpiryBanner）。
+// 添加过 Antigravity 账号时，Kimi Code 一段上面多一段 Antigravity（spec "界面"）：每个邮箱一张额度卡片
+// （AntigravityAccountCard，只按看板画），不能切换；添加入口同其他账号（AddProfileForm 里选 Antigravity、
+// 输入邮箱，ticket 08），删除先在底栏上方确认（AntigravityRemovalBanner）。"刷新全部"也读一次 Antigravity，
+// 没有添加 Antigravity 账号时不读。
+// Kimi Code 的删除确认条、有效期编辑条和 Antigravity 的删除确认条同一时刻至多一个（accountBanner）：
+// 打开一个就换掉另一个；对应的账号没有了、面板关闭时收起。
 // 打开面板只重读档案列表、当前档案和 zsh 接入状态，不刷新额度。
 // 打开时面板若离开了菜单栏（过夜后可能往下掉），PanelPositionGuard 把它挪回菜单栏下。
 // 档案列表不设固定的最大高度：面板随档案多少一起变高，平时不滚动、不显示滚动条。只有档案多到面板放不下
@@ -27,6 +33,7 @@ struct PanelView: View {
     @EnvironmentObject private var shellIntegration: ShellIntegrationModel
     @EnvironmentObject private var tokenStats: TokenStatsModel
     @EnvironmentObject private var kimi: KimiModel
+    @EnvironmentObject private var antigravity: AntigravityModel
     @StateObject private var flyout = StatsFlyoutController()
     @StateObject private var positionGuard = PanelPositionGuard()
     @StateObject private var screen = PanelScreenTracker()
@@ -34,6 +41,17 @@ struct PanelView: View {
     @StateObject private var chatgptSwitch = ChatGPTSwitchModel()
 
     @State private var addingProfile = false
+    /// 底栏上方此刻的账号确认条 / 编辑条（至多一个）
+    @State private var accountBanner: AccountBanner?
+
+    private enum AccountBanner: Equatable {
+        /// 确认删除这个 Kimi Code 账号（KimiRemovalBanner）
+        case kimiRemoval(String)
+        /// 编辑这个 Kimi Code 账号的套餐有效期（KimiExpiryBanner）
+        case kimiExpiry(String)
+        /// 确认删除这个 Antigravity 邮箱（AntigravityRemovalBanner）
+        case antigravityRemoval(String)
+    }
     /// 档案列表内容本身的高度（不受限高影响）
     @State private var listHeight: CGFloat = 0
     /// 列表上方（标题、提示条）和下方（确认条、添加表单、底栏）的高度
@@ -68,7 +86,7 @@ struct PanelView: View {
 
             ScrollView {
                 VStack(spacing: 6) {
-                    if chatgpt.isVisible || kimi.isVisible {
+                    if chatgpt.isVisible || antigravity.isVisible || kimi.isVisible {
                         ToolSectionDivider(tool: .claudeCode)
                     }
                     ForEach(profiles.profiles) { profile in
@@ -99,6 +117,13 @@ struct PanelView: View {
                     if chatgpt.isVisible {
                         chatgptSection
                     }
+                    if antigravity.isVisible {
+                        AntigravitySectionDivider()
+                            .padding(.top, 4)
+                        ForEach(antigravity.cards(now: usage.now), id: \.email) { card in
+                            antigravityCard(card)
+                        }
+                    }
                     if kimi.isVisible {
                         KimiSectionDivider()
                             .padding(.top, 4)
@@ -126,22 +151,33 @@ struct PanelView: View {
                     ClearAllBanner(onCancel: { tokenStats.confirmingClearAll = false },
                                    onClear: { tokenStats.clearAll() })
                 }
-                if let name = kimi.editingExpiry {
+                switch accountBanner {
+                case .kimiExpiry(let name)?:
                     KimiExpiryBanner(name: name, current: kimi.expiries[name],
-                                     onCancel: { kimi.editingExpiry = nil },
+                                     onCancel: { accountBanner = nil },
                                      onSave: { expiry in
                                          kimi.setExpiry(expiry, for: name)
-                                         kimi.editingExpiry = nil
+                                         accountBanner = nil
                                      })
                         .id(name)
-                }
-                if let name = kimi.confirmingRemoval {
-                    KimiRemovalBanner(name: name, onCancel: { kimi.confirmingRemoval = nil },
-                                      onDelete: { kimi.remove(name) })
+                case .kimiRemoval(let name)?:
+                    KimiRemovalBanner(name: name, onCancel: { accountBanner = nil },
+                                      onDelete: {
+                                          accountBanner = nil
+                                          kimi.remove(name)
+                                      })
+                case .antigravityRemoval(let email)?:
+                    AntigravityRemovalBanner(email: email, onCancel: { accountBanner = nil },
+                                             onDelete: {
+                                                 accountBanner = nil
+                                                 antigravity.remove(email)
+                                             })
+                case nil:
+                    EmptyView()
                 }
                 if addingProfile {
                     Divider()
-                    AddProfileForm(actions: actions, kimi: kimi, isPresented: $addingProfile,
+                    AddProfileForm(actions: actions, kimi: kimi, antigravity: antigravity, isPresented: $addingProfile,
                                    offersChatGPT: chatgpt.isVisible)
                 }
                 Divider()
@@ -162,26 +198,43 @@ struct PanelView: View {
             shellIntegration.refresh()
             kimi.reload()
             flyout.install(StatsFlyoutRoot(controller: flyout, profiles: profiles, chatgpt: chatgpt, usage: usage,
-                                           stats: tokenStats, kimi: kimi))
+                                           stats: tokenStats, kimi: kimi, antigravity: antigravity))
         }
         .onDisappear {
             flyout.dismiss()
             tokenStats.confirmingClearAll = false
-            kimi.confirmingRemoval = nil
-            kimi.editingExpiry = nil
+            accountBanner = nil
         }
         .onChange(of: profiles.profiles) { list in
             actions.update(with: list)
-            flyout.rowsChanged(StatsFlyoutRow.rows(claudeCode: list, chatgpt: chatgpt.profiles, kimi: kimi.names))
+            flyout.rowsChanged(flyoutRows(claudeCode: list))
         }
         .onChange(of: chatgpt.profiles) { list in
             actions.update(withChatGPT: list)
-            flyout.rowsChanged(StatsFlyoutRow.rows(claudeCode: profiles.profiles, chatgpt: list, kimi: kimi.names))
+            flyout.rowsChanged(flyoutRows(chatgpt: list))
         }
         .onChange(of: kimi.names) { names in
-            // 删除了鼠标停着的 Kimi Code 账号时收起面板
-            flyout.rowsChanged(StatsFlyoutRow.rows(claudeCode: profiles.profiles, chatgpt: chatgpt.profiles, kimi: names))
+            // 删除了鼠标停着的 Kimi Code 账号时收起面板；账号没有了（如在钥匙串里删了）时收起它的确认条、编辑条
+            flyout.rowsChanged(flyoutRows(kimi: names))
+            switch accountBanner {
+            case .kimiRemoval(let name)?, .kimiExpiry(let name)?:
+                if !names.contains(name) { accountBanner = nil }
+            default:
+                break
+            }
         }
+        .onChange(of: antigravity.board.emails) { emails in
+            // 删除了鼠标停着的 Antigravity 邮箱时收起面板
+            flyout.rowsChanged(flyoutRows(antigravity: emails))
+            if case .antigravityRemoval(let email)? = accountBanner, !emails.contains(email) { accountBanner = nil }
+        }
+    }
+
+    /// 各段此刻全部有统计面板的行（StatsFlyoutHover.rowsChanged 要全部的行）；刚变了的那一段用 onChange 给的新值
+    private func flyoutRows(claudeCode: [Profile]? = nil, chatgpt chatgptProfiles: [ChatGPTProfile]? = nil,
+                            kimi kimiNames: [String]? = nil, antigravity emails: [String]? = nil) -> Set<StatsFlyoutRow> {
+        StatsFlyoutRow.rows(claudeCode: claudeCode ?? profiles.profiles, chatgpt: chatgptProfiles ?? chatgpt.profiles,
+                            kimi: kimiNames ?? kimi.names, antigravity: emails ?? antigravity.board.emails)
     }
 
     /// ChatGPT 一段：分割线 + 档案卡片，点击即切换（ticket 04），刷新额度（ticket 07），删除（ticket 06），
@@ -228,19 +281,27 @@ struct PanelView: View {
             name: name, usage: usage.kimiUsage(name), now: usage.now,
             isRefreshing: usage.isRefreshingKimi(name),
             onRefresh: { usage.refreshKimi(name) },
-            onDelete: {
-                kimi.editingExpiry = nil
-                kimi.confirmingRemoval = name
-            },
+            onDelete: { accountBanner = .kimiRemoval(name) },
             onCopyKey: { kimi.copyKey(name) },
             copyNotice: notice,
             expiry: kimi.expiries[name],
-            onEditExpiry: {
-                kimi.confirmingRemoval = nil
-                kimi.editingExpiry = name
-            },
+            onEditExpiry: { accountBanner = .kimiExpiry(name) },
             plan: usage.kimiAccounts[name]?.planName,
             sameAccountAs: sameAccount,
+            isViewing: flyout.hover.row == row,
+            onHover: { flyout.row(row, hovering: $0) })
+        .statsFlyoutAnchor(row, controller: flyout)
+    }
+
+    /// 一张 Antigravity 卡片：额度、套餐、刷新、删除；停在上面弹出套餐和各组圆环（ticket 05）
+    private func antigravityCard(_ card: AntigravityCard) -> some View {
+        let row = StatsFlyoutRow.antigravity(card.email)
+        return AntigravityAccountCard(
+            card: card, now: usage.now,
+            isRefreshing: antigravity.isRefreshing(card.email),
+            onRefresh: { antigravity.refresh(card.email) },
+            onDelete: { accountBanner = .antigravityRemoval(card.email) },
+            notice: antigravity.notices[card.email],
             isViewing: flyout.hover.row == row,
             onHover: { flyout.row(row, hovering: $0) })
         .statsFlyoutAnchor(row, controller: flyout)
@@ -249,9 +310,10 @@ struct PanelView: View {
     private var refreshAllButton: some View {
         Button {
             usage.refreshAll(profiles.profiles, chatgpt: chatgpt.profiles, kimi: kimi.names)
+            antigravity.refreshAll()
         } label: {
             Group {
-                if usage.isRefreshing {
+                if usage.isRefreshing || antigravity.isRefreshing {
                     ProgressView().controlSize(.small).scaleEffect(0.8)
                 } else {
                     Image(systemName: "arrow.clockwise")
@@ -262,9 +324,11 @@ struct PanelView: View {
         }
         .buttonStyle(.borderless)
         .foregroundColor(.secondary)
-        // 正在刷新，或每个账号都还在频率限制的等待期内（ticket 12）时不可用
-        .disabled(usage.isRefreshing || !usage.canRefreshAny(profiles.profiles, chatgpt: chatgpt.profiles,
-                                                            kimi: kimi.names))
+        // 正在刷新，或者没有可刷新的账号（Claude Code、ChatGPT、Kimi Code 的账号都还在频率限制的等待期内，
+        // ticket 12，也没有添加 Antigravity 账号）时不可用。Antigravity 没有等待期，添加过账号就能刷新
+        .disabled(usage.isRefreshing || antigravity.isRefreshing
+                  || !(usage.canRefreshAny(profiles.profiles, chatgpt: chatgpt.profiles, kimi: kimi.names)
+                       || antigravity.isVisible))
         .help(Text("Refresh usage for all accounts"))
         .accessibilityLabel(Text("Refresh All"))
     }

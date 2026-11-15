@@ -16,6 +16,7 @@ struct CCPilotApp: App {
     @StateObject private var actions = ProfileActionsModel()
     @StateObject private var chatgpt: ChatGPTProfileListModel
     @StateObject private var kimi: KimiModel
+    @StateObject private var antigravity: AntigravityModel
     @AppStorage(MenuBarPreferences.iconOnlyKey) private var menuBarIconOnly = false
     @AppStorage(MenuBarPreferences.hidesClaudeCodeKey) private var menuBarHidesClaudeCode = false
     @AppStorage(MenuBarPreferences.hidesChatGPTKey) private var menuBarHidesChatGPT = false
@@ -33,6 +34,8 @@ struct CCPilotApp: App {
         _usage = StateObject(wrappedValue: usage)
         // Kimi Code 只显示额度（ADR 0007）：换 key 时要让 usage 忘掉旧数字
         _kimi = StateObject(wrappedValue: KimiModel(usage: usage))
+        // Antigravity 只显示额度：启动时读回存下的快照；刷新与 Kimi Code 等同一队列
+        _antigravity = StateObject(wrappedValue: AntigravityModel(usage: usage))
         // ChatGPT 的档案另用一个文件监听（~/.codex-profiles 与各档案 auth.json），与 Claude 一侧互不触发
         _chatgpt = StateObject(wrappedValue: ChatGPTProfileListModel(changes: ProfileChangeFeed(watching: .chatgptAuth)))
     }
@@ -46,6 +49,7 @@ struct CCPilotApp: App {
                 .environmentObject(appDelegate.tokenStats)
                 .environmentObject(chatgpt)
                 .environmentObject(kimi)
+                .environmentObject(antigravity)
         } label: {
             MenuBarLabel(content: usage.board.menuBarContent(
                             claudeCode: current.name, profiles: profiles.profiles,

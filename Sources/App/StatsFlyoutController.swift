@@ -1,6 +1,7 @@
 // 侧边统计面板的窗口（token-usage ticket 07）：鼠标停在主面板的账号行上时，在主面板左侧弹出这个账号的统计面板。
 // Claude Code 与 ChatGPT（chatgpt-profiles ticket 10）的行共用这一个面板，行按工具 + 档案名区分（StatsFlyoutRow）。
 // Kimi Code 卡片（ADR 0007）也用这个窗口，显示 Base URL 和模型列表（StatsFlyoutRow.kimi，内容见 KimiFlyoutView）。
+// Antigravity 卡片（ticket 05）也用它，显示套餐和各组圆环（StatsFlyoutRow.antigravity，内容见 AntigravityFlyoutView）。
 //
 // 窗口：一个不会成为 key 的非激活 NSPanel，作为主面板窗口（MenuBarExtra 的 .window）的子窗口。
 //   不能成为 key 很要紧：MenuBarExtra 的窗口一失去 key 就会收起，点统计面板里的分段、清空按钮时它必须保持 key。
@@ -93,7 +94,7 @@ final class StatsFlyoutController: ObservableObject {
         if !hovering { scheduleSettle() }
     }
 
-    /// 档案列表变了（rows 是两个工具全部有账号的行）：停着的行被删除或登出时收不到离开，在这里收起
+    /// 档案列表变了（rows 是各段全部有面板的行，StatsFlyoutRow.rows）：停着的行被删除或登出时收不到离开，在这里收起
     func rowsChanged(_ rows: Set<StatsFlyoutRow>) {
         hover.rowsChanged(rows)
         apply()

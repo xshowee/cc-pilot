@@ -24,6 +24,9 @@
 // KimiAccountInfo.swift），按账号名称记在 kimiModels、kimiAccounts（只在内存里，失败时保留上一次的），
 // 侧边面板显示模型列表，卡片显示套餐名和"与某某是同一账号"；forgetKimi 时一起忘掉。
 //
+// Antigravity（spec "刷新"）：额度不在 board 里（AntigravityModel 持有自己的看板），但刷新同样在这个后台队列上，
+// 与各账号的刷新逐个进行（runOnRefreshQueue）。
+//
 // now 是界面用的时钟：每 15 秒前进一次，只用来重算"N 分钟前获取"、变灰、已重置、还要等多久，
 // 让菜单栏和面板随时间更新；它不触发任何请求。拿到新数据时 now 也会拨到此刻。
 
@@ -246,6 +249,19 @@ final class UsageModel: ObservableObject {
             let result = refresher.refreshAccount(name, now: Date())
             return RefreshResult(outcome: result.usage, reported: nil, kimiModels: result.models,
                                  kimiAccount: result.account)
+        }
+    }
+
+    /// 在刷新用的后台队列上执行 work（排在已发出的刷新之后，逐个进行），结果回到主线程交给 done；
+    /// done 之前界面时钟拨到此刻。Antigravity 的刷新用（AntigravityModel）
+    func runOnRefreshQueue<Result: Sendable>(_ work: @escaping @Sendable () -> Result,
+                                             done: @escaping @MainActor (Result) -> Void) {
+        queue.async { [weak self] in
+            let result = work()
+            Task { @MainActor in
+                self?.now = Date()
+                done(result)
+            }
         }
     }
 

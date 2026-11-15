@@ -27,7 +27,9 @@ struct QuotaRing: Equatable {
         make(usage?.sevenDay(now: now), resetsAt: usage?.sevenDayWindow?.window.resetsAt, now: now)
     }
 
-    private static func make(_ reading: UsageReading?, resetsAt: Date?, now: Date) -> QuotaRing {
+    /// 一个窗口的显示（UsageReading）对应的圆环：有剩余数字时画弧、带倒计时；已重置待刷新、没有数字时为 empty。
+    /// Antigravity 的圆环按看板给的读数用它（AntigravityFlyout）
+    static func make(_ reading: UsageReading?, resetsAt: Date?, now: Date) -> QuotaRing {
         guard case .remaining(let percent, let tint) = reading else { return .empty }
         return QuotaRing(remaining: percent, tint: tint,
                          countdown: resetsAt.flatMap { TokenUsageDisplay.countdown(to: $0, now: now) })
@@ -165,10 +167,13 @@ struct StatsFlyoutTarget: Equatable {
 
 /// 统计面板里的一行：工具 + 档案名。两个工具可以有同名档案（各自独立），只按档案名会串到另一个工具的行上。
 /// Kimi Code 不是工具（ADR 0007），它的卡片是单独的一种行（.kimi，名称是账号名称），面板显示 Base URL 和模型列表。
+/// Antigravity 也不是工具，它的卡片是另一种行（.antigravity，名称是邮箱），面板显示套餐和各组额度
+/// （AntigravityFlyout，见 StatsFlyout+Antigravity.swift）。
 struct StatsFlyoutRow: Hashable {
     enum Section: Hashable {
         case tool(Tool)
         case kimi
+        case antigravity
     }
 
     let section: Section
@@ -182,17 +187,23 @@ struct StatsFlyoutRow: Hashable {
     /// Kimi Code 账号的卡片
     static func kimi(_ name: String) -> StatsFlyoutRow { StatsFlyoutRow(section: .kimi, name: name) }
 
+    /// Antigravity 邮箱的卡片
+    static func antigravity(_ email: String) -> StatsFlyoutRow { StatsFlyoutRow(section: .antigravity, name: email) }
+
     private init(section: Section, name: String) {
         self.section = section
         self.name = name
     }
 
     /// 此刻有面板的行，各段的都在里面（StatsFlyoutHover.rowsChanged 要全部的行）。
-    /// 每个 Kimi Code 账号都有面板（Base URL 不用请求，还没刷新过也能看）
-    static func rows(claudeCode: [Profile], chatgpt: [ChatGPTProfile], kimi: [String] = []) -> Set<StatsFlyoutRow> {
+    /// 每个 Kimi Code 账号都有面板（Base URL 不用请求，还没刷新过也能看）；每个 Antigravity 邮箱（AntigravityBoard.emails，
+    /// 含格式无法识别后没有快照数据的卡片）都有面板
+    static func rows(claudeCode: [Profile], chatgpt: [ChatGPTProfile], kimi: [String] = [],
+                     antigravity: [String] = []) -> Set<StatsFlyoutRow> {
         Set(claudeCode.filter { StatsFlyoutTarget(profile: $0) != nil }.map { StatsFlyoutRow(tool: .claudeCode, name: $0.name) }
             + chatgpt.filter { StatsFlyoutTarget(chatgpt: $0) != nil }.map { StatsFlyoutRow(tool: .chatgpt, name: $0.name) }
-            + kimi.map(StatsFlyoutRow.kimi))
+            + kimi.map(StatsFlyoutRow.kimi)
+            + antigravity.map(StatsFlyoutRow.antigravity))
     }
 }
 

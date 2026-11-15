@@ -229,3 +229,20 @@
 "Expires in %lld days (%@)" = "%lld 天后到期（%@）";
 "Expires today" = "今天到期";
 "Expired on %@" = "已于 %@ 到期";
+
+/* Antigravity 额度（spec "界面"） */
+"Gemini models" = "Gemini 模型";
+"Claude and GPT models" = "Claude 和 GPT 模型";
+"5-hour (%@)" = "5 小时窗口（%@）";
+"Not signed in to Antigravity." = "Antigravity 未登录";
+"Couldn’t read Antigravity’s process info." = "无法读取 Antigravity 的进程信息。";
+"Couldn’t connect to Antigravity." = "无法连接 Antigravity。";
+"Open Antigravity to refresh." = "打开 Antigravity 后可刷新";
+"Antigravity is signed in as %@." = "Antigravity 里登录的是 %@";
+"Last read: %@" = "上次读取：%@";
+"Not read yet" = "尚未读取";
+"Email" = "邮箱";
+"Sign in to this account in Antigravity, then refresh to read its usage." = "在 Antigravity 里登录这个账号后点刷新即可读到额度。";
+"That doesn’t look like an email address." = "这不像是邮箱地址。";
+"“%@” has already been added." = "已添加过“%@”。";
+"Delete “%@” and its saved usage?" = "删除“%@”及保存的额度？";
