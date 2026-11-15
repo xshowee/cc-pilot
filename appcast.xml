@@ -6,6 +6,30 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>CC Pilot</title>
         <item>
+            <title>0.7.0</title>
+            <pubDate>Sun, 15 Nov 2026 17:33:14 +0800</pubDate>
+            <link>https://github.com/xshowee/cc-pilot</link>
+            <sparkle:fullReleaseNotesLink>https://github.com/xshowee/cc-pilot/releases</sparkle:fullReleaseNotesLink>
+            <sparkle:version>9</sparkle:version>
+            <sparkle:shortVersionString>0.7.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <description sparkle:format="markdown"><![CDATA[CC Pilot 0.7.0: Antigravity quota and token usage.
+
+- **Antigravity quota cards**: under "Add Profile…", choose Antigravity and enter your Google account email. Each card shows your plan and per-pool 5-hour and weekly quota windows (Gemini, Claude & GPT, etc.), read from the running `Antigravity.app`'s local language server. Because the desktop app signs in to one account at a time, the last account read is marked as active while other cards keep their latest snapshot dimmed; while you actively chat in Antigravity, quota updates passively every 3 minutes without querying when idle. Antigravity is display-only: there are no profiles or switching, and it isn't shown in the menu bar.
+- **Side-panel token usage, API-equivalent cost and live speed**: hover over an Antigravity card to see per-pool quota rings, 5-hour / weekly / cumulative token usage (input, output and cache read), built-in API-equivalent USD cost and cache-read savings, per-model breakdown, 24-hour / 30-day history bars, and in-memory live generation speed (`tok/s` and TTFT) for the currently signed-in account.
+- **Privacy and local boundaries**: conversation watching and local language-server queries only run while at least one Antigravity card is added, and stop immediately when the last card is removed. CC Pilot never reads your Google credentials or contacts Google directly; quota snapshots (without credentials) and token counts stay on this Mac.
+
+---
+
+CC Pilot 0.7.0：支持 Antigravity 额度与 Token 用量统计。
+
+- **Antigravity 额度卡片**：在"添加账号…"里选择 Antigravity 并填入 Google 账号邮箱。卡片经运行中的 `Antigravity.app` 本地 language server 读取套餐及各池（Gemini、Claude 和 GPT 等）的 5 小时与周窗口剩余额度。桌面端同一时刻只登录一个账号，最后读到的账号标为当前，其余卡片保留上次快照并变灰；持续对话期间每满 3 分钟被动同步额度，空闲静置时不发起请求。Antigravity 只显示用量，没有档案切换，也不显示在菜单栏里。
+- **侧边统计面板、等效费用与实时速度**：鼠标停在 Antigravity 卡片上弹出统计面板，显示各组额度圆环、5 小时 / 周 / 累计三类 Token 用量（输入、输出、缓存读取）、按内置静态价格表折算的等效 API 美元费用与缓存节省、按模型细分、24 小时 / 30 天历史柱状图，以及当前在线账号的纯内存实时生成速度（`tok/s` 与 TTFT）。
+- **隐私与本地边界**：仅在至少添加了一张 Antigravity 卡片时才监听本地对话目录并连接本地 language server，删空最后一张卡片立即停止。CC Pilot 不读取 Google 登录凭据，也不直接请求 Google 服务器；额度快照（不含凭据）与 Token 账本只保存在本机。
+]]></description>
+            <enclosure url="https://github.com/xshowee/cc-pilot/releases/download/v0.7.0/CCPilot-0.7.0.dmg" length="5784856" type="application/octet-stream" sparkle:edSignature="17fEoRzAaKtXoDwQMgjqY9K/ZVRdBuQmfaUTlXYuabcF6jTCcPRri1s8ELZA+LF+FwoHsPm7UlgLRkvozSCPDQ=="/>
+        </item>
+        <item>
             <title>0.6.0</title>
             <pubDate>Wed, 11 Nov 2026 20:19:38 +0800</pubDate>
             <link>https://github.com/xshowee/cc-pilot</link>
@@ -55,29 +79,9 @@ CC Pilot 0.5.0：显示 Kimi Code 额度。
 ]]></description>
             <enclosure url="https://github.com/xshowee/cc-pilot/releases/download/v0.5.0/CCPilot-0.5.0.dmg" length="3844622" type="application/octet-stream" sparkle:edSignature="HbMBhDRX3B58JgEdou1x06y4ycbnf3ZYG/aSPiiXI8smEjmlaE9FX9veJr9q4J696yoBU6n6vBaXEMWBEmIWAQ=="/>
         </item>
-        <item>
-            <title>0.4.2</title>
-            <pubDate>Fri, 06 Nov 2026 01:21:15 +0800</pubDate>
-            <link>https://github.com/xshowee/cc-pilot</link>
-            <sparkle:fullReleaseNotesLink>https://github.com/xshowee/cc-pilot/releases</sparkle:fullReleaseNotesLink>
-            <sparkle:version>6</sparkle:version>
-            <sparkle:shortVersionString>0.4.2</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
-            <description sparkle:format="markdown"><![CDATA[CC Pilot 0.4.2
-
-- The Claude Code icon in the menu bar is now shown in Claude's orange, matching the panel, so it stands out from ChatGPT at a glance.
-
----
-
-CC Pilot 0.4.2
-
-- 菜单栏里的 Claude Code 图标改用 Claude 的橙色，与面板里一致，和 ChatGPT 一眼就能分开。
-]]></description>
-            <enclosure url="https://github.com/xshowee/cc-pilot/releases/download/v0.4.2/CCPilot-0.4.2.dmg" length="3687703" type="application/octet-stream" sparkle:edSignature="SVdlxhsJLjrvcbGpPySW/llTVjuJxo88psmntC6f0Pzvwhtyr6fLn1HfQXmCMtjHGzRJ1z4SMKV34PanNlF1AA=="/>
-        </item>
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: TQS5tX2I1MV7fmm5qwhWO5YzImTXq036EMPtTCp77E82j2CBOPLiEWCFVWNMY71MRXvIVo/w+spXPNHcggJjCw==
-length: 6439
+edSignature: 2oK5VAC3sor0/Eb1VFtru3NRLIv1ObsRECExzsDtsybKRecBcoASfb2jow+5IVWpvU4+ktuzLV+7K9jQSSWzCg==
+length: 8971
 -->
