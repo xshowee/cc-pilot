@@ -12,7 +12,8 @@
 // 用 `osascriptCalls()` 读取调用记录，`osascriptFails(exit:stderr:)` 模拟失败。
 //
 // 进程：`environment` 里的 codex 进程查询一律是 `codexProcesses`（假的，见 FakeCodexProcesses.swift），
-// 绝不列出、读取用户真实的进程。
+// 绝不列出、读取用户真实的进程。Antigravity 的 language server 查询同样一律是 `antigravityProcesses`
+// （假的，见 FakeAntigravityProcesses.swift），绝不读取真实进程的参数和端口、绝不调用真实的 Antigravity 本地接口。
 //
 // Kimi Code 的 API key：`environment` 里的存放处一律是 `kimiKeys`（假的，见 FakeKimiKeyStore.swift），
 // 绝不读写真实的钥匙串。
@@ -55,6 +56,8 @@ final class TempHome {
     let transport = FakeUsageTransport()
     /// 注入给 App 核心的假进程查询（默认没有进程），绝不查看真实的进程
     let codexProcesses = FakeCodexProcesses()
+    /// 注入给 App 核心的假 Antigravity language server 查询（默认没有进程），绝不查看真实的进程
+    let antigravityProcesses = FakeAntigravityProcesses()
     /// 注入给 App 核心的假 Kimi Code key 存放处（内存里，默认没有 key），绝不读写真实的钥匙串
     let kimiKeys = FakeKimiKeyStore()
 
@@ -124,7 +127,8 @@ final class TempHome {
         CoreEnvironment(home: url, security: securityTool, userName: Self.userName, securityTimeout: 10,
                         searchPath: searchPath, transport: transport, appVersion: Self.appVersion,
                         osascript: osascriptTool, launchctl: root.appendingPathComponent("bin/launchctl"),
-                        codexProcesses: codexProcesses, kimiKeys: kimiKeys)
+                        codexProcesses: codexProcesses, kimiKeys: kimiKeys,
+                        antigravityProcesses: antigravityProcesses)
     }
 
     /// 交给 App 核心运行 shell 脚本时的 PATH：最前面是本目录的包装（假 security、codex、launchctl、osascript、open），

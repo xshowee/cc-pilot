@@ -36,6 +36,9 @@ struct CoreEnvironment: Sendable {
     var codexProcesses: CodexProcessQuery
     /// Kimi Code 的 API key 存放处（ADR 0007）。测试换成内存里的假实现，绝不能让检查程序读写真实的钥匙串。
     var kimiKeys: KimiKeyStore
+    /// 运行中的 Antigravity language server 查询（找进程、读 csrf token、列端口，见 AntigravityRefresher）。
+    /// 测试换成假的，绝不能让检查程序查看用户真实的进程或调用真实的 Antigravity 本地接口。
+    var antigravityProcesses: AntigravityProcessQuery
 
     init(home: URL = CoreEnvironment.userHome(),
          security: URL = URL(fileURLWithPath: "/usr/bin/security"),
@@ -47,7 +50,8 @@ struct CoreEnvironment: Sendable {
          osascript: URL = URL(fileURLWithPath: "/usr/bin/osascript"),
          launchctl: URL = URL(fileURLWithPath: "/bin/launchctl"),
          codexProcesses: CodexProcessQuery = LiveCodexProcessQuery(),
-         kimiKeys: KimiKeyStore = KeychainKimiKeyStore()) {
+         kimiKeys: KimiKeyStore = KeychainKimiKeyStore(),
+         antigravityProcesses: AntigravityProcessQuery = LiveAntigravityProcessQuery()) {
         self.home = home
         self.security = security
         self.userName = userName
@@ -59,6 +63,7 @@ struct CoreEnvironment: Sendable {
         self.launchctl = launchctl
         self.codexProcesses = codexProcesses
         self.kimiKeys = kimiKeys
+        self.antigravityProcesses = antigravityProcesses
     }
 
     /// 真实环境

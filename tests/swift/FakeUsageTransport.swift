@@ -1,5 +1,7 @@
 // 假的网络层：替换 App 核心的 UsageTransport，记录每一次请求，按请求里的令牌返回测试准备好的响应。
 // 同一个令牌可以按路径另给响应（respond(toToken:path:_:)，Kimi Code 的额度和模型列表用同一个 key），优先于只按令牌的。
+// 本机接口（Antigravity 的 language server）的请求不带令牌，按"端口 + 路径"另给响应（respond(toPort:path:_:)），
+// 优先于按令牌的；没有准备响应的端口当作连不上。
 // TempHome 默认就注入一个（没有准备响应时一律当作网络不通），检查程序绝不会访问真的网络。
 
 import Foundation
@@ -22,6 +24,8 @@ final class FakeUsageTransport: UsageTransport, @unchecked Sendable {
     private var responses: [String: Response] = [:]
     /// 键是"令牌 路径"
     private var pathResponses: [String: Response] = [:]
+    /// 键是"主机:端口 路径"
+    private var portResponses: [String: Response] = [:]
     private let lock = NSLock()
 
     var requestCount: Int { requests.count }
@@ -41,6 +45,11 @@ final class FakeUsageTransport: UsageTransport, @unchecked Sendable {
         lock.withLock { pathResponses[token + " " + path] = Response(status: -1, body: "") }
     }
 
+    /// 发往 http://127.0.0.1:<port><path> 的请求返回 response（不看令牌）
+    func respond(toPort port: Int, path: String, _ response: Response) {
+        lock.withLock { portResponses["127.0.0.1:\(port) " + path] = response }
+    }
+
     /// 带这个 accessToken 的请求当作网络不通
     func forget(token: String) {
         lock.withLock { responses[token] = nil }
@@ -54,6 +63,10 @@ final class FakeUsageTransport: UsageTransport, @unchecked Sendable {
     func send(_ request: URLRequest) throws -> UsageHTTPResponse {
         let response: Response? = lock.withLock {
             _requests.append(request)
+            if let url = request.url, let host = url.host, let port = url.port,
+               let response = portResponses["\(host):\(port) " + url.path] {
+                return response
+            }
             let auth = request.value(forHTTPHeaderField: "Authorization") ?? ""
             let token = String(auth.dropFirst("Bearer ".count))
             return pathResponses[token + " " + (request.url?.path ?? "")] ?? responses[token]
