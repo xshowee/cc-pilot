@@ -62,18 +62,28 @@ struct AntigravityFlyoutView: View {
     }
 
     private var header: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(verbatim: flyout.email)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(flyout.isOldSnapshot ? Color.secondary : nil)
-                .lineLimit(1)
-                .truncationMode(.middle)
-            Spacer(minLength: 4)
-            if let tier = flyout.tierName {
-                Text(verbatim: tier)
-                    .font(.caption)
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(verbatim: flyout.email)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(flyout.isOldSnapshot ? Color.secondary : nil)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer(minLength: 4)
+                if let tier = flyout.tierName {
+                    Text(verbatim: tier)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .fixedSize()
+                }
+            }
+            if let liveSpeed = flyout.visibleLiveSpeed {
+                Text(verbatim: AntigravityText.liveSpeed(liveSpeed))
+                    .font(.caption.monospacedDigit())
                     .foregroundColor(.secondary)
-                    .fixedSize()
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .minimumScaleFactor(0.85)
             }
         }
         .padding(.horizontal, 6)

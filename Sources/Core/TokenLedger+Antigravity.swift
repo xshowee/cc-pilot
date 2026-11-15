@@ -116,4 +116,36 @@ extension TokenLedger {
         if added > 0 { revision += 1 }
         return added
     }
+
+    /// 读取当前账本中已绑定 Antigravity 会话的账号与仅含未归属步骤的离线会话（只读，不修改表结构）
+    func antigravitySessionOwnership() throws -> (boundAccounts: [String: String], unattributedOnlySessions: Set<String>) {
+        var boundAccounts: [String: String] = [:]
+        let tableCheck = try db.prepare(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'antigravity_sessions'")
+        if try tableCheck.step() {
+            let st = try db.prepare("SELECT session_id, account FROM antigravity_sessions")
+            while try st.step() {
+                if let sessionID = st.text(0)?.lowercased(), let account = st.text(1) {
+                    boundAccounts[sessionID] = account
+                }
+            }
+        }
+
+        var unattributedOnly: Set<String> = []
+        let msgSt = try db.prepare("""
+            SELECT session_id, MIN(attribution), MAX(attribution)
+            FROM messages
+            WHERE tool = '\(Self.antigravityToolName)'
+            GROUP BY session_id
+            """)
+        while try msgSt.step() {
+            guard let sessionID = msgSt.text(0)?.lowercased() else { continue }
+            if boundAccounts[sessionID] == nil,
+               msgSt.int(1) == Self.unattributedState,
+               msgSt.int(2) == Self.unattributedState {
+                unattributedOnly.insert(sessionID)
+            }
+        }
+        return (boundAccounts, unattributedOnly)
+    }
 }

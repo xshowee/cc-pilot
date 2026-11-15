@@ -25,10 +25,47 @@ struct AntigravityTrajectoryStep: Equatable, Sendable {
     let completedAt: Date
     let createdAt: Date?
     let finishedAt: Date?
+    /// 显式步骤结束时间（finishedGeneratingAt ?? completedAt），绝不回退到 createdAt 或 summaryLastModifiedAt
+    let explicitEndAt: Date?
+    /// 纳秒级精确步骤耗时（endAt - createdAt），缺起止时间时为 nil
+    let explicitDurationSec: Double?
+    let isDone: Bool
     let model: String
     let tokens: TokenCounts
     let isCompactionStep: Bool
     let timeToFirstTokenSec: Double?
+
+    init(
+        messageID: String,
+        sessionID: String,
+        stepIndex: Int,
+        completedAt: Date,
+        createdAt: Date?,
+        finishedAt: Date?,
+        explicitEndAt: Date? = nil,
+        explicitDurationSec: Double? = nil,
+        isDone: Bool = true,
+        model: String,
+        tokens: TokenCounts,
+        isCompactionStep: Bool,
+        timeToFirstTokenSec: Double?
+    ) {
+        let resolvedEndAt = explicitEndAt ?? finishedAt
+        self.messageID = messageID
+        self.sessionID = sessionID
+        self.stepIndex = stepIndex
+        self.completedAt = completedAt
+        self.createdAt = createdAt
+        self.finishedAt = finishedAt
+        self.explicitEndAt = resolvedEndAt
+        self.explicitDurationSec = explicitDurationSec
+            ?? (createdAt.flatMap { start in resolvedEndAt.map { $0.timeIntervalSince(start) } })
+        self.isDone = isDone
+        self.model = model
+        self.tokens = tokens
+        self.isCompactionStep = isCompactionStep
+        self.timeToFirstTokenSec = timeToFirstTokenSec
+    }
 }
 
 struct AntigravityExtractedBatch: Equatable, Sendable {
@@ -187,6 +224,14 @@ enum AntigravityModelResolver {
             guard let completedAt = candidate.finishedAt ?? candidate.completedAt ?? candidate.createdAt ?? summaryLastModifiedAt else {
                 continue
             }
+            let explicitEnd = candidate.finishedTimestamp ?? candidate.completedTimestamp
+            let explicitDurationSec: Double? = {
+                guard let start = candidate.createdTimestamp, let end = explicitEnd else { return nil }
+                if let startNs = start.epochNanos, let endNs = end.epochNanos {
+                    return Double(endNs - startNs) / 1_000_000_000.0
+                }
+                return end.date.timeIntervalSince(start.date)
+            }()
             let model = normalizeModel(
                 rawModelKey: candidate.modelKey,
                 responseModel: candidate.responseModel,
@@ -198,6 +243,9 @@ enum AntigravityModelResolver {
                 completedAt: completedAt,
                 createdAt: candidate.createdAt,
                 finishedAt: candidate.finishedAt,
+                explicitEndAt: explicitEnd?.date,
+                explicitDurationSec: explicitDurationSec,
+                isDone: candidate.isDone,
                 model: model,
                 tokens: candidate.tokens,
                 isCompactionStep: candidate.isCompactionStep,
@@ -248,16 +296,25 @@ enum AntigravityModelResolver {
 
     /// 解析 ISO-8601 时间（支持 1-9+ 位小数秒与 Z / ±HH:MM / ±HHMM 偏移）
     static func parseISO8601(_ raw: String?) -> Date? {
+        parseTimestamp(raw)?.date
+    }
+
+    private static func parseTimestamp(_ raw: String?) -> ParsedTimestamp? {
         guard let raw = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else {
             return nil
         }
         if let parsed = parseFastISO8601(raw) {
             return parsed
         }
-        return fallbackParseISO8601(raw)
+        return fallbackParseISO8601(raw).map { ParsedTimestamp(date: $0, epochNanos: nil) }
     }
 
     // MARK: - Step & Generator Parsing
+
+    private struct ParsedTimestamp {
+        let date: Date
+        let epochNanos: Int64?
+    }
 
     private struct RawStepCandidate {
         let stepIndex: Int
@@ -267,12 +324,15 @@ enum AntigravityModelResolver {
         var modelIsExplicit: Bool
         var responseModel: String?
         let apiProvider: String
-        let createdAt: Date?
-        let completedAt: Date?
-        let finishedAt: Date?
+        let createdTimestamp: ParsedTimestamp?
+        let completedTimestamp: ParsedTimestamp?
+        let finishedTimestamp: ParsedTimestamp?
         let tokens: TokenCounts
         let timeToFirstTokenSec: Double?
 
+        var createdAt: Date? { createdTimestamp?.date }
+        var completedAt: Date? { completedTimestamp?.date }
+        var finishedAt: Date? { finishedTimestamp?.date }
         var totalNonCacheWrite: Int { tokens.input + tokens.output + tokens.cacheRead }
     }
 
@@ -338,9 +398,9 @@ enum AntigravityModelResolver {
             modelIsExplicit: rawModel != nil,
             responseModel: responseModel,
             apiProvider: apiProvider,
-            createdAt: parseISO8601(stringValue(metadata["createdAt"])),
-            completedAt: parseISO8601(stringValue(metadata["completedAt"])),
-            finishedAt: parseISO8601(stringValue(metadata["finishedGeneratingAt"])),
+            createdTimestamp: parseTimestamp(stringValue(metadata["createdAt"])),
+            completedTimestamp: parseTimestamp(stringValue(metadata["completedAt"])),
+            finishedTimestamp: parseTimestamp(stringValue(metadata["finishedGeneratingAt"])),
             tokens: TokenCounts(input: input, output: output, cacheWrite: 0, cacheRead: cacheRead),
             timeToFirstTokenSec: parseDurationSeconds(chat?["timeToFirstToken"]))
     }
@@ -430,7 +490,7 @@ enum AntigravityModelResolver {
 
     // MARK: - ISO-8601 & Duration Helpers
 
-    private static func parseFastISO8601(_ s: String) -> Date? {
+    private static func parseFastISO8601(_ s: String) -> ParsedTimestamp? {
         // 形如 YYYY-MM-DDTHH:MM:SS(.nnnnnnnnn)?(Z|+HH:MM|-HH:MM|+HHMM|-HHMM)
         let bytes = Array(s.utf8)
         guard bytes.count >= 20 else { return nil }
@@ -451,14 +511,21 @@ enum AntigravityModelResolver {
 
         var idx = 19
         var fractionalSec = 0.0
+        var fracNanos: Int64 = 0
         if idx < bytes.count, bytes[idx] == UInt8(ascii: ".") {
             idx += 1
             let fracStart = idx
             var scale = 0.1
+            var nanoMultiplier: Int64 = 100_000_000
             while idx < bytes.count, bytes[idx] >= UInt8(ascii: "0"), bytes[idx] <= UInt8(ascii: "9") {
+                let digit = Int64(bytes[idx] - UInt8(ascii: "0"))
                 if scale >= 1e-9 {
-                    fractionalSec += Double(bytes[idx] - UInt8(ascii: "0")) * scale
+                    fractionalSec += Double(digit) * scale
                     scale *= 0.1
+                }
+                if nanoMultiplier >= 1 {
+                    fracNanos += digit * nanoMultiplier
+                    nanoMultiplier /= 10
                 }
                 idx += 1
             }
@@ -495,8 +562,10 @@ enum AntigravityModelResolver {
         tmValue.tm_min = Int32(minute)
         tmValue.tm_sec = Int32(second)
         tmValue.tm_isdst = 0
-        let epoch = timegm(&tmValue)
-        return Date(timeIntervalSince1970: Double(epoch) - Double(tzOffset) + fractionalSec)
+        let epoch = Int64(timegm(&tmValue)) - Int64(tzOffset)
+        let date = Date(timeIntervalSince1970: Double(epoch) + fractionalSec)
+        let epochNanos: Int64? = abs(epoch) <= 9_000_000_000 ? (epoch * 1_000_000_000 + fracNanos) : nil
+        return ParsedTimestamp(date: date, epochNanos: epochNanos)
     }
 
     private static func asciiDigits(_ bytes: [UInt8], _ start: Int, _ count: Int) -> Int? {
@@ -523,7 +592,8 @@ enum AntigravityModelResolver {
 
     private static func parseDurationSeconds(_ value: Any?) -> Double? {
         guard let str = stringValue(value), str.hasSuffix("s") else { return nil }
-        return Double(str.dropLast())
+        guard let seconds = Double(str.dropLast()), seconds.isFinite else { return nil }
+        return seconds
     }
 
     // MARK: - JSON Primitive Helpers

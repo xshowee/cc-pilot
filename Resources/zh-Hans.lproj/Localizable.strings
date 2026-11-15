@@ -252,3 +252,7 @@
 "Unpriced" = "未定价";
 "Excludes unpriced model: %@" = "金额已略过未定价模型：%@";
 "Excludes unpriced models: %@" = "金额已略过未定价模型：%@";
+
+/* Antigravity 实时生成速度 */
+"%@ tok/s · TTFT %@s · Avg %@ tok/s" = "%1$@ tok/s · TTFT %2$@s · 均值 %3$@ tok/s";
+"%@ tok/s · Avg %@ tok/s" = "%1$@ tok/s · 均值 %2$@ tok/s";

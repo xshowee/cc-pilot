@@ -51,7 +51,10 @@ final class TokenStatsModel: ObservableObject {
     /// 按顶层请求更新读取状态（非 nil 时开始或继续读取，nil 时停止）
     func apply(_ request: Request?) {
         switch lifecycle.update(to: request) {
-        case .show:
+        case .show(let shown):
+            if shown.account.isAntigravity {
+                recorder.revalidateAntigravityLiveSpeedIfNeeded()
+            }
             if clock == nil {
                 clock = Timer.publish(every: 15, tolerance: 5, on: .main, in: .common)
                     .autoconnect()

@@ -32,6 +32,17 @@ enum AntigravityText {
         }
     }
 
+    static func liveSpeed(_ speed: AntigravityLiveSpeed) -> String {
+        let locale = Locale(identifier: "en_US_POSIX")
+        let latestText = String(format: "%.1f", locale: locale, speed.latestTokPerSec)
+        let avgText = String(format: "%.1f", locale: locale, speed.sessionAvgTokPerSec)
+        if let ttftSec = speed.latestTtftSec {
+            let ttftText = String(format: "%.1f", locale: locale, ttftSec)
+            return String(localized: "\(latestText) tok/s · TTFT \(ttftText)s · Avg \(avgText) tok/s")
+        }
+        return String(localized: "\(latestText) tok/s · Avg \(avgText) tok/s")
+    }
+
     /// hasData：卡片还有快照数据（网络失败时说明显示的是上次的数据）
     static func problem(_ problem: AntigravityProblem, hasData: Bool) -> String {
         switch problem {

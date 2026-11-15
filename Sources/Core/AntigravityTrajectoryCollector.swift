@@ -37,6 +37,11 @@ final class AntigravityTrajectoryCollector {
         let rootConversationID: String?
     }
 
+    private struct CachedCascade {
+        let batch: AntigravityExtractedBatch
+        var lastModifiedAt: Date?
+    }
+
     private static let passiveQuotaCooldown: TimeInterval = 180
 
     private let environment: CoreEnvironment
@@ -47,6 +52,7 @@ final class AntigravityTrajectoryCollector {
     private let openLedger: () throws -> TokenLedger
     private let afterIngest: (TokenLedger, Int) -> Void
     private let onPassiveQuota: (AntigravityAccountQuota) -> Void
+    private let onLiveSpeed: (AntigravityLiveSpeed?) -> Void
 
     private(set) var isWatching = false
     private var stream: FSEventStreamRef?
@@ -56,6 +62,8 @@ final class AntigravityTrajectoryCollector {
     private var handle: CachedHandle?
     private var watermarks: [String: Watermark] = [:]
     private var knownRootBySession: [String: String] = [:]
+    private var cachedBatches: [String: CachedCascade] = [:]
+    private var publishedLiveSpeed: AntigravityLiveSpeed?
 
     init(environment: CoreEnvironment,
          queue: DispatchQueue,
@@ -63,7 +71,8 @@ final class AntigravityTrajectoryCollector {
          now: @escaping () -> Date = Date.init,
          openLedger: @escaping () throws -> TokenLedger,
          afterIngest: @escaping (TokenLedger, Int) -> Void,
-         onPassiveQuota: @escaping (AntigravityAccountQuota) -> Void = { _ in }) {
+         onPassiveQuota: @escaping (AntigravityAccountQuota) -> Void = { _ in },
+         onLiveSpeed: @escaping (AntigravityLiveSpeed?) -> Void = { _ in }) {
         self.environment = environment
         let realHome = FSEventsSupport.realPath(environment.home)
         self.conversationsRoot = realHome.appendingPathComponent(".gemini/antigravity/conversations", isDirectory: true)
@@ -73,6 +82,7 @@ final class AntigravityTrajectoryCollector {
         self.openLedger = openLedger
         self.afterIngest = afterIngest
         self.onPassiveQuota = onPassiveQuota
+        self.onLiveSpeed = onLiveSpeed
     }
 
     deinit {
@@ -96,6 +106,7 @@ final class AntigravityTrajectoryCollector {
 
     /// 必须在 queue 上调用：立即销毁 FSEvents 流、取消未触发防抖并清空所有内存状态
     func stop() {
+        let wasWatching = isWatching
         isWatching = false
         pendingSync?.cancel()
         pendingSync = nil
@@ -106,6 +117,35 @@ final class AntigravityTrajectoryCollector {
         handle = nil
         watermarks = [:]
         knownRootBySession = [:]
+        cachedBatches = [:]
+        publishedLiveSpeed = nil
+        if wasWatching {
+            emitLiveSpeed(nil)
+        }
+    }
+
+    /// 必须在 queue 上调用：Antigravity.app 退出时立即清掉句柄与陈旧实时速度，零 RPC 且保留监听与水位线
+    func handleAppTerminated() {
+        handle = nil
+        if publishedLiveSpeed != nil {
+            emitLiveSpeed(nil)
+        }
+    }
+
+    /// 必须在 queue 上调用：仅在当前有活跃实时速度缓存时复核一次在线态；publishedLiveSpeed 为 nil 时零探测
+    func revalidateLiveSpeedIfNeeded() {
+        guard isWatching, let startedAt = listenerStartedAt, publishedLiveSpeed != nil else { return }
+        guard let session = acquireUserStatusSession() else {
+            emitLiveSpeed(nil)
+            return
+        }
+        let userStatus = AntigravityModelResolver.parseUserStatus(session.userStatusData)
+        publishLiveSpeed(onlineEmail: userStatus.email, startedAt: startedAt)
+    }
+
+    private func emitLiveSpeed(_ next: AntigravityLiveSpeed?) {
+        publishedLiveSpeed = next
+        onLiveSpeed(next)
     }
 
     // MARK: - FSEvents & Debounce
@@ -149,16 +189,23 @@ final class AntigravityTrajectoryCollector {
     private func sync() {
         guard isWatching, let startedAt = listenerStartedAt else { return }
         let hadCachedHandle = handle != nil
-        guard var session = acquireUserStatusSession() else { return }
+        guard var session = acquireUserStatusSession() else {
+            emitLiveSpeed(nil)
+            return
+        }
         var summariesData = callRPC("GetAllCascadeTrajectories", handle: session.handle, body: [:])
         if summariesData == nil, hadCachedHandle {
             handle = nil
-            guard let refreshed = acquireUserStatusSession() else { return }
+            guard let refreshed = acquireUserStatusSession() else {
+                emitLiveSpeed(nil)
+                return
+            }
             session = refreshed
             summariesData = callRPC("GetAllCascadeTrajectories", handle: session.handle, body: [:])
         }
         guard let summariesData else {
             handle = nil
+            emitLiveSpeed(nil)
             return
         }
 
@@ -169,82 +216,138 @@ final class AntigravityTrajectoryCollector {
         let summaries = parseSummaries(summariesData)
         seedKnownRoots(from: summaries)
 
+        for (lower, summary) in summaries where cachedBatches[lower] != nil {
+            if let lm = summary.lastModifiedAt {
+                cachedBatches[lower]?.lastModifiedAt = lm
+            }
+        }
+
         let changed = summaries.keys.sorted().filter { lower in
             guard let summary = summaries[lower] else { return false }
             return watermarks[lower]?.matches(summary.watermark) != true
         }
-        guard !changed.isEmpty else { return }
 
-        var pending = changed
-        var visited: Set<String> = []
-        var completed: [(lower: String, watermark: Watermark, batch: AntigravityExtractedBatch)] = []
+        var rpcFailed = false
+        if !changed.isEmpty {
+            var pending = changed
+            var visited: Set<String> = []
+            var completed: [(lower: String, watermark: Watermark, lastModifiedAt: Date?, batch: AntigravityExtractedBatch)] = []
 
-        while !pending.isEmpty {
-            let lower = pending.removeFirst()
-            guard !visited.contains(lower) else { continue }
-            visited.insert(lower)
+            while !pending.isEmpty {
+                let lower = pending.removeFirst()
+                guard !visited.contains(lower) else { continue }
+                visited.insert(lower)
 
-            let summary = summaries[lower]
-            let rawID = summary?.rawID ?? lower
-            guard let trajectoryData = callRPC("GetCascadeTrajectory", handle: session.handle, body: ["cascadeId": rawID]) else {
-                handle = nil
-                break
-            }
+                let summary = summaries[lower]
+                let rawID = summary?.rawID ?? lower
+                guard let trajectoryData = callRPC("GetCascadeTrajectory", handle: session.handle, body: ["cascadeId": rawID]) else {
+                    handle = nil
+                    rpcFailed = true
+                    break
+                }
 
-            let extraction = AntigravityModelResolver.extractSteps(
-                cascadeID: rawID,
-                trajectoryData: trajectoryData,
-                summaryLastModifiedAt: summary?.lastModifiedAt,
-                summaryParentID: summary?.parentConversationID,
-                summaryRootID: summary?.rootConversationID,
-                dynamicModels: userStatus.dynamicModels,
-                knownRootID: knownRootBySession[lower])
+                let extraction = AntigravityModelResolver.extractSteps(
+                    cascadeID: rawID,
+                    trajectoryData: trajectoryData,
+                    summaryLastModifiedAt: summary?.lastModifiedAt,
+                    summaryParentID: summary?.parentConversationID,
+                    summaryRootID: summary?.rootConversationID,
+                    dynamicModels: userStatus.dynamicModels,
+                    knownRootID: knownRootBySession[lower])
 
-            switch extraction {
-            case .truncated:
-                continue
-            case .complete(let batch):
-                recordRelations(for: batch)
-                for childLower in batch.childCascadeIDs where !visited.contains(childLower) {
-                    if let childSummary = summaries[childLower],
-                       watermarks[childLower]?.matches(childSummary.watermark) == true {
-                        continue
+                switch extraction {
+                case .truncated:
+                    continue
+                case .complete(let batch):
+                    recordRelations(for: batch)
+                    for childLower in batch.childCascadeIDs where !visited.contains(childLower) {
+                        if let childSummary = summaries[childLower],
+                           watermarks[childLower]?.matches(childSummary.watermark) == true {
+                            continue
+                        }
+                        pending.append(childLower)
                     }
-                    pending.append(childLower)
+                    let watermark = summary?.watermark ?? Watermark(stepCount: nil, lastModifiedRaw: nil)
+                    completed.append((lower, watermark, summary?.lastModifiedAt, batch))
                 }
-                if let watermark = summary?.watermark {
-                    completed.append((lower, watermark, batch))
-                } else {
-                    completed.append((lower, Watermark(stepCount: nil, lastModifiedRaw: nil), batch))
+            }
+
+            if !completed.isEmpty {
+                let convergedBatches = completed.map { item -> AntigravityExtractedBatch in
+                    let root = resolveRoot(of: item.batch.sessionID)
+                    let parent = (root != item.batch.sessionID) ? root : nil
+                    return AntigravityExtractedBatch(
+                        sessionID: item.batch.sessionID,
+                        parentSessionID: parent,
+                        rootSessionID: root,
+                        childCascadeIDs: item.batch.childCascadeIDs,
+                        steps: item.batch.steps)
+                }
+
+                do {
+                    let ledger = try openLedger()
+                    let revisionBefore = ledger.revision
+                    try ledger.ingest(
+                        antigravity: convergedBatches,
+                        onlineEmail: userStatus.email,
+                        listenerStartedAt: startedAt)
+                    for item in completed where item.watermark.isMeaningful {
+                        watermarks[item.lower] = item.watermark
+                    }
+                    for (idx, item) in completed.enumerated() {
+                        cachedBatches[item.lower] = CachedCascade(
+                            batch: convergedBatches[idx],
+                            lastModifiedAt: item.lastModifiedAt ?? cachedBatches[item.lower]?.lastModifiedAt)
+                    }
+                    afterIngest(ledger, revisionBefore)
+                } catch {
+                    NSLog("CC Pilot: Antigravity 账本入账失败：%@", String(describing: error))
+                    emitLiveSpeed(nil)
+                    return
                 }
             }
         }
 
-        guard !completed.isEmpty else { return }
-        let convergedBatches = completed.map { item -> AntigravityExtractedBatch in
-            let root = resolveRoot(of: item.batch.sessionID)
-            let parent = (root != item.batch.sessionID) ? root : nil
-            return AntigravityExtractedBatch(
-                sessionID: item.batch.sessionID,
-                parentSessionID: parent,
-                rootSessionID: root,
-                childCascadeIDs: item.batch.childCascadeIDs,
-                steps: item.batch.steps)
+        if summaries.isEmpty {
+            cachedBatches = [:]
+        } else {
+            cachedBatches = cachedBatches.filter { key, _ in
+                summaries[key] != nil || summaries[resolveRoot(of: key)] != nil
+            }
         }
 
+        guard !rpcFailed else {
+            emitLiveSpeed(nil)
+            return
+        }
+
+        publishLiveSpeed(onlineEmail: userStatus.email, startedAt: startedAt)
+    }
+
+    private func publishLiveSpeed(onlineEmail: String?, startedAt: Date) {
+        guard onlineEmail != nil else {
+            emitLiveSpeed(nil)
+            return
+        }
+        let snapshots = cachedBatches.values.map { cached in
+            AntigravityCascadeSnapshot(
+                batch: cached.batch,
+                lastModifiedAt: cached.lastModifiedAt,
+                resolvedRootID: resolveRoot(of: cached.batch.sessionID))
+        }
         do {
             let ledger = try openLedger()
-            let revisionBefore = ledger.revision
-            try ledger.ingest(
-                antigravity: convergedBatches,
-                onlineEmail: userStatus.email,
-                listenerStartedAt: startedAt)
-            for item in completed where item.watermark.isMeaningful {
-                watermarks[item.lower] = item.watermark
-            }
-            afterIngest(ledger, revisionBefore)
+            let ownership = try ledger.antigravitySessionOwnership()
+            let speed = AntigravityLiveSpeed.compute(
+                onlineEmail: onlineEmail,
+                listenerStartedAt: startedAt,
+                cascades: snapshots,
+                boundAccounts: ownership.boundAccounts,
+                unattributedOnlySessions: ownership.unattributedOnlySessions)
+            emitLiveSpeed(speed)
         } catch {
-            NSLog("CC Pilot: Antigravity 账本入账失败：%@", String(describing: error))
+            NSLog("CC Pilot: 读取 Antigravity 会话归属失败：%@", String(describing: error))
+            emitLiveSpeed(nil)
         }
     }
 

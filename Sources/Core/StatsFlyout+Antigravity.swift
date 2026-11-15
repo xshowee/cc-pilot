@@ -31,8 +31,10 @@ struct AntigravityFlyout: Equatable {
     let isOldSnapshot: Bool
     /// 没有快照数据（还没读到过、格式无法识别后）时为空
     let groups: [Group]
+    /// 当前在线非旧快照且邮箱一致时的实时生成速度；旧快照、离线或邮箱不一致时为 nil
+    let visibleLiveSpeed: AntigravityLiveSpeed?
 
-    init(_ card: AntigravityCard, now: Date) {
+    init(_ card: AntigravityCard, now: Date, liveSpeed: AntigravityLiveSpeed? = nil) {
         email = card.email
         tierName = card.tierName
         isOldSnapshot = card.isOldSnapshot
@@ -41,12 +43,21 @@ struct AntigravityFlyout: Equatable {
                 Ring(bucket: $0, ring: QuotaRing.make($0.reading, resetsAt: $0.resetsAt, now: now))
             })
         }
+        if !card.isOldSnapshot,
+           let liveSpeed,
+           liveSpeed.email.caseInsensitiveCompare(card.email) == .orderedSame {
+            visibleLiveSpeed = liveSpeed
+        } else {
+            visibleLiveSpeed = nil
+        }
     }
 }
 
 extension AntigravityBoard {
     /// 这个邮箱的统计面板；没有这张卡片（已删除）时为 nil
-    func flyout(for email: String, now: Date) -> AntigravityFlyout? {
-        cards(now: now).first { $0.email == email }.map { AntigravityFlyout($0, now: now) }
+    func flyout(for email: String, now: Date, liveSpeed: AntigravityLiveSpeed? = nil) -> AntigravityFlyout? {
+        cards(now: now).first { $0.email == email }.map {
+            AntigravityFlyout($0, now: now, liveSpeed: liveSpeed)
+        }
     }
 }

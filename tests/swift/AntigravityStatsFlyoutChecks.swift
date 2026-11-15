@@ -15,6 +15,7 @@ final class AntigravityStatsFlyoutChecks: CheckSuite {
             Check("旧快照的圆环变灰、倒计时照常；过了重置时间、没有数字的圆环不画弧、没有倒计时", staleAndReset),
             Check("没有卡片的邮箱（含读到但没添加的）没有面板；还没读到过、格式无法识别后的卡片只有邮箱", missingAndEmpty),
             Check("knownResets 按 Gemini -> Argon -> Carbon -> Claude & GPT 优先级独立挑选 5h 与周重置时间；缺失返回 nil", knownResetsPriority),
+            Check("实时速度门控与分段不变性：仅在线非旧快照且邮箱匹配时可见；离线、旧快照或异号隐藏，分段切换不变", liveSpeedVisibilityAndPeriodInvariance),
         ]
     }
 
@@ -224,5 +225,67 @@ final class AntigravityStatsFlyoutChecks: CheckSuite {
         // 4) 格式无法识别丢弃快照后回到 nil
         board.record(.unrecognizedFormat(email: "user@example.com"), clicked: "user@example.com")
         try expectEqual(board.knownResets(for: "user@example.com"), KnownResets(fiveHour: nil, sevenDay: nil))
+    }
+
+    static func liveSpeedVisibilityAndPeriodInvariance() throws {
+        var board = B.added(B.ultra, B.pro)
+        board.record(.success(B.ultraQuota()), clicked: nil)
+
+        let ultraSpeed = AntigravityLiveSpeed(
+            email: B.ultra.lowercased(),
+            latestTokPerSec: 42.5,
+            latestTtftSec: 0.8,
+            sessionAvgTokPerSec: 38.1)
+
+        // 1) 当前非旧快照 + 邮箱一致（忽略大小写）-> 可见
+        let shown = try unwrap(board.flyout(for: B.ultra, now: now, liveSpeed: AntigravityLiveSpeed(
+            email: B.ultra.uppercased(),
+            latestTokPerSec: 42.5,
+            latestTtftSec: 0.8,
+            sessionAvgTokPerSec: 38.1)))
+        try expectEqual(shown.isOldSnapshot, false)
+        try expectEqual(shown.visibleLiveSpeed?.latestTokPerSec, 42.5)
+        try expectEqual(shown.visibleLiveSpeed?.latestTtftSec, 0.8)
+        try expectEqual(shown.visibleLiveSpeed?.sessionAvgTokPerSec, 38.1)
+
+        // 2) 分段切换（5h / 周 / 累计）不影响 visibleLiveSpeed
+        let usage = AccountTokenUsage(
+            fiveHour: TokenUsageWindow(start: now.addingTimeInterval(-3600), end: now, usage: TokenUsageBreakdown(tokens: TokenCounts(input: 10, output: 20, cacheWrite: 0, cacheRead: 30), byModel: [])),
+            sevenDay: TokenUsageWindow(start: now.addingTimeInterval(-86400), end: now, usage: TokenUsageBreakdown(tokens: TokenCounts(input: 100, output: 200, cacheWrite: 0, cacheRead: 300), byModel: [])),
+            cumulative: TokenUsageCumulative(origin: now.addingTimeInterval(-86400), usage: TokenUsageBreakdown(tokens: TokenCounts(input: 1000, output: 2000, cacheWrite: 0, cacheRead: 3000), byModel: [])),
+            hourly: [],
+            daily: [])
+        let figures = TokenUsagePeriod.allCases.map { TokenFigure(usage, period: $0, kinds: TokenKind.withoutCacheWrite) }
+        try expectEqual(figures.map(\.total), ["60", "600", "6.0K"])
+        for _ in figures {
+            let f = try unwrap(board.flyout(for: B.ultra, now: now, liveSpeed: ultraSpeed))
+            try expectEqual(f.visibleLiveSpeed, ultraSpeed, "切换 5h/周/累计 时实时速度不得变化")
+        }
+
+        // 3) 离线（nil）-> 隐藏
+        try expectEqual(try unwrap(board.flyout(for: B.ultra, now: now, liveSpeed: nil)).visibleLiveSpeed, nil)
+
+        // 4) 邮箱不匹配 -> 隐藏
+        let proSpeed = AntigravityLiveSpeed(
+            email: B.pro.lowercased(),
+            latestTokPerSec: 60.0,
+            latestTtftSec: nil,
+            sessionAvgTokPerSec: 55.0)
+        try expectEqual(try unwrap(board.flyout(for: B.ultra, now: now, liveSpeed: proSpeed)).visibleLiveSpeed, nil)
+
+        // 5) 切换到 pro 后，ultra 变为旧快照（isOldSnapshot == true）-> 即使传入 ultraSpeed 也必须隐藏
+        board.record(.success(B.proQuota()), clicked: nil)
+        let staleUltra = try unwrap(board.flyout(for: B.ultra, now: now, liveSpeed: ultraSpeed))
+        try expectEqual(staleUltra.isOldSnapshot, true)
+        try expectEqual(staleUltra.visibleLiveSpeed, nil, "旧快照卡片不得显示实时速度")
+
+        // 当前卡片 pro 与 proSpeed 一致 -> 可见
+        let currentPro = try unwrap(board.flyout(for: B.pro, now: now, liveSpeed: proSpeed))
+        try expectEqual(currentPro.visibleLiveSpeed, proSpeed)
+
+        // 6) 从未读过的新增卡片（isOldSnapshot == true）-> 隐藏
+        board.add("fresh@example.com")
+        let freshSpeed = AntigravityLiveSpeed(email: "fresh@example.com", latestTokPerSec: 12, latestTtftSec: nil, sessionAvgTokPerSec: 12)
+        try expectEqual(try unwrap(board.flyout(for: "fresh@example.com", now: now, liveSpeed: freshSpeed)).visibleLiveSpeed, nil)
     }
 }

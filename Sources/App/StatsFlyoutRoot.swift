@@ -54,7 +54,7 @@ struct StatsFlyoutRoot: View {
             }
         } else if let row = controller.hover.row, row.section == .antigravity {
             // 时钟同卡片（UsageModel.now）
-            if let flyout = antigravity.board.flyout(for: row.name, now: usage.now) {
+            if let flyout = antigravity.board.flyout(for: row.name, now: usage.now, liveSpeed: antigravity.liveSpeed) {
                 AntigravityFlyoutView(flyout: flyout, stats: stats, now: usage.now)
             }
         } else if let shown {

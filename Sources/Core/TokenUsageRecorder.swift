@@ -56,6 +56,7 @@ final class TokenUsageRecorder: @unchecked Sendable {
     /// 归属与实时额度共用的写入进程查询（一次扫描包成一批，只列一次进程）
     private let chatgptWriters: ChatGPTSessionWriters
     private let onChatGPTLiveQuota: ([UsageAccount: LiveQuota]) -> Void
+    private let onAntigravityLiveSpeed: (AntigravityLiveSpeed?) -> Void
 
     // 以下只在 queue 上访问
     private var ledger: TokenLedger?
@@ -78,6 +79,7 @@ final class TokenUsageRecorder: @unchecked Sendable {
     /// - followsChatGPT: 是否也跟着 ChatGPT 会话记录（App 里是；Claude 一侧的检查不需要）
     /// - onChatGPTLiveQuota: ChatGPT 实时额度（各账号这批事件里最新的一份），在 queue 上调用
     /// - onAntigravityPassiveQuota: Antigravity 被动接收到的账号额度，在 queue 上调用
+    /// - onAntigravityLiveSpeed: Antigravity 当前在线账号实时生成速度，在 queue 上调用
     init(environment: CoreEnvironment, ledgerURL: URL? = nil, latency: TimeInterval = 2,
          antigravityDebounce: TimeInterval = 0.5,
          queue: DispatchQueue = DispatchQueue(label: "com.ccpilot.token-usage", qos: .utility),
@@ -87,6 +89,7 @@ final class TokenUsageRecorder: @unchecked Sendable {
          followsChatGPT: Bool = false,
          onChatGPTLiveQuota: @escaping ([UsageAccount: LiveQuota]) -> Void = { _ in },
          onAntigravityPassiveQuota: @escaping (AntigravityAccountQuota) -> Void = { _ in },
+         onAntigravityLiveSpeed: @escaping (AntigravityLiveSpeed?) -> Void = { _ in },
          onUpdate: @escaping () -> Void = {}) {
         self.environment = environment
         self.ledgerURL = ledgerURL ?? TokenLedger.defaultURL(environment: environment)
@@ -113,6 +116,7 @@ final class TokenUsageRecorder: @unchecked Sendable {
         }
         chatgptLiveQuota = ChatGPTLiveQuotaTracker(environment: environment, writers: writers)
         self.onChatGPTLiveQuota = onChatGPTLiveQuota
+        self.onAntigravityLiveSpeed = onAntigravityLiveSpeed
         self.onUpdate = onUpdate
         self.createStream = createStream
         queue.setSpecific(key: queueKey, value: true)
@@ -136,7 +140,8 @@ final class TokenUsageRecorder: @unchecked Sendable {
                 self.rollUpIfNewDay(ledger)
                 if ledger.revision != revBefore { self.onUpdate() }
             },
-            onPassiveQuota: onAntigravityPassiveQuota)
+            onPassiveQuota: onAntigravityPassiveQuota,
+            onLiveSpeed: onAntigravityLiveSpeed)
     }
 
     deinit { stop() }
@@ -172,6 +177,16 @@ final class TokenUsageRecorder: @unchecked Sendable {
         onQueue {
             antigravityCollector.setWatching(enabled)
         }
+    }
+
+    /// 悬停展示 Antigravity 浮窗时复核实时速度是否仍在线；当前无速度缓存时零探测
+    func revalidateAntigravityLiveSpeedIfNeeded() {
+        queue.async { [self] in antigravityCollector.revalidateLiveSpeedIfNeeded() }
+    }
+
+    /// 收到 Antigravity.app 退出通知时立即清空陈旧进程句柄与内存实时速度（零 RPC）
+    func handleAntigravityAppTerminated() {
+        queue.async { [self] in antigravityCollector.handleAppTerminated() }
     }
 
     /// 在账本所在的队列上读取账本（等之前安排的同步做完）

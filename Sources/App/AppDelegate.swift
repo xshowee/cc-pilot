@@ -28,12 +28,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                                 userInfo: [antigravityPassiveQuotaKey: quota])
             }
         },
+        onAntigravityLiveSpeed: { speed in
+            DispatchQueue.main.async {
+                (NSApp?.delegate as? AppDelegate)?.publishAntigravityLiveSpeed(speed)
+                NotificationCenter.default.post(
+                    name: .antigravityLiveSpeedDidUpdate, object: nil,
+                    userInfo: speed.map { [antigravityLiveSpeedKey: $0] })
+            }
+        },
         onUpdate: {
             // 在账本队列上触发：只能异步回主线程（统计面板会在后台同步等账本队列，主线程不能反过来同步等它）
             DispatchQueue.main.async { NotificationCenter.default.post(name: .tokenUsageDidUpdate, object: nil) }
         })
+    @MainActor private(set) var latestAntigravityLiveSpeed: AntigravityLiveSpeed?
     @MainActor lazy var tokenStats = TokenStatsModel(recorder: tokenUsage)
     private var antigravityWatchingObserver: NSObjectProtocol?
+    private var antigravityTerminateObserver: NSObjectProtocol?
+
+    @MainActor func publishAntigravityLiveSpeed(_ speed: AntigravityLiveSpeed?) {
+        latestAntigravityLiveSpeed = speed
+    }
+
+    @MainActor func clearAntigravityLiveSpeed() {
+        latestAntigravityLiveSpeed = nil
+    }
 
     override init() {
         super.init()
@@ -42,6 +60,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ) { [weak self] note in
             guard let enabled = note.userInfo?[antigravityWatchingEnabledKey] as? Bool else { return }
             self?.tokenUsage.setAntigravityWatching(enabled: enabled)
+        }
+        antigravityTerminateObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didTerminateApplicationNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
+            let isAntigravity = app.bundleURL?.lastPathComponent == AntigravityProcessArguments.appBundleName
+                || app.bundleIdentifier == "com.google.antigravity"
+            guard isAntigravity else { return }
+            self?.tokenUsage.handleAntigravityAppTerminated()
         }
     }
 

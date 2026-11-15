@@ -15,18 +15,22 @@
 // 删除先在面板里确认（AntigravityRemovalBanner），确认后从看板和本机存储删掉这个邮箱。
 // 统计面板（ticket 05）按 board 取同一个邮箱的数据。
 
+import AppKit
 import Foundation
 
 extension Notification.Name {
     static let antigravityWatchingDidChange = Notification.Name("CCPilotAntigravityWatchingDidChange")
     /// Antigravity 被动额度更新（在主线程上发出）；userInfo[antigravityPassiveQuotaKey] 是 AntigravityAccountQuota
     static let antigravityPassiveQuotaDidUpdate = Notification.Name("CCPilotAntigravityPassiveQuotaDidUpdate")
+    static let antigravityLiveSpeedDidUpdate = Notification.Name("CCPilotAntigravityLiveSpeedDidUpdate")
 }
 
 /// antigravityWatchingDidChange 的 userInfo 键
 let antigravityWatchingEnabledKey = "enabled"
 /// antigravityPassiveQuotaDidUpdate 的 userInfo 键
 let antigravityPassiveQuotaKey = "quota"
+/// antigravityLiveSpeedDidUpdate 的 userInfo 键
+let antigravityLiveSpeedKey = "speed"
 
 @MainActor
 final class AntigravityModel: ObservableObject {
@@ -35,6 +39,8 @@ final class AntigravityModel: ObservableObject {
     @Published private(set) var refreshing = AntigravityRefreshing()
     /// 最近一次刷新给各卡片的短暂提示（按邮箱）
     @Published private(set) var notices: [String: AntigravityNotice.Kind] = [:]
+    /// 当前在线账号的纯内存实时生成速度（离线或无有效样本时为 nil）
+    @Published private(set) var liveSpeed: AntigravityLiveSpeed?
 
     /// 卡片上的短暂提示显示多久（同 KimiModel）
     static let noticeDuration = KimiModel.noticeDuration
@@ -45,17 +51,26 @@ final class AntigravityModel: ObservableObject {
     /// 每次给出提示加一：过期的隐藏不生效
     private var noticeGeneration = 0
     private var passiveQuotaObserver: NSObjectProtocol?
+    private var liveSpeedObserver: NSObjectProtocol?
 
     init(environment: CoreEnvironment = .live, usage: UsageModel) {
         refresher = AntigravityRefresher(environment: environment)
         store = AntigravityBoardStore(environment: environment)
         self.usage = usage
-        board = store.load()
+        let loaded = store.load()
+        board = loaded
+        liveSpeed = loaded.emails.isEmpty ? nil : (NSApp?.delegate as? AppDelegate)?.latestAntigravityLiveSpeed
         passiveQuotaObserver = NotificationCenter.default.addObserver(
             forName: .antigravityPassiveQuotaDidUpdate, object: nil, queue: .main
         ) { [weak self] note in
             guard let quota = note.userInfo?[antigravityPassiveQuotaKey] as? AntigravityAccountQuota else { return }
             Task { @MainActor in self?.applyPassiveQuota(quota) }
+        }
+        liveSpeedObserver = NotificationCenter.default.addObserver(
+            forName: .antigravityLiveSpeedDidUpdate, object: nil, queue: .main
+        ) { [weak self] note in
+            let speed = note.userInfo?[antigravityLiveSpeedKey] as? AntigravityLiveSpeed
+            Task { @MainActor in self?.applyLiveSpeed(speed) }
         }
     }
 
@@ -105,6 +120,25 @@ final class AntigravityModel: ObservableObject {
         let effect = board.record(result, clicked: refreshing.finish())
         if effect.needsSave { save() }
         if !effect.notices.isEmpty { show(effect.notices) }
+        switch result {
+        case .appNotRunning, .notSignedIn,
+             .failed(email: _, reason: .processUnreadable),
+             .failed(email: _, reason: .noReachablePort):
+            liveSpeed = nil
+            (NSApp?.delegate as? AppDelegate)?.clearAntigravityLiveSpeed()
+        default:
+            if let refreshedEmail = result.email, let current = liveSpeed,
+               refreshedEmail.caseInsensitiveCompare(current.email) != .orderedSame {
+                liveSpeed = nil
+                (NSApp?.delegate as? AppDelegate)?.clearAntigravityLiveSpeed()
+            }
+        }
+    }
+
+    private func applyLiveSpeed(_ speed: AntigravityLiveSpeed?) {
+        let next = isVisible ? speed : nil
+        guard liveSpeed != next else { return }
+        liveSpeed = next
     }
 
     /// 显示这次的提示（替换上一次的），noticeDuration 秒后一起隐藏
@@ -123,6 +157,10 @@ final class AntigravityModel: ObservableObject {
         board.remove(email)
         save()
         notices[email] = nil
+        if !isVisible {
+            liveSpeed = nil
+            (NSApp?.delegate as? AppDelegate)?.clearAntigravityLiveSpeed()
+        }
         notifyWatching()
     }
 
