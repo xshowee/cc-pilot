@@ -34,8 +34,8 @@ struct AntigravityFlyoutView: View {
                     }
                 }
             }
-            TokenUsageCard(figure: figure, period: $period, now: now, kinds: TokenKind.withoutCacheWrite)
-            ModelsCard(figure: figure)
+            TokenUsageCard(figure: figure, period: $period, now: now, kinds: TokenKind.withoutCacheWrite, showsCost: true)
+            ModelsCard(figure: figure, showsCost: true)
             TokenHistoryCard(
                 bars: tokens.map { HistoryBar.bars($0, range: range, kinds: TokenKind.withoutCacheWrite) } ?? [],
                 range: $range,
@@ -58,7 +58,7 @@ struct AntigravityFlyoutView: View {
     private var tokens: AccountTokenUsage? { stats.loaded[account] }
 
     private var figure: TokenFigure? {
-        tokens.map { TokenFigure($0, period: period, kinds: TokenKind.withoutCacheWrite) }
+        tokens.map { TokenFigure($0, period: period, kinds: TokenKind.withoutCacheWrite, includeCost: true) }
     }
 
     private var header: some View {

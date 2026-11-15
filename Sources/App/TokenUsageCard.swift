@@ -13,6 +13,8 @@ struct TokenUsageCard: View {
     @Binding var period: TokenUsagePeriod
     let now: Date
     var kinds: [TokenKind] = TokenKind.allCases
+    /// 仅 Antigravity 面板展示等效 API 费用与缓存节省；Claude / ChatGPT 保持原样
+    var showsCost: Bool = false
 
     var body: some View {
         FlyoutCard {
@@ -33,10 +35,43 @@ struct TokenUsageCard: View {
                             .foregroundColor(.secondary)
                     }
                 }
+                if showsCost {
+                    costSummary
+                }
                 proportionBar
                 legend
             }
         }
+    }
+
+    @ViewBuilder private var costSummary: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(verbatim: figure?.cost?.totalCostText ?? "—")
+                    .foregroundColor(figure?.cost?.totalCostUSD == nil ? .secondary : .primary)
+                if let savings = figure?.cost?.cacheSavingsText {
+                    Text("Saved \(savings)")
+                        .foregroundColor(.secondary)
+                }
+            }
+            .font(.callout)
+            .monospacedDigit()
+            if let unpriced = figure?.cost?.unpricedModels, !unpriced.isEmpty {
+                Text(verbatim: unpricedFootnote(unpriced))
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func unpricedFootnote(_ models: [String]) -> String {
+        let separator = String(localized: "list-separator", defaultValue: ", ")
+        let list = models.joined(separator: separator)
+        if models.count == 1 {
+            return String(localized: "Excludes unpriced model: \(list)")
+        }
+        return String(localized: "Excludes unpriced models: \(list)")
     }
 
     private var proportionBar: some View {
@@ -65,6 +100,7 @@ struct TokenUsageCard: View {
                         Circle().fill(kind.color).frame(width: 8, height: 8)
                         Text(verbatim: kind.title)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     valueAndShareCells(value: part?.value ?? "—", share: part?.share ?? "—")
                 }
             }
@@ -76,19 +112,34 @@ struct TokenUsageCard: View {
 
 struct ModelsCard: View {
     let figure: TokenFigure?
+    /// 仅 Antigravity 面板展示单模型等效 API 费用；Claude / ChatGPT 保持三列原样
+    var showsCost: Bool = false
 
     var body: some View {
         FlyoutCard {
             VStack(alignment: .leading, spacing: 8) {
                 FlyoutCardTitle(title: String(localized: "Models")) { EmptyView() }
                 if let models = figure?.models, !models.isEmpty {
-                    Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 4) {
+                    Grid(
+                        alignment: .leadingFirstTextBaseline,
+                        horizontalSpacing: showsCost ? 8 : 10,
+                        verticalSpacing: 4
+                    ) {
                         ForEach(models, id: \.name) { model in
                             GridRow {
                                 Text(verbatim: model.name)
-                                    .lineLimit(1)
+                                    .lineLimit(2)
                                     .truncationMode(.middle)
-                                valueAndShareCells(value: model.value, share: model.share)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .help(model.name)
+                                valueAndShareCells(
+                                    value: model.value,
+                                    share: model.share,
+                                    shareMinWidth: showsCost ? 0 : 34)
+                                if showsCost {
+                                    costCell(for: model)
+                                }
                             }
                         }
                     }
@@ -102,17 +153,26 @@ struct ModelsCard: View {
             }
         }
     }
+
+    @ViewBuilder private func costCell(for model: TokenFigure.ModelRow) -> some View {
+        let text = model.costText ?? (model.isUnpriced ? String(localized: "Unpriced") : "—")
+        Text(verbatim: text)
+            .foregroundColor(model.isUnpriced || model.costText == nil ? .secondary : .primary)
+            .fixedSize(horizontal: true, vertical: false)
+            .gridColumnAlignment(.trailing)
+    }
 }
 
-/// 图例和模型卡一行右边的两格：数值（右对齐，占满剩下的宽度）、占比（次要颜色）
-@ViewBuilder private func valueAndShareCells(value: String, share: String) -> some View {
+/// 图例和模型卡一行右边的格：数值（右对齐）、占比（次要颜色）；第一列占满剩余宽度，数值列紧凑贴右
+@ViewBuilder private func valueAndShareCells(value: String, share: String, shareMinWidth: CGFloat = 34) -> some View {
     Text(verbatim: value)
+        .fixedSize(horizontal: true, vertical: false)
         .gridColumnAlignment(.trailing)
-        .frame(maxWidth: .infinity, alignment: .trailing)
     Text(verbatim: share)
         .foregroundColor(.secondary)
+        .fixedSize(horizontal: true, vertical: false)
         .gridColumnAlignment(.trailing)
-        .frame(minWidth: 34, alignment: .trailing)
+        .frame(minWidth: shareMinWidth > 0 ? shareMinWidth : nil, alignment: .trailing)
 }
 
 extension TokenKind {

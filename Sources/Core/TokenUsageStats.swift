@@ -38,21 +38,30 @@ struct ModelTokenUsage: Equatable, Sendable {
 struct TokenUsageBreakdown: Equatable, Sendable {
     let tokens: TokenCounts
     let byModel: [ModelTokenUsage]
+    /// 保留合并展示名之前的原始模型 ID 明细，供按变体单价动态算费（Antigravity ticket 04）
+    let rawModels: [ModelTokenUsage]
 
-    static let empty = TokenUsageBreakdown(tokens: .zero, byModel: [])
+    static let empty = TokenUsageBreakdown(tokens: .zero, byModel: [], rawModels: [])
 
-    /// 按模型显示名合并若干条（原始模型 ID，用量）
+    /// 按模型显示名合并若干条（原始模型 ID，用量），同时保留原始模型分组明细
     init(_ entries: [(model: String, tokens: TokenCounts)]) {
+        var byRaw: [String: TokenCounts] = [:]
         var byName: [String: TokenCounts] = [:]
-        for entry in entries { byName[ModelDisplayName.name(for: entry.model), default: .zero] += entry.tokens }
+        for entry in entries {
+            byRaw[entry.model, default: .zero] += entry.tokens
+            byName[ModelDisplayName.name(for: entry.model), default: .zero] += entry.tokens
+        }
         tokens = byName.values.reduce(.zero, +)
         byModel = byName.map { ModelTokenUsage(model: $0.key, tokens: $0.value) }
             .sorted { ($0.tokens.total, $1.model) > ($1.tokens.total, $0.model) }
+        rawModels = byRaw.map { ModelTokenUsage(model: $0.key, tokens: $0.value) }
+            .sorted { ($0.tokens.total, $1.model) > ($1.tokens.total, $0.model) }
     }
 
-    init(tokens: TokenCounts, byModel: [ModelTokenUsage]) {
+    init(tokens: TokenCounts, byModel: [ModelTokenUsage], rawModels: [ModelTokenUsage]? = nil) {
         self.tokens = tokens
         self.byModel = byModel
+        self.rawModels = rawModels ?? byModel
     }
 }
 

@@ -246,3 +246,9 @@
 "That doesn’t look like an email address." = "这不像是邮箱地址。";
 "“%@” has already been added." = "已添加过“%@”。";
 "Delete “%@” and its saved usage?" = "删除“%@”及保存的额度？";
+
+/* Antigravity 等效 API 费用（antigravity-usage ticket 04） */
+"Saved %@" = "省 %@";
+"Unpriced" = "未定价";
+"Excludes unpriced model: %@" = "金额已略过未定价模型：%@";
+"Excludes unpriced models: %@" = "金额已略过未定价模型：%@";

@@ -72,6 +72,16 @@ struct TokenFigure: Equatable {
         let name: String
         let value: String
         let share: String
+        let costText: String?
+        let isUnpriced: Bool
+
+        init(name: String, value: String, share: String, costText: String? = nil, isUnpriced: Bool = false) {
+            self.name = name
+            self.value = value
+            self.share = share
+            self.costText = costText
+            self.isUnpriced = isUnpriced
+        }
     }
 
     /// 显示与计入合计的 token 类别
@@ -83,8 +93,11 @@ struct TokenFigure: Equatable {
     let parts: [Part]
     /// 合计大的在前（按所选类别重新排序并过滤为 0 的模型）
     let models: [ModelRow]
+    /// 按静态定价目录算出的等效 API 美元费用与缓存节省（仅 Antigravity 面板开启）
+    let cost: AntigravityCostSummary?
 
-    init(_ usage: AccountTokenUsage, period: TokenUsagePeriod, kinds: [TokenKind] = TokenKind.allCases) {
+    init(_ usage: AccountTokenUsage, period: TokenUsagePeriod,
+         kinds: [TokenKind] = TokenKind.allCases, includeCost: Bool = false) {
         let breakdown: TokenUsageBreakdown
         switch period {
         case .fiveHour: breakdown = usage.fiveHour.usage
@@ -100,13 +113,20 @@ struct TokenFigure: Equatable {
             return Part(kind: kind, fraction: sum > 0 ? Double(count) / Double(sum) : 0,
                         value: TokenUsageDisplay.compact(count), share: TokenUsageDisplay.share(count, of: sum))
         }
+        let costSummary = includeCost ? AntigravityPricing.summarize(breakdown, kinds: kinds) : nil
+        cost = costSummary
         models = breakdown.byModel
             .map { (model: $0.model, total: $0.tokens.total(for: kinds)) }
             .filter { $0.total > 0 }
             .sorted { ($0.total, $1.model) > ($1.total, $0.model) }
             .map {
-                ModelRow(name: $0.model, value: TokenUsageDisplay.compact($0.total),
-                         share: TokenUsageDisplay.share($0.total, of: sum))
+                let rowCost = costSummary?.byModelName[$0.model]
+                return ModelRow(
+                    name: $0.model,
+                    value: TokenUsageDisplay.compact($0.total),
+                    share: TokenUsageDisplay.share($0.total, of: sum),
+                    costText: rowCost?.costText,
+                    isUnpriced: rowCost?.isUnpriced ?? false)
             }
     }
 }
