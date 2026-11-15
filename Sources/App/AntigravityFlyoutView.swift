@@ -3,7 +3,7 @@
 // 从上到下：
 //   顶部     邮箱、套餐（旧快照的邮箱用次要颜色，同卡片）
 //   圆环卡   每组一张：组名（AntigravityText.groupTitle），每个桶一个圆环（QuotaRingView，顺序同卡片，每行最多两个），
-//            同组同窗口重复的圆环下面带区分标签；下面是组内模型（没有时不显示）
+//            同组同窗口重复的圆环下面带区分标签
 //   Token 用量 / 模型 / 历史 / 清空累计：三类视图（TokenKind.withoutCacheWrite），复用 StatsFlyoutView 卡片组件。
 
 import SwiftUI
@@ -28,9 +28,6 @@ struct AntigravityFlyoutView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         FlyoutCardTitle(title: AntigravityText.groupTitle(group.display)) { EmptyView() }
                         rings(group.rings)
-                        if !group.display.models.isEmpty {
-                            models(group.display.models)
-                        }
                     }
                 }
             }
@@ -118,16 +115,5 @@ struct AntigravityFlyoutView: View {
         QuotaRingView(ring: ring.ring, caption: AntigravityText.ringCaption(ring.bucket),
                       label: ring.bucket.extraLabel)
             .frame(width: Self.slotWidth)
-    }
-
-    private func models(_ models: [String]) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            ForEach(Array(models.enumerated()), id: \.offset) { _, model in
-                Text(verbatim: model)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
     }
 }

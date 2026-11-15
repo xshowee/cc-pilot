@@ -3,7 +3,7 @@
 //   顶部     邮箱、套餐
 //   圆环卡   每组一张：每个桶一个圆环（顺序同卡片：5 小时窗口在前，Ultra 即 5 小时窗口、周窗口两个；
 //            只有周窗口的组一个），
-//            下列组内模型。圆环标签与卡片同一套规则（同组同窗口重复时带 extraLabel，AntigravityText）
+//            圆环标签与卡片同一套规则（同组同窗口重复时带 extraLabel，AntigravityText）
 // Token 用量卡、模型卡、历史卡、清空累计复用 TokenStatsModel（按 AntigravityBoard.knownResets 与三类 TokenKind.withoutCacheWrite 展示）。
 // 内容从看板的卡片（AntigravityCard）推出，所以旧快照变灰、"已重置，待刷新"的规则与卡片完全相同：
 // 灰色读数的圆环是灰弧；已重置或没有数字的圆环显示"—"、不画弧、没有倒计时（同 Claude 面板的 QuotaRing）。

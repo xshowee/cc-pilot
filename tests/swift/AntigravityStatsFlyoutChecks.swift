@@ -1,6 +1,6 @@
 // Antigravity 卡片的统计面板（ticket 05，spec "界面"统计面板、接缝 2 的"统计面板行"）。
 //   StatsFlyoutRow.antigravity、rows(antigravity:)   每个邮箱一行，与其他段的同名行不相等；邮箱删除后面板收起
-//   AntigravityBoard.flyout(for:now:)                面板内容：邮箱、套餐、各组圆环（按桶）与组内模型
+//   AntigravityBoard.flyout(for:now:)                面板内容：邮箱、套餐、各组圆环（按桶）
 // 只看外部行为：把刷新结果交给看板，看算出的面板内容。期望值手算：剩余 = 100 − 已用，向下取整；
 // 倒计时按整分钟向上取、只保留最大的两个单位。
 
@@ -10,7 +10,7 @@ final class AntigravityStatsFlyoutChecks: CheckSuite {
     override class var checks: [Check] {
         [
             Check("统计面板行：每个邮箱一行，与 Kimi Code、工具的同名行不相等；邮箱删除后面板收起", rows),
-            Check("面板内容：邮箱、套餐；每组一张圆环卡，每个桶一个圆环（5 小时窗口在前），下列组内模型", content),
+            Check("面板内容：邮箱、套餐；每组一张圆环卡，每个桶一个圆环（5 小时窗口在前）", content),
             Check("面板内容：只有周窗口的组一个圆环；同组同窗口重复的圆环带区分标签（同卡片）", singleAndRepeated),
             Check("旧快照的圆环变灰、倒计时照常；过了重置时间、没有数字的圆环不画弧、没有倒计时", staleAndReset),
             Check("没有卡片的邮箱（含读到但没添加的）没有面板；还没读到过、格式无法识别后的卡片只有邮箱", missingAndEmpty),
