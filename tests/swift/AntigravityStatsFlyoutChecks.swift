@@ -14,6 +14,7 @@ final class AntigravityStatsFlyoutChecks: CheckSuite {
             Check("面板内容：只有周窗口的组一个圆环；同组同窗口重复的圆环带区分标签（同卡片）", singleAndRepeated),
             Check("旧快照的圆环变灰、倒计时照常；过了重置时间、没有数字的圆环不画弧、没有倒计时", staleAndReset),
             Check("没有卡片的邮箱（含读到但没添加的）没有面板；还没读到过、格式无法识别后的卡片只有邮箱", missingAndEmpty),
+            Check("knownResets 按 Gemini -> Argon -> Carbon -> Claude & GPT 优先级独立挑选 5h 与周重置时间；缺失返回 nil", knownResetsPriority),
         ]
     }
 
@@ -145,5 +146,83 @@ final class AntigravityStatsFlyoutChecks: CheckSuite {
 
         board.remove(B.ultra)
         try expectEqual(board.flyout(for: B.ultra, now: now), nil)
+    }
+
+    static func knownResetsPriority() throws {
+        // 未添加/无快照 -> nil
+        try expectEqual(AntigravityBoard().knownResets(for: B.ultra), KnownResets(fiveHour: nil, sevenDay: nil))
+
+        let gemini5h = at(minutes: 100)
+        let argon5h = at(minutes: 200)
+        let argonWeekly = at(minutes: 300)
+        let carbon5h = at(minutes: 400)
+        let carbonWeekly = at(minutes: 500)
+        let thirdParty5h = at(minutes: 600)
+        let thirdPartyWeekly = at(minutes: 700)
+
+        func bucket(_ id: String, _ window: AntigravityQuotaBucket.Window, resetsAt: Date?) -> AntigravityQuotaBucket {
+            AntigravityQuotaBucket(
+                bucketId: id, displayName: nil, window: window,
+                usage: resetsAt.map { UsageWindow(utilization: 10, resetsAt: $0) })
+        }
+
+        // 1) Gemini 仅 5h、Argon 有 5h+weekly、Carbon 有 weekly、Claude & GPT 有 5h+weekly
+        // 接口顺序故意倒序放，验证按池优先级而不是按接口顺序
+        var board = B.added("User@Example.com")
+        board.record(.success(AntigravityAccountQuota(
+            email: "user@example.com", tierName: "Pro", tierId: nil,
+            groups: [
+                AntigravityQuotaGroup(kind: .thirdParty, displayName: "Claude and GPT models", models: [],
+                                      buckets: [bucket("3p-5h", .fiveHour, resetsAt: thirdParty5h),
+                                                bucket("3p-w", .weekly, resetsAt: thirdPartyWeekly)]),
+                AntigravityQuotaGroup(kind: .other, displayName: "Gemini 4 Carbon", models: [],
+                                      buckets: [bucket("c-w", .weekly, resetsAt: carbonWeekly)]),
+                AntigravityQuotaGroup(kind: .other, displayName: "Gemini 4 Argon", models: [],
+                                      buckets: [bucket("a-5h", .fiveHour, resetsAt: argon5h),
+                                                bucket("a-w", .weekly, resetsAt: argonWeekly)]),
+                AntigravityQuotaGroup(kind: .gemini, displayName: "Gemini Models", models: [],
+                                      buckets: [bucket("g-5h", .fiveHour, resetsAt: gemini5h)]),
+            ],
+            fetchedAt: now)), clicked: nil)
+
+        try expectEqual(board.knownResets(for: "USER@example.com"),
+                        KnownResets(fiveHour: gemini5h, sevenDay: argonWeekly),
+                        "5h 取 Gemini，周独立取次高优先级 Argon（忽略大小写）")
+
+        // 2) 没有 Gemini，Argon 只有 5h，Carbon 有 5h + weekly -> 5h 取 Argon，周取 Carbon
+        board.record(.success(AntigravityAccountQuota(
+            email: "user@example.com", tierName: "Pro", tierId: nil,
+            groups: [
+                AntigravityQuotaGroup(kind: .thirdParty, displayName: "Claude and GPT models", models: [],
+                                      buckets: [bucket("3p-5h", .fiveHour, resetsAt: thirdParty5h),
+                                                bucket("3p-w", .weekly, resetsAt: thirdPartyWeekly)]),
+                AntigravityQuotaGroup(kind: .other, displayName: "Gemini 4 Carbon", models: [],
+                                      buckets: [bucket("c-5h", .fiveHour, resetsAt: carbon5h),
+                                                bucket("c-w", .weekly, resetsAt: carbonWeekly)]),
+                AntigravityQuotaGroup(kind: .other, displayName: "Gemini 4 Argon", models: [],
+                                      buckets: [bucket("a-5h", .fiveHour, resetsAt: argon5h)]),
+            ],
+            fetchedAt: now)), clicked: nil)
+
+        try expectEqual(board.knownResets(for: "user@example.com"),
+                        KnownResets(fiveHour: argon5h, sevenDay: carbonWeekly))
+
+        // 3) 未知 other 组不参与，仅 thirdParty 有 weekly -> fiveHour=nil, sevenDay=thirdPartyWeekly
+        board.record(.success(AntigravityAccountQuota(
+            email: "user@example.com", tierName: nil, tierId: nil,
+            groups: [
+                AntigravityQuotaGroup(kind: .other, displayName: "Gemini 4 Hydrogen", models: [],
+                                      buckets: [bucket("h-5h", .fiveHour, resetsAt: at(minutes: 999))]),
+                AntigravityQuotaGroup(kind: .thirdParty, displayName: "Claude and GPT models", models: [],
+                                      buckets: [bucket("3p-w", .weekly, resetsAt: thirdPartyWeekly)]),
+            ],
+            fetchedAt: now)), clicked: nil)
+
+        try expectEqual(board.knownResets(for: "user@example.com"),
+                        KnownResets(fiveHour: nil, sevenDay: thirdPartyWeekly))
+
+        // 4) 格式无法识别丢弃快照后回到 nil
+        board.record(.unrecognizedFormat(email: "user@example.com"), clicked: "user@example.com")
+        try expectEqual(board.knownResets(for: "user@example.com"), KnownResets(fiveHour: nil, sevenDay: nil))
     }
 }

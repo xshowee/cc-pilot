@@ -175,7 +175,7 @@ struct AntigravityBoard: Equatable, Sendable {
 
     /// 输入的邮箱有什么问题（先去掉首尾空白）；可以添加时为 nil
     func problem(forNewEmail input: String) -> NewEmailProblem? {
-        let email = Self.normalizedEmail(input)
+        let email = Self.trimmedEmail(input)
         if email.isEmpty { return .empty }
         guard let at = email.firstIndex(of: "@"), at != email.startIndex, email.index(after: at) != email.endIndex,
               !email.contains(where: \.isWhitespace) else { return .malformed }
@@ -188,11 +188,20 @@ struct AntigravityBoard: Equatable, Sendable {
     @discardableResult
     mutating func add(_ input: String) -> Bool {
         guard problem(forNewEmail: input) == nil else { return false }
-        entries.append(Entry(email: Self.normalizedEmail(input), snapshot: .notReadYet, problem: nil))
+        entries.append(Entry(email: Self.trimmedEmail(input), snapshot: .notReadYet, problem: nil))
         return true
     }
 
-    private static func normalizedEmail(_ input: String) -> String {
+    /// 标准化邮箱（去首尾空白、转小写、非空且含 "@"）；为空或不含 "@" 时返回 nil
+    static func normalizedEmail(_ raw: String?) -> String? {
+        guard let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+              !trimmed.isEmpty, trimmed.contains("@") else {
+            return nil
+        }
+        return trimmed
+    }
+
+    private static func trimmedEmail(_ input: String) -> String {
         input.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
@@ -255,6 +264,41 @@ struct AntigravityBoard: Equatable, Sendable {
         } else if let fallback = clicked ?? lastReadEmail, let index = index(of: fallback) {
             entries[index].problem = problem
             entries[index].problemIsAccountless = true
+        }
+    }
+
+    /// 这个邮箱的统计重置时间锚点：按 Gemini -> Argon -> Carbon -> Claude & GPT 池优先级
+    /// 分别挑选 5 小时与周重置时间；没有快照或对应窗口缺失时为 nil（由统计回落到滚动窗口）。
+    func knownResets(for email: String) -> KnownResets {
+        guard let index = index(of: email), let quota = entries[index].snapshot.quota else {
+            return KnownResets(fiveHour: nil, sevenDay: nil)
+        }
+        var fiveHour: Date?
+        var sevenDay: Date?
+        for rank in 0...3 {
+            for group in quota.groups where Self.poolRank(of: group) == rank {
+                if fiveHour == nil {
+                    fiveHour = group.buckets.first { $0.window == .fiveHour && $0.usage?.resetsAt != nil }?.usage?.resetsAt
+                }
+                if sevenDay == nil {
+                    sevenDay = group.buckets.first { $0.window == .weekly && $0.usage?.resetsAt != nil }?.usage?.resetsAt
+                }
+            }
+        }
+        return KnownResets(fiveHour: fiveHour, sevenDay: sevenDay)
+    }
+
+    private static func poolRank(of group: AntigravityQuotaGroup) -> Int? {
+        switch group.kind {
+        case .gemini:
+            return 0
+        case .thirdParty:
+            return 3
+        case .other:
+            let name = group.displayName
+            if name.localizedCaseInsensitiveContains("argon") { return 1 }
+            if name.localizedCaseInsensitiveContains("carbon") { return 2 }
+            return nil
         }
     }
 

@@ -224,14 +224,19 @@ struct StatsFlyoutTokenRequest: Equatable, Sendable {
     let account: UsageAccount
     let resets: KnownResets
 
-    /// 解析鼠标停着的行要读取哪份 Token 用量；Kimi Code、Antigravity（ticket 01）与未登录档案返回 nil
+    /// 解析鼠标停着的行要读取哪份 Token 用量；Kimi Code 与未登录档案返回 nil
     static func resolve(row: StatsFlyoutRow?, claudeCode: [Profile], chatgpt: [ChatGPTProfile],
-                        board: UsageBoard) -> StatsFlyoutTokenRequest? {
+                        board: UsageBoard, antigravity: AntigravityBoard = AntigravityBoard()) -> StatsFlyoutTokenRequest? {
         guard let row else { return nil }
         let target: StatsFlyoutTarget?
         switch row.section {
-        case .kimi, .antigravity:
+        case .kimi:
             return nil
+        case .antigravity:
+            guard !row.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+            return StatsFlyoutTokenRequest(
+                account: .antigravity(cardEmail: row.name),
+                resets: antigravity.knownResets(for: row.name))
         case .tool(.claudeCode):
             target = claudeCode.first { $0.name == row.name }.flatMap(StatsFlyoutTarget.init(profile:))
         case .tool(.chatgpt):
@@ -259,9 +264,10 @@ struct StatsFlyoutTokenLifecycle: Equatable, Sendable {
     }
 
     mutating func update(row: StatsFlyoutRow?, claudeCode: [Profile], chatgpt: [ChatGPTProfile],
-                         board: UsageBoard) -> Effect? {
+                         board: UsageBoard, antigravity: AntigravityBoard = AntigravityBoard()) -> Effect? {
         update(to: StatsFlyoutTokenRequest.resolve(row: row, claudeCode: claudeCode,
-                                                   chatgpt: chatgpt, board: board))
+                                                   chatgpt: chatgpt, board: board,
+                                                   antigravity: antigravity))
     }
 
     mutating func disappear() -> Effect? {

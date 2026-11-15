@@ -4,12 +4,17 @@
 //   顶部     邮箱、套餐（旧快照的邮箱用次要颜色，同卡片）
 //   圆环卡   每组一张：组名（AntigravityText.groupTitle），每个桶一个圆环（QuotaRingView，顺序同卡片，每行最多两个），
 //            同组同窗口重复的圆环下面带区分标签；下面是组内模型（没有时不显示）
-// 没有 Token 用量卡、模型卡、历史卡。只按 AntigravityFlyout 画，不自己判断变灰、已重置或阈值。
+//   Token 用量 / 模型 / 历史 / 清空累计：三类视图（TokenKind.withoutCacheWrite），复用 StatsFlyoutView 卡片组件。
 
 import SwiftUI
 
 struct AntigravityFlyoutView: View {
     let flyout: AntigravityFlyout
+    @ObservedObject var stats: TokenStatsModel
+    let now: Date
+
+    @State private var period: TokenUsagePeriod = .fiveHour
+    @State private var range: HistoryRange = .hours
 
     /// 面板内宽 320 − 2×8 − 2×12 = 280，放得下两个圆环（96pt 圆环，留出倒计时、区分标签的宽度）
     private static let ringsPerRow = 2
@@ -29,8 +34,31 @@ struct AntigravityFlyoutView: View {
                     }
                 }
             }
+            TokenUsageCard(figure: figure, period: $period, now: now, kinds: TokenKind.withoutCacheWrite)
+            ModelsCard(figure: figure)
+            TokenHistoryCard(
+                bars: tokens.map { HistoryBar.bars($0, range: range, kinds: TokenKind.withoutCacheWrite) } ?? [],
+                range: $range,
+                kinds: TokenKind.withoutCacheWrite)
+            FlyoutClearCumulativeRow(
+                title: flyout.email,
+                origin: tokens?.cumulative.origin,
+                canClear: tokens != nil,
+                now: now,
+                resetKey: account.id,
+                onClear: { stats.clear(account) })
         }
         .padding(StatsFlyoutView.inset)
+    }
+
+    private var account: UsageAccount {
+        .antigravity(cardEmail: flyout.email)
+    }
+
+    private var tokens: AccountTokenUsage? { stats.loaded[account] }
+
+    private var figure: TokenFigure? {
+        tokens.map { TokenFigure($0, period: period, kinds: TokenKind.withoutCacheWrite) }
     }
 
     private var header: some View {

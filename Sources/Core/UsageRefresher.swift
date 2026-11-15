@@ -18,6 +18,16 @@ import Foundation
 struct UsageAccount: Hashable, Sendable, CustomStringConvertible {
     let id: String
     var description: String { id }
+
+    var isAntigravity: Bool { id.hasPrefix("antigravity:") }
+
+    static func antigravity(email: String?) -> UsageAccount? {
+        AntigravityBoard.normalizedEmail(email).map { UsageAccount(id: "antigravity:\($0)") }
+    }
+
+    static func antigravity(cardEmail: String) -> UsageAccount {
+        UsageAccount(id: "antigravity:\(cardEmail.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())")
+    }
 }
 
 extension Profile {

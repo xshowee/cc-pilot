@@ -27,6 +27,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.async { NotificationCenter.default.post(name: .tokenUsageDidUpdate, object: nil) }
         })
     @MainActor lazy var tokenStats = TokenStatsModel(recorder: tokenUsage)
+    private var antigravityWatchingObserver: NSObjectProtocol?
+
+    override init() {
+        super.init()
+        antigravityWatchingObserver = NotificationCenter.default.addObserver(
+            forName: .antigravityWatchingDidChange, object: nil, queue: .main
+        ) { [weak self] note in
+            guard let enabled = note.userInfo?[antigravityWatchingEnabledKey] as? Bool else { return }
+            self?.tokenUsage.setAntigravityWatching(enabled: enabled)
+        }
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // 放到下一轮主循环，等菜单栏图标出现后再弹出引导
@@ -34,6 +45,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             shellIntegration.startup()
             ChatGPTSwitchModel.restoreAtLaunch()
         }
+        tokenUsage.setAntigravityWatching(enabled: !AntigravityBoardStore(environment: .live).load().emails.isEmpty)
         tokenUsage.start()
     }
 }

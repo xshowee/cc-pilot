@@ -292,6 +292,28 @@ final class StatsFlyoutChecks: CheckSuite {
                                    sevenDay: nil),
                          for: chatgptAccount)
 
+        let antigravityAccount = UsageAccount(id: "antigravity:a@example.com")
+        var antigravityBoard = AntigravityBoard()
+        antigravityBoard.add("A@Example.com")
+        let agFiveHour = at(minutes: 240)
+        let agWeekly = at(minutes: 3000)
+        antigravityBoard.record(.success(AntigravityAccountQuota(
+            email: "a@example.com", tierName: "Pro", tierId: nil,
+            groups: [
+                AntigravityQuotaGroup(
+                    kind: .gemini, displayName: "Gemini Models", models: [],
+                    buckets: [AntigravityQuotaBucket(bucketId: "g-5h", displayName: nil, window: .fiveHour,
+                                                    usage: UsageWindow(utilization: 20, resetsAt: agFiveHour))]),
+                AntigravityQuotaGroup(
+                    kind: .thirdParty, displayName: "Claude and GPT models", models: [],
+                    buckets: [AntigravityQuotaBucket(bucketId: "3p-w", displayName: nil, window: .weekly,
+                                                    usage: UsageWindow(utilization: 10, resetsAt: agWeekly))]),
+            ],
+            fetchedAt: now)), clicked: nil)
+        let antigravityReq = StatsFlyoutTokenRequest(
+            account: antigravityAccount,
+            resets: KnownResets(fiveHour: agFiveHour, sevenDay: agWeekly))
+
         let claudeReq = StatsFlyoutTokenRequest(account: claudeAccount,
                                                 resets: KnownResets(fiveHour: claudeResets, sevenDay: nil))
         let chatgptReq = StatsFlyoutTokenRequest(account: chatgptAccount,
@@ -301,56 +323,85 @@ final class StatsFlyoutChecks: CheckSuite {
         let chatgptProfiles = [chatgptWork, chatgptOut]
 
         try expectEqual(StatsFlyoutTokenRequest.resolve(row: claude("work"), claudeCode: claudeProfiles,
-                                                        chatgpt: chatgptProfiles, board: board),
+                                                        chatgpt: chatgptProfiles, board: board,
+                                                        antigravity: antigravityBoard),
                         claudeReq)
         try expectEqual(StatsFlyoutTokenRequest.resolve(row: claude("empty"), claudeCode: claudeProfiles,
-                                                        chatgpt: chatgptProfiles, board: board),
+                                                        chatgpt: chatgptProfiles, board: board,
+                                                        antigravity: antigravityBoard),
                         nil, "未登录 Claude 档案没有请求")
         try expectEqual(StatsFlyoutTokenRequest.resolve(row: StatsFlyoutRow(tool: .chatgpt, name: "work"),
-                                                        claudeCode: claudeProfiles, chatgpt: chatgptProfiles, board: board),
+                                                        claudeCode: claudeProfiles, chatgpt: chatgptProfiles,
+                                                        board: board, antigravity: antigravityBoard),
                         chatgptReq)
         try expectEqual(StatsFlyoutTokenRequest.resolve(row: StatsFlyoutRow(tool: .chatgpt, name: "empty"),
-                                                        claudeCode: claudeProfiles, chatgpt: chatgptProfiles, board: board),
+                                                        claudeCode: claudeProfiles, chatgpt: chatgptProfiles,
+                                                        board: board, antigravity: antigravityBoard),
                         nil, "未登录 ChatGPT 档案没有请求")
         try expectEqual(StatsFlyoutTokenRequest.resolve(row: .kimi("main"), claudeCode: claudeProfiles,
-                                                        chatgpt: chatgptProfiles, board: board),
+                                                        chatgpt: chatgptProfiles, board: board,
+                                                        antigravity: antigravityBoard),
                         nil, "Kimi 没有 Token 请求")
-        try expectEqual(StatsFlyoutTokenRequest.resolve(row: .antigravity("a@example.com"), claudeCode: claudeProfiles,
-                                                        chatgpt: chatgptProfiles, board: board),
-                        nil, "Ticket 01 中 Antigravity 暂不发起 Token 请求")
+        try expectEqual(StatsFlyoutTokenRequest.resolve(row: .antigravity("A@Example.com"),
+                                                        claudeCode: claudeProfiles, chatgpt: chatgptProfiles,
+                                                        board: board, antigravity: antigravityBoard),
+                        antigravityReq, "Antigravity 解析为 antigravity:<小写邮箱> 并带池优先级 KnownResets")
+        try expectEqual(StatsFlyoutTokenRequest.resolve(row: .antigravity("  "),
+                                                        claudeCode: claudeProfiles, chatgpt: chatgptProfiles,
+                                                        board: board, antigravity: antigravityBoard),
+                        nil, "空白 Antigravity 卡片行不得解析出请求")
+        try expectEqual(antigravityAccount.isAntigravity, true)
+        try expectEqual(claudeAccount.isAntigravity, false)
+        try expectEqual(chatgptAccount.isAntigravity, false)
+        try expectEqual(UsageAccount.antigravity(email: "  A@Example.com \n"), antigravityAccount)
+        try expectEqual(UsageAccount.antigravity(email: "invalid-no-at"), nil)
+        try expectEqual(UsageAccount.antigravity(email: nil), nil)
+        try expectEqual(UsageAccount.antigravity(cardEmail: " A@Example.com "), antigravityAccount)
+        try expectEqual(AntigravityBoard.normalizedEmail(" User@Example.com "), "user@example.com")
+        try expectEqual(AntigravityBoard.normalizedEmail("   "), nil)
         try expectEqual(StatsFlyoutTokenRequest.resolve(row: nil, claudeCode: claudeProfiles,
-                                                        chatgpt: chatgptProfiles, board: board),
+                                                        chatgpt: chatgptProfiles, board: board,
+                                                        antigravity: antigravityBoard),
                         nil)
 
-        // 连续切换：claude -> chatgpt -> kimi -> claude -> antigravity -> claude -> nil
+        // 连续切换：claude -> chatgpt -> kimi -> antigravity -> claude -> nil
         var lifecycle = StatsFlyoutTokenLifecycle()
-        try expectEqual(lifecycle.update(row: nil, claudeCode: claudeProfiles, chatgpt: chatgptProfiles, board: board),
+        try expectEqual(lifecycle.update(row: nil, claudeCode: claudeProfiles, chatgpt: chatgptProfiles,
+                                         board: board, antigravity: antigravityBoard),
                         nil, "初始为空时不重复 hide")
-        try expectEqual(lifecycle.update(row: claude("work"), claudeCode: claudeProfiles, chatgpt: chatgptProfiles, board: board),
+        try expectEqual(lifecycle.update(row: claude("work"), claudeCode: claudeProfiles, chatgpt: chatgptProfiles,
+                                         board: board, antigravity: antigravityBoard),
                         .show(claudeReq))
         // 同账号的另一个档案：请求不变，不触发新操作
-        try expectEqual(lifecycle.update(row: claude("work2"), claudeCode: claudeProfiles, chatgpt: chatgptProfiles, board: board),
+        try expectEqual(lifecycle.update(row: claude("work2"), claudeCode: claudeProfiles, chatgpt: chatgptProfiles,
+                                         board: board, antigravity: antigravityBoard),
                         nil)
         // 快速切到 ChatGPT（同名 "work"）
         try expectEqual(lifecycle.update(row: StatsFlyoutRow(tool: .chatgpt, name: "work"),
-                                         claudeCode: claudeProfiles, chatgpt: chatgptProfiles, board: board),
+                                         claudeCode: claudeProfiles, chatgpt: chatgptProfiles,
+                                         board: board, antigravity: antigravityBoard),
                         .show(chatgptReq))
         // 切到 Kimi：收到 hide
-        try expectEqual(lifecycle.update(row: .kimi("main"), claudeCode: claudeProfiles, chatgpt: chatgptProfiles, board: board),
+        try expectEqual(lifecycle.update(row: .kimi("main"), claudeCode: claudeProfiles, chatgpt: chatgptProfiles,
+                                         board: board, antigravity: antigravityBoard),
                         .hide)
-        // 切到 Antigravity：仍是 nil，不重复 hide
-        try expectEqual(lifecycle.update(row: .antigravity("a@example.com"),
-                                         claudeCode: claudeProfiles, chatgpt: chatgptProfiles, board: board),
-                        nil)
+        // 切到 Antigravity：收到 show(antigravityReq)
+        try expectEqual(lifecycle.update(row: .antigravity("A@Example.com"),
+                                         claudeCode: claudeProfiles, chatgpt: chatgptProfiles,
+                                         board: board, antigravity: antigravityBoard),
+                        .show(antigravityReq))
         // 立刻切回 Claude
-        try expectEqual(lifecycle.update(row: claude("work"), claudeCode: claudeProfiles, chatgpt: chatgptProfiles, board: board),
+        try expectEqual(lifecycle.update(row: claude("work"), claudeCode: claudeProfiles, chatgpt: chatgptProfiles,
+                                         board: board, antigravity: antigravityBoard),
                         .show(claudeReq))
-        // Antigravity -> nil，或 Claude -> nil
-        try expectEqual(lifecycle.update(row: nil, claudeCode: claudeProfiles, chatgpt: chatgptProfiles, board: board),
+        // Claude -> nil
+        try expectEqual(lifecycle.update(row: nil, claudeCode: claudeProfiles, chatgpt: chatgptProfiles,
+                                         board: board, antigravity: antigravityBoard),
                         .hide)
         // 容器整体消失：只在有活跃请求时 hide
         try expectEqual(lifecycle.disappear(), nil)
-        _ = lifecycle.update(row: claude("work"), claudeCode: claudeProfiles, chatgpt: chatgptProfiles, board: board)
+        _ = lifecycle.update(row: claude("work"), claudeCode: claudeProfiles, chatgpt: chatgptProfiles,
+                             board: board, antigravity: antigravityBoard)
         try expectEqual(lifecycle.disappear(), .hide)
         try expectEqual(lifecycle.active, nil)
     }

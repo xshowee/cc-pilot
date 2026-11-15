@@ -3,7 +3,7 @@
 // 同一账号的几个档案行得到同一个账号，显示同一份数据。ChatGPT 档案（chatgpt-profiles ticket 10）用同一个面板：
 // 标题是 ChatGPT 账号的邮箱，等级处显示套餐（优先用最近一次刷新时响应里的），窗口按 ChatGPT 账号自己的额度对齐。
 // Kimi Code 卡片（ADR 0007）也用这个窗口，但内容是 Base URL 和模型列表（KimiFlyoutView），不读 Token 用量。
-// Antigravity 卡片（ticket 05）同样：内容是看板算好的套餐和各组圆环（AntigravityFlyoutView），不读 Token 用量。
+// Antigravity 卡片（antigravity-usage ticket 02）：上方显示看板算好的套餐和各组圆环，下方复用三类（无缓存写入）Token 用量卡、模型卡与历史卡。
 // 向窗口报告内容大小（窗口按它摆放）和鼠标进出（停在面板上时不收起）。
 // 内容比屏幕可用高度还高时，窗口只有可用高度那么高（StatsFlyoutController），内容在里面滚动。
 //
@@ -45,7 +45,7 @@ struct StatsFlyoutRoot: View {
 
     // 触发与取消 Token 读取收口在顶层容器单一 tokenRequest 上，不放在各分支子视图里，
     // 避免鼠标跨段快速移动时新视图的 onAppear 与旧视图的 onDisappear 先后不定导致误关。
-    // ticket 01 中 Kimi Code 与 Antigravity 均不触发 Token 读取（tokenRequest 为 nil）。
+    // Kimi Code 不触发 Token 读取（tokenRequest 为 nil），Antigravity 从账本按 antigravity:<邮箱> 读取。
     @ViewBuilder private var content: some View {
         if let row = controller.hover.row, row.section == .kimi {
             if kimi.names.contains(row.name) {
@@ -55,7 +55,7 @@ struct StatsFlyoutRoot: View {
         } else if let row = controller.hover.row, row.section == .antigravity {
             // 时钟同卡片（UsageModel.now）
             if let flyout = antigravity.board.flyout(for: row.name, now: usage.now) {
-                AntigravityFlyoutView(flyout: flyout)
+                AntigravityFlyoutView(flyout: flyout, stats: stats, now: usage.now)
             }
         } else if let shown {
             let quota = usage.board.usage(for: shown.target.account)
@@ -73,7 +73,8 @@ struct StatsFlyoutRoot: View {
         StatsFlyoutTokenRequest.resolve(row: controller.hover.row,
                                         claudeCode: profiles.profiles,
                                         chatgpt: chatgpt.profiles,
-                                        board: usage.board)
+                                        board: usage.board,
+                                        antigravity: antigravity.board)
     }
 
     private func applyTokenRequest(_ request: StatsFlyoutTokenRequest?) {

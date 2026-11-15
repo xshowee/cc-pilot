@@ -51,6 +51,7 @@ final class TokenUsageRecorder: @unchecked Sendable {
     private var historyWatcher: ProfileWatcher?
     /// ChatGPT 会话记录的监视器（followsChatGPT 时才有）
     private var chatgptSessions: CodexSessionMonitor?
+    private var antigravityCollector: AntigravityTrajectoryCollector!
     private let chatgptLiveQuota: ChatGPTLiveQuotaTracker
     /// 归属与实时额度共用的写入进程查询（一次扫描包成一批，只列一次进程）
     private let chatgptWriters: ChatGPTSessionWriters
@@ -77,6 +78,7 @@ final class TokenUsageRecorder: @unchecked Sendable {
     /// - followsChatGPT: 是否也跟着 ChatGPT 会话记录（App 里是；Claude 一侧的检查不需要）
     /// - onChatGPTLiveQuota: ChatGPT 实时额度（各账号这批事件里最新的一份），在 queue 上调用
     init(environment: CoreEnvironment, ledgerURL: URL? = nil, latency: TimeInterval = 2,
+         antigravityDebounce: TimeInterval = 0.5,
          queue: DispatchQueue = DispatchQueue(label: "com.ccpilot.token-usage", qos: .utility),
          calendar: Calendar = .autoupdatingCurrent, now: @escaping () -> Date = Date.init,
          attribute: ((TokenLedger) throws -> Void)? = nil,
@@ -121,6 +123,17 @@ final class TokenUsageRecorder: @unchecked Sendable {
                 cursors: { [weak self] in try? self?.openLedger().chatgptCursors() },
                 onScan: { [weak self] in self?.record(chatgpt: $0) })
         }
+        antigravityCollector = AntigravityTrajectoryCollector(
+            environment: environment,
+            queue: queue,
+            debounce: antigravityDebounce,
+            now: now,
+            openLedger: { [unowned self] in try self.openLedger() },
+            afterIngest: { [weak self] ledger, revBefore in
+                guard let self else { return }
+                self.rollUpIfNewDay(ledger)
+                if ledger.revision != revBefore { self.onUpdate() }
+            })
     }
 
     deinit { stop() }
@@ -145,8 +158,16 @@ final class TokenUsageRecorder: @unchecked Sendable {
             running = false
             historyWatcher?.stop()
             chatgptSessions?.stop()
+            antigravityCollector.stop()
             if let s = stream { FSEventsSupport.destroy(s) }
             stream = nil
+        }
+    }
+
+    /// 控制是否监听本机 Antigravity.app 对话目录；默认 false（不看进程、不建流、不发本地 RPC）
+    func setAntigravityWatching(enabled: Bool) {
+        onQueue {
+            antigravityCollector.setWatching(enabled)
         }
     }
 

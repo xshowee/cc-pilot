@@ -16,6 +16,13 @@
 
 import Foundation
 
+extension Notification.Name {
+    static let antigravityWatchingDidChange = Notification.Name("CCPilotAntigravityWatchingDidChange")
+}
+
+/// antigravityWatchingDidChange 的 userInfo 键
+let antigravityWatchingEnabledKey = "enabled"
+
 @MainActor
 final class AntigravityModel: ObservableObject {
     @Published private(set) var board: AntigravityBoard
@@ -71,6 +78,7 @@ final class AntigravityModel: ObservableObject {
     func add(_ email: String) -> Bool {
         guard board.add(email) else { return false }
         save()
+        notifyWatching()
         return true
     }
 
@@ -103,6 +111,14 @@ final class AntigravityModel: ObservableObject {
         board.remove(email)
         save()
         notices[email] = nil
+        notifyWatching()
+    }
+
+    private func notifyWatching() {
+        NotificationCenter.default.post(
+            name: .antigravityWatchingDidChange,
+            object: nil,
+            userInfo: [antigravityWatchingEnabledKey: !board.emails.isEmpty])
     }
 
     private func save() {
