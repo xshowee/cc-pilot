@@ -19,6 +19,8 @@ import SwiftUI
 final class StatsFlyoutController: ObservableObject {
     /// 鼠标停在哪一行（工具 + 档案名）；nil 时面板收起
     @Published private(set) var hover = StatsFlyoutHover()
+    /// 内容是否高出所在屏幕可用区域（未超出时禁用滚动，同 PanelView）
+    @Published private(set) var isOverflowing = false
 
     /// 离开行或面板后等多久再收起
     private static let settleDelay: TimeInterval = 0.25
@@ -53,6 +55,10 @@ final class StatsFlyoutController: ObservableObject {
                 Task { @MainActor in self?.reposition() }
             })
         }
+        anchorObservers.append(center.addObserver(forName: NSApplication.didChangeScreenParametersNotification,
+                                                  object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.reposition() }
+        })
         for name in [NSWindow.didResignKeyNotification, NSWindow.willCloseNotification] {
             anchorObservers.append(center.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
                 Task { @MainActor in self?.dismiss() }
@@ -170,6 +176,8 @@ final class StatsFlyoutController: ObservableObject {
         guard let panel, let anchor else { return }
         let screen = anchor.screen ?? NSScreen.screens.first { $0.frame.intersects(anchor.frame) } ?? NSScreen.main
         let visible = screen?.visibleFrame ?? anchor.frame
+        let overflowing = StatsFlyoutPlacement.isOverflowing(size: contentSize, within: visible)
+        if isOverflowing != overflowing { isOverflowing = overflowing }
         let rowTop = hover.row.flatMap { rowTops[$0] }.flatMap { Self.screenY(of: $0, in: anchor) }
         let frame = StatsFlyoutPlacement.frame(size: contentSize, beside: anchor.frame, rowTop: rowTop,
                                                inset: StatsFlyoutView.inset, within: visible, gap: Self.gap)

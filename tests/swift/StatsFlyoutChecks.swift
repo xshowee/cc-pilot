@@ -228,6 +228,10 @@ final class StatsFlyoutChecks: CheckSuite {
         try expectEqual(place(CGRect(x: 1000, y: 0, width: 340, height: 400),
                               CGRect(x: 0, y: 0, width: 1440, height: 500)),
                         CGRect(x: 674, y: 0, width: 320, height: 500))
+        // 是否溢出可用区域高度：放得下或刚好相等时为 false，超出时为 true
+        try expectEqual(StatsFlyoutPlacement.isOverflowing(size: size, within: screen), false)
+        try expectEqual(StatsFlyoutPlacement.isOverflowing(size: size, within: CGRect(x: 0, y: 0, width: 1440, height: 600)), false)
+        try expectEqual(StatsFlyoutPlacement.isOverflowing(size: size, within: CGRect(x: 0, y: 0, width: 1440, height: 500)), true)
         // 副屏（原点不在 0）
         try expectEqual(place(CGRect(x: -500, y: 375, width: 340, height: 500),
                               CGRect(x: -1920, y: 0, width: 1920, height: 875)),

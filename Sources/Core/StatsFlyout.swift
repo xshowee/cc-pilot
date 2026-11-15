@@ -345,6 +345,11 @@ struct StatsFlyoutHover: Equatable {
 /// 竖直方向参照 iStat：面板里的内容与鼠标停着的那张卡片顶边对齐（面板窗口比卡片高出内边距），
 /// 下面放不下时整体往上推，直到底边贴着可用区域。
 enum StatsFlyoutPlacement {
+    /// 内容是否高出可用区域、需要滚动（未超出时禁用滚动，同主面板 PanelView）
+    static func isOverflowing(size: CGSize, within visible: CGRect) -> Bool {
+        size.height > visible.height
+    }
+
     /// - anchor: 主面板窗口此刻的位置
     /// - rowTop: 鼠标停着的那张卡片此刻的顶边（屏幕坐标）；还不知道时为 nil，面板顶边与主面板对齐
     /// - inset: 面板内容距窗口顶边的内边距（StatsFlyoutView.inset）
@@ -357,7 +362,7 @@ enum StatsFlyoutPlacement {
             let right = anchor.maxX + gap
             x = right + size.width <= visible.maxX ? right : max(visible.minX, min(x, visible.maxX - size.width))
         }
-        // 比可用区域还高时窗口只有可用区域那么高，内容在里面滚动（StatsFlyoutRoot）
+        // 比可用区域还高时窗口只有可用区域那么高，内容在里面滚动（不显示滚动条，StatsFlyoutRoot）
         let height = min(size.height, visible.height)
         // 内容顶边与卡片对齐（不知道卡片在哪时窗口顶边与主面板对齐），再压进可用区域
         let top = rowTop.map { $0 + inset } ?? anchor.maxY

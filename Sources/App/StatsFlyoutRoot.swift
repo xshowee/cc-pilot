@@ -5,7 +5,8 @@
 // Kimi Code 卡片（ADR 0007）也用这个窗口，但内容是 Base URL 和模型列表（KimiFlyoutView），不读 Token 用量。
 // Antigravity 卡片（antigravity-usage ticket 02）：上方显示看板算好的套餐和各组圆环，下方复用三类（无缓存写入）Token 用量卡、模型卡与历史卡。
 // 向窗口报告内容大小（窗口按它摆放）和鼠标进出（停在面板上时不收起）。
-// 内容比屏幕可用高度还高时，窗口只有可用高度那么高（StatsFlyoutController），内容在里面滚动。
+// 内容比屏幕可用高度还高时，窗口只有可用高度那么高（StatsFlyoutController），内容在里面滚动（不显示滚动条）；
+// 放得下时禁止滚动，行为同主面板（PanelView）。
 //
 // 内容大小用 GeometryReader 的 onAppear / onChange 报告，不用 PreferenceKey：在这个 NSHostingView 里，
 // 内容从无到有（鼠标停到行上）之后 onPreferenceChange 不再触发，窗口会一直停在初始高度，内容上下被裁掉（真机验收发现）。
@@ -35,7 +36,9 @@ struct StatsFlyoutRoot: View {
                         .onChange(of: geometry.size) { controller.contentSizeChanged($0) }
                 })
         }
-        .scrollIndicators(.automatic)
+        // 从不显示滚动条（接着鼠标时系统会让它一直显示，不好看）；放得下时也不能滚动，同 PanelView
+        .scrollIndicators(.never)
+        .scrollDisabled(!controller.isOverflowing)
         .onHover { controller.flyout(hovering: $0) }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onAppear { applyTokenRequest(request) }
