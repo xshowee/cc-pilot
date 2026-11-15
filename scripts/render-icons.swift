@@ -15,6 +15,9 @@
 //     素材本身是灰色，出图时只保留形状（透明度）、涂成黑色，做成与 MenuBarIcon 一样的单色模板图。
 //   KimiIcon.png 与 @2x   Kimi Code 一段的分割线用（ADR 0007），来自 kimi.svg，14pt（14、28 像素）。
 //     彩色图（黑底圆角方块、白色 K、蓝点），不是模板图：原样出图，不涂黑。Kimi Code 不是 Tool，只有这一个用途。
+//   AntigravityIcon.png 与 @2x   Antigravity 一段的分割线用，来自 antigravity.svg，14pt（14、28 像素）。
+//     同 Kimi：彩色图（多色渐变的 A 形），原样出图，不涂黑；Antigravity 不是 Tool，只有这一个用途。
+//     原图用多层 feGaussianBlur 拼渐变，CoreSVG 画不出模糊，所以 antigravity.svg 是简化版（见 docs/release.md）。
 //
 // SVG 由系统的 NSImage（CoreSVG）解析，不依赖任何需要安装的工具。
 // 菜单栏图不做成 PDF：CoreSVG 画进 PDF 时会把 <mask>（镂空的提示符）按 24×24 栅格化，放大后发糊；
@@ -35,6 +38,8 @@ let iconset = output.appendingPathComponent("AppIcon.iconset", isDirectory: true
 let menuBarPoints = 18
 /// Kimi Code 图标的边长（pt），同 App 的 KimiSectionDivider.iconPoints
 let kimiIconPoints = 14
+/// Antigravity 图标的边长（pt），同 App 的 AntigravitySectionDivider.iconPoints
+let antigravityIconPoints = 14
 /// 工具图标：资源名后缀与各工具的边长（pt），同 Core 的 Tool.iconResourceName、ToolIconResource.points
 let toolIconSizes: [(String, [String: Int])] = [
     ("Icon", ["Claude": 12, "ChatGPT": 12]),
@@ -107,3 +112,9 @@ for (source, tool) in [("claude.svg", "Claude"), ("chatgpt.svg", "ChatGPT")] {
 let kimi = load("kimi.svg")
 writePNG(kimi, points: kimiIconPoints, scale: 1, to: output.appendingPathComponent("KimiIcon.png"))
 writePNG(kimi, points: kimiIconPoints, scale: 2, to: output.appendingPathComponent("KimiIcon@2x.png"))
+
+let antigravity = load("antigravity.svg")
+writePNG(antigravity, points: antigravityIconPoints, scale: 1,
+         to: output.appendingPathComponent("AntigravityIcon.png"))
+writePNG(antigravity, points: antigravityIconPoints, scale: 2,
+         to: output.appendingPathComponent("AntigravityIcon@2x.png"))

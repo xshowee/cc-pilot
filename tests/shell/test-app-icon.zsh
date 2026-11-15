@@ -87,6 +87,16 @@ test_resources_contain_the_kimi_icon() {
   done
 }
 
+# Antigravity 一段分割线的图标：同 Kimi，14pt 见方的彩色图
+test_resources_contain_the_antigravity_icon() {
+  local name size
+  for name size in AntigravityIcon.png 14x14 AntigravityIcon@2x.png 28x28; do
+    [[ -f $ROOT/Resources/$name ]] || { fail "缺少 Resources/$name"; continue }
+    assert_eq "$(/usr/bin/sips -g pixelWidth -g pixelHeight $ROOT/Resources/$name | awk '/pixel/ {print $2}' | paste -sd x -)" \
+      $size "$name 的像素尺寸"
+  done
+}
+
 test_menu_bar_icon_is_18pt_with_2x() {
   assert_menu_bar_icon $ROOT/Resources
 }

@@ -219,6 +219,7 @@ git push
 | `kimi.svg` | `Resources/KimiIcon.png`（14 像素）及 `@2x`（28 像素） | Kimi Code 一段的分割线用（14pt 彩色图：黑底圆角方块、白色 K、蓝点，不是模板图；字形取自 lobe-icons 的 Kimi 图标） |
 | 同上 | `Resources/ChatGPTMenuBarIcon.png`（10 像素）、`ClaudeMenuBarIcon.png`（11 像素）及 `@2x` | 工具图标，菜单栏行首用（与 10.5pt 文字同排；Claude 大 1pt，理由同下） |
 | 同上 | `Resources/ChatGPTMenuBarSummaryIcon.png`（14 像素）、`ClaudeMenuBarSummaryIcon.png`（15 像素）及 `@2x` | 工具图标，只显示一个工具时菜单栏两行文字的左侧用（Claude 的射线图形留白多，大 1pt） |
+| `antigravity.svg` | `Resources/AntigravityIcon.png`（14 像素）及 `@2x`（28 像素） | Antigravity 一段的分割线用（14pt 彩色图，不是模板图）。取自 cc-switch（MIT）的 `src/icons/extracted/antigravity.svg`（源自 lobe-icons）：原图在 A 形遮罩里用 11 层 `feGaussianBlur` 拼出渐变，系统 CoreSVG 画不出模糊（色块边界生硬），外形边缘也发糊，所以只保留 A 形外形路径（改作 `clipPath`），里面换成蓝底加绿、红、黄、浅蓝四个径向渐变，配色取原图色值，颜色过渡与原图近似 |
 
 改了 SVG 之后重新生成，并把源文件和产物一起提交：
 
