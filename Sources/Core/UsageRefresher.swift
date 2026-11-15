@@ -15,7 +15,7 @@
 import Foundation
 
 /// 额度所属的账号。按 accountUuid 识别；已登录却没有 accountUuid 的档案无法与别的档案合并，单独算一个账号。
-struct UsageAccount: Hashable, CustomStringConvertible {
+struct UsageAccount: Hashable, Sendable, CustomStringConvertible {
     let id: String
     var description: String { id }
 }

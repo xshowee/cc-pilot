@@ -10,6 +10,7 @@ import SwiftUI
 struct TokenHistoryCard: View {
     let bars: [HistoryBar]
     @Binding var range: HistoryRange
+    var kinds: [TokenKind] = TokenKind.allCases
 
     /// 鼠标在图上的横坐标（以图的左边为 0）；不在图上时为 nil
     @State private var hoverX: CGFloat?
@@ -62,7 +63,7 @@ struct TokenHistoryCard: View {
             .frame(width: 1, height: Self.chartHeight)
             .offset(x: lineX - 0.5)
             .allowsHitTesting(false)
-        HistoryTooltip(bar: bars[index], range: range)
+        HistoryTooltip(bar: bars[index], range: range, kinds: kinds)
             .fixedSize()
             .background(GeometryReader { geometry in
                 Color.clear
@@ -76,7 +77,7 @@ struct TokenHistoryCard: View {
     }
 
     @ViewBuilder private func column(_ bar: HistoryBar) -> some View {
-        let total = bar.tokens.total
+        let total = bar.tokens.total(for: kinds)
         if total == 0 {
             RoundedRectangle(cornerRadius: 1)
                 .fill(Color.primary.opacity(0.08))
@@ -84,7 +85,7 @@ struct TokenHistoryCard: View {
         } else {
             let height = max(2, Self.chartHeight * bar.height)
             VStack(spacing: 0) {
-                ForEach(TokenKind.allCases.reversed(), id: \.self) { kind in
+                ForEach(kinds.reversed(), id: \.self) { kind in
                     Rectangle()
                         .fill(kind.color)
                         .frame(height: height * CGFloat(kind.count(in: bar.tokens)) / CGFloat(total))
@@ -109,10 +110,11 @@ struct TokenHistoryCard: View {
     }
 }
 
-/// 悬停提示框：时间、四类 token（色点、名称、数值）、合计
+/// 悬停提示框：时间、各类 token（色点、名称、数值）、合计
 private struct HistoryTooltip: View {
     let bar: HistoryBar
     let range: HistoryRange
+    let kinds: [TokenKind]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -120,7 +122,7 @@ private struct HistoryTooltip: View {
                 .font(.system(size: 11, weight: .semibold))
                 .monospacedDigit()
             Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 2) {
-                ForEach(TokenKind.allCases, id: \.self) { kind in
+                ForEach(kinds, id: \.self) { kind in
                     GridRow {
                         HStack(spacing: 5) {
                             Circle().fill(kind.color).frame(width: 7, height: 7)
@@ -133,7 +135,7 @@ private struct HistoryTooltip: View {
                 Divider().gridCellUnsizedAxes(.horizontal)
                 GridRow {
                     Text("Total")
-                    Text(verbatim: TokenUsageDisplay.compact(bar.tokens.total))
+                    Text(verbatim: TokenUsageDisplay.compact(bar.tokens.total(for: kinds)))
                         .fontWeight(.semibold)
                 }
             }

@@ -24,6 +24,7 @@ struct StatsFlyoutRoot: View {
     @ObservedObject var antigravity: AntigravityModel
 
     var body: some View {
+        let request = tokenRequest
         ScrollView(.vertical) {
             content
                 .frame(width: Self.width)
@@ -37,12 +38,14 @@ struct StatsFlyoutRoot: View {
         .scrollIndicators(.automatic)
         .onHover { controller.flyout(hovering: $0) }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .onAppear { applyTokenRequest(request) }
+        .onChange(of: request) { newValue in applyTokenRequest(newValue) }
+        .onDisappear { stats.hide() }
     }
 
-    // 两个工具的行用同一个视图（不按工具分支），从一行移到另一行时只是 request 变了（onChange），
-    // 不会先后触发新视图的 onAppear 与旧视图的 onDisappear（先后不定，可能把刚开始的读取停掉）
-    // Kimi Code 的内容不碰 TokenStatsModel：从 Kimi 卡片移到 Claude、ChatGPT 卡片时只有 StatsFlyoutView 的 onAppear，
-    // 反过来只有它的 onDisappear，不会出现上面说的先后问题。Antigravity 的内容同样不碰 TokenStatsModel
+    // 触发与取消 Token 读取收口在顶层容器单一 tokenRequest 上，不放在各分支子视图里，
+    // 避免鼠标跨段快速移动时新视图的 onAppear 与旧视图的 onDisappear 先后不定导致误关。
+    // ticket 01 中 Kimi Code 与 Antigravity 均不触发 Token 读取（tokenRequest 为 nil）。
     @ViewBuilder private var content: some View {
         if let row = controller.hover.row, row.section == .kimi {
             if kimi.names.contains(row.name) {
@@ -56,7 +59,6 @@ struct StatsFlyoutRoot: View {
             }
         } else if let shown {
             let quota = usage.board.usage(for: shown.target.account)
-            let request = TokenStatsModel.Request(account: shown.target.account, resets: KnownResets(usage: quota))
             StatsFlyoutView(title: shown.title,
                             tier: shown.tier,
                             account: shown.target.account,
@@ -64,9 +66,21 @@ struct StatsFlyoutRoot: View {
                             tokens: stats.loaded[shown.target.account],
                             now: usage.now,
                             onClear: { stats.clear(shown.target.account) })
-                .onAppear { stats.show(request) }
-                .onChange(of: request) { stats.show($0) }
-                .onDisappear { stats.hide() }
+        }
+    }
+
+    private var tokenRequest: StatsFlyoutTokenRequest? {
+        StatsFlyoutTokenRequest.resolve(row: controller.hover.row,
+                                        claudeCode: profiles.profiles,
+                                        chatgpt: chatgpt.profiles,
+                                        board: usage.board)
+    }
+
+    private func applyTokenRequest(_ request: StatsFlyoutTokenRequest?) {
+        if let request {
+            stats.show(request)
+        } else {
+            stats.hide()
         }
     }
 

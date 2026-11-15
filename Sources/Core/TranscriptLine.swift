@@ -33,6 +33,11 @@ struct TokenCounts: Equatable, Sendable {
 
     var total: Int { input + output + cacheWrite + cacheRead }
 
+    /// 只合计指定类别的 token（例如不含缓存写入的 3 类）
+    func total(for kinds: [TokenKind]) -> Int {
+        kinds.reduce(0) { $0 + $1.count(in: self) }
+    }
+
     static func + (a: TokenCounts, b: TokenCounts) -> TokenCounts {
         TokenCounts(input: a.input + b.input, output: a.output + b.output,
                     cacheWrite: a.cacheWrite + b.cacheWrite, cacheRead: a.cacheRead + b.cacheRead)

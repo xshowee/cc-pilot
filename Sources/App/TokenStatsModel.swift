@@ -28,15 +28,12 @@ final class TokenStatsModel: ObservableObject {
     @Published var confirmingClearAll = false
 
     /// 要显示的账号和它已知的 resets_at
-    struct Request: Equatable {
-        let account: UsageAccount
-        let resets: KnownResets
-    }
+    typealias Request = StatsFlyoutTokenRequest
 
     private let recorder: TokenUsageRecorder
     private let queue = DispatchQueue(label: "com.ccpilot.token-stats", qos: .userInitiated)
-    /// 正在显示的；没有显示时为 nil
-    private var shown: Request?
+    /// 正在显示的生命周期状态；没有显示时 active 为 nil
+    private var lifecycle = StatsFlyoutTokenLifecycle()
     private var reading = false
     private var readAgain = false
     private var observer: NSObjectProtocol?
@@ -51,27 +48,36 @@ final class TokenStatsModel: ObservableObject {
         }
     }
 
+    /// 按顶层请求更新读取状态（非 nil 时开始或继续读取，nil 时停止）
+    func apply(_ request: Request?) {
+        switch lifecycle.update(to: request) {
+        case .show:
+            if clock == nil {
+                clock = Timer.publish(every: 15, tolerance: 5, on: .main, in: .common)
+                    .autoconnect()
+                    .sink { [weak self] _ in self?.reload() }
+            }
+            reload()
+        case .hide:
+            clock = nil
+        case nil:
+            break
+        }
+    }
+
     /// 开始（或继续）显示这个账号
     func show(_ request: Request) {
-        if shown == request { return }
-        shown = request
-        if clock == nil {
-            clock = Timer.publish(every: 15, tolerance: 5, on: .main, in: .common)
-                .autoconnect()
-                .sink { [weak self] _ in self?.reload() }
-        }
-        reload()
+        apply(request)
     }
 
     /// 面板收起：不再读
     func hide() {
-        shown = nil
-        clock = nil
+        apply(nil)
     }
 
     /// 重读正在显示的账号
     func reload() {
-        guard let shown else { return }
+        guard let shown = lifecycle.active else { return }
         if reading { readAgain = true; return }
         reading = true
         let recorder = recorder

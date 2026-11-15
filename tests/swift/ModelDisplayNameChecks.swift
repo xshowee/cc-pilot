@@ -7,6 +7,8 @@ final class ModelDisplayNameChecks: CheckSuite {
         [
             Check("模型 ID 合并成显示名，带日期后缀的也能认，不同版本分开", namesModels),
             Check("ChatGPT 的模型 ID 也合并成显示名（chatgpt-profiles ticket 09）", namesChatGPTModels),
+            Check("gpt-oss 系列模型合并成显示名并去掉已知变体后缀", namesGptOssModels),
+            Check("Gemini 与 Orchestrator 模型 ID 合并成显示名并去掉已知后缀", namesGeminiAndOrchestratorModels),
             Check("认不出的模型 ID 原样显示", passesUnknownThrough),
         ]
     }
@@ -23,6 +25,18 @@ final class ModelDisplayNameChecks: CheckSuite {
             ("claude-3-7-sonnet-latest", "Sonnet 3.7"),
             ("claude-3-haiku-20240307", "Haiku 3"),
             ("claude-opus-4-6[1m]", "Opus 4.6"),
+            ("claude-opus-5-5-extra-low", "Opus 5.5"),
+            ("claude-opus-5-5-low-thinking", "Opus 5.5"),
+            ("claude-opus-5-5-low", "Opus 5.5"),
+            ("claude-opus-5-5-medium", "Opus 5.5"),
+            ("claude-opus-5-5-high", "Opus 5.5"),
+            ("claude-opus-5-5-xhigh", "Opus 5.5"),
+            ("claude-opus-5-5-max", "Opus 5.5"),
+            ("claude-opus-5-5-tiered", "Opus 5.5"),
+            ("claude-fable-5-2-max", "Fable 5.2"),
+            ("claude-fable-5", "Fable 5"),
+            ("claude-opus-4-6-thinking", "Opus 4.6"),
+            ("claude-sonnet-4-5-thinking", "Sonnet 4.5"),
         ]
         for (id, name) in cases {
             try expectEqual(ModelDisplayName.name(for: id), name, id)
@@ -44,8 +58,77 @@ final class ModelDisplayNameChecks: CheckSuite {
         }
     }
 
+    static func namesGptOssModels() throws {
+        let cases: [(String, String)] = [
+            ("gpt-oss-120b-medium", "GPT-OSS 120B"),
+            ("gpt-oss-120b-extra-low", "GPT-OSS 120B"),
+            ("gpt-oss-120b-low", "GPT-OSS 120B"),
+            ("gpt-oss-20b-high", "GPT-OSS 20B"),
+            ("gpt-oss-120b-xhigh", "GPT-OSS 120B"),
+            ("gpt-oss-120b-max", "GPT-OSS 120B"),
+            ("gpt-oss-120b-thinking", "GPT-OSS 120B"),
+            ("gpt-oss-120b-tiered", "GPT-OSS 120B"),
+            ("gpt-oss-120b-latest", "GPT-OSS 120B"),
+            ("gpt-oss-120b", "GPT-OSS 120B"),
+        ]
+        for (id, name) in cases {
+            try expectEqual(ModelDisplayName.name(for: id), name, id)
+        }
+    }
+
+    static func namesGeminiAndOrchestratorModels() throws {
+        let cases: [(String, String)] = [
+            // Orchestrators
+            ("gemini-pro-orchestrator", "Orchestrator (Carbon)"),
+            ("orchestrator-carbon", "Orchestrator (Carbon)"),
+            ("gemini-pro-orchestrator-argon", "Orchestrator (Argon)"),
+            ("orchestrator-argon", "Orchestrator (Argon)"),
+            ("gemini-flash-worker-agy", "Orchestrator Worker (Hydrogen)"),
+            // gemini-for-google-<ver>-<tier>
+            ("gemini-for-google-3.1-flash", "Gemini for Google 3.1 Flash"),
+            ("gemini-for-google-3.1-flash-lite", "Gemini for Google 3.1 Flash Lite"),
+            ("gemini-for-google-3.1-pro-high", "Gemini for Google 3.1 Pro"),
+            // gemini-<ver>-(pro|flash|argon|carbon|hydrogen|helix)[-lite|-image]
+            ("gemini-4-carbon-high", "Gemini 4 Carbon"),
+            ("gemini-4-argon-medium", "Gemini 4 Argon"),
+            ("gemini-4-hydrogen-xhigh", "Gemini 4 Hydrogen"),
+            ("gemini-4-hydrogen-tiered", "Gemini 4 Hydrogen"),
+            ("gemini-4-helix-low", "Gemini 4 Helix"),
+            ("gemini-3.8-flash-tiered", "Gemini 3.8 Flash"),
+            ("gemini-3.5-flash-extra-low", "Gemini 3.5 Flash"),
+            ("gemini-3.5-flash-lite", "Gemini 3.5 Flash Lite"),
+            ("gemini-3.1-pro-low-thinking", "Gemini 3.1 Pro"),
+            ("gemini-3.1-pro-preview-customtools", "Gemini 3.1 Pro"),
+            ("gemini-3.1-pro-preview", "Gemini 3.1 Pro"),
+            ("gemini-3.1-flash-lite-preview", "Gemini 3.1 Flash Lite"),
+            ("gemini-3.1-flash-image", "Gemini 3.1 Flash Image"),
+            ("gemini-3-flash-preview", "Gemini 3 Flash"),
+            ("gemini-3-pro-image", "Gemini 3 Pro Image"),
+            ("gemini-2.5-pro", "Gemini 2.5 Pro"),
+            ("gemini-2.5-pro-20250506", "Gemini 2.5 Pro"),
+            ("gemini-2.5-flash-latest", "Gemini 2.5 Flash"),
+            ("gemini-2.5-flash-lite", "Gemini 2.5 Flash Lite"),
+            // gemini-(hydrogen|helix|argon|carbon)
+            ("gemini-hydrogen-xhigh", "Gemini Hydrogen"),
+            ("gemini-hydrogen-tiered", "Gemini Hydrogen"),
+            ("gemini-hydrogen", "Gemini Hydrogen"),
+            ("gemini-helix-low", "Gemini Helix"),
+            ("gemini-argon-medium", "Gemini Argon"),
+            ("gemini-carbon-high", "Gemini Carbon"),
+        ]
+        for (id, name) in cases {
+            try expectEqual(ModelDisplayName.name(for: id), name, id)
+        }
+    }
+
     static func passesUnknownThrough() throws {
-        for id in ["o3", "gpt-", "gpt-codex", "claude-instant", "mystery", ""] {
+        for id in ["o3", "gpt-", "gpt-codex", "gpt-oss-", "gpt-oss-medium", "gpt-oss-120b-unknown",
+                   "claude-instant", "claude-instant-high", "claude-high", "claude-5-high",
+                   "claude-opus-5-5-unknown",
+                   "gemini-3.1-pro-ultra-v2", "gemini-pro", "gemini-hydrogen-unknown",
+                   "gemini-for-google-flash", "gemini-for-google-3.1-ultra",
+                   "gemini-pro-orchestrator-unknown", "orchestrator-unknown",
+                   "mystery", ""] {
             try expectEqual(ModelDisplayName.name(for: id), id, id)
         }
     }

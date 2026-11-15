@@ -45,6 +45,9 @@ enum TokenUsagePeriod: CaseIterable, Hashable {
 enum TokenKind: CaseIterable, Hashable {
     case input, output, cacheWrite, cacheRead
 
+    /// 不含缓存写入的 3 类（Antigravity 等不产生 cacheWrite 的面板）
+    static let withoutCacheWrite: [TokenKind] = [.input, .output, .cacheRead]
+
     func count(in tokens: TokenCounts) -> Int {
         switch self {
         case .input: return tokens.input
@@ -55,7 +58,7 @@ enum TokenKind: CaseIterable, Hashable {
     }
 }
 
-/// Token 用量卡和模型卡：一个分段的主数字、四类比例与图例、各模型用量
+/// Token 用量卡和模型卡：一个分段的主数字、各类比例与图例、各模型用量
 struct TokenFigure: Equatable {
     struct Part: Equatable {
         let kind: TokenKind
@@ -71,33 +74,40 @@ struct TokenFigure: Equatable {
         let share: String
     }
 
-    /// 主数字（四类合计，spec 决策 5）
+    /// 显示与计入合计的 token 类别
+    let kinds: [TokenKind]
+    /// 主数字（所选类别的合计，spec 决策 5）
     let total: String
     /// 累计分段的起算点（"自 …"）；窗口分段、或账号还没有任何记录时为 nil
     let since: Date?
     let parts: [Part]
-    /// 合计大的在前（TokenUsageBreakdown 已排好）
+    /// 合计大的在前（按所选类别重新排序并过滤为 0 的模型）
     let models: [ModelRow]
 
-    init(_ usage: AccountTokenUsage, period: TokenUsagePeriod) {
+    init(_ usage: AccountTokenUsage, period: TokenUsagePeriod, kinds: [TokenKind] = TokenKind.allCases) {
         let breakdown: TokenUsageBreakdown
         switch period {
         case .fiveHour: breakdown = usage.fiveHour.usage
         case .sevenDay: breakdown = usage.sevenDay.usage
         case .cumulative: breakdown = usage.cumulative.usage
         }
-        let sum = breakdown.tokens.total
+        self.kinds = kinds
+        let sum = breakdown.tokens.total(for: kinds)
         total = TokenUsageDisplay.compact(sum)
         since = period == .cumulative ? usage.cumulative.origin : nil
-        parts = TokenKind.allCases.map { kind in
+        parts = kinds.map { kind in
             let count = kind.count(in: breakdown.tokens)
             return Part(kind: kind, fraction: sum > 0 ? Double(count) / Double(sum) : 0,
                         value: TokenUsageDisplay.compact(count), share: TokenUsageDisplay.share(count, of: sum))
         }
-        models = breakdown.byModel.map {
-            ModelRow(name: $0.model, value: TokenUsageDisplay.compact($0.tokens.total),
-                     share: TokenUsageDisplay.share($0.tokens.total, of: sum))
-        }
+        models = breakdown.byModel
+            .map { (model: $0.model, total: $0.tokens.total(for: kinds)) }
+            .filter { $0.total > 0 }
+            .sorted { ($0.total, $1.model) > ($1.total, $0.model) }
+            .map {
+                ModelRow(name: $0.model, value: TokenUsageDisplay.compact($0.total),
+                         share: TokenUsageDisplay.share($0.total, of: sum))
+            }
     }
 }
 
@@ -109,19 +119,21 @@ enum HistoryRange: CaseIterable, Hashable {
     case days
 }
 
-/// 历史卡的一根柱子：四类 token 堆叠
+/// 历史卡的一根柱子：各类 token 堆叠
 struct HistoryBar: Equatable {
     let start: Date
     let tokens: TokenCounts
     /// 柱高占最高一格的比例（0–1）；各格都是 0 时全为 0
     let height: Double
 
-    static func bars(_ usage: AccountTokenUsage, range: HistoryRange) -> [HistoryBar] {
+    static func bars(_ usage: AccountTokenUsage, range: HistoryRange,
+                     kinds: [TokenKind] = TokenKind.allCases) -> [HistoryBar] {
         let buckets = range == .hours ? usage.hourly : usage.daily
-        let highest = buckets.map(\.tokens.total).max() ?? 0
+        let highest = buckets.map { $0.tokens.total(for: kinds) }.max() ?? 0
         return buckets.map {
-            HistoryBar(start: $0.start, tokens: $0.tokens,
-                       height: highest > 0 ? Double($0.tokens.total) / Double(highest) : 0)
+            let bucketTotal = $0.tokens.total(for: kinds)
+            return HistoryBar(start: $0.start, tokens: $0.tokens,
+                              height: highest > 0 ? Double(bucketTotal) / Double(highest) : 0)
         }
     }
 }
@@ -204,6 +216,58 @@ struct StatsFlyoutRow: Hashable {
             + chatgpt.filter { StatsFlyoutTarget(chatgpt: $0) != nil }.map { StatsFlyoutRow(tool: .chatgpt, name: $0.name) }
             + kimi.map(StatsFlyoutRow.kimi)
             + antigravity.map(StatsFlyoutRow.antigravity))
+    }
+}
+
+/// 统计面板要读取的 Token 用量请求：账号与已知的额度重置时间
+struct StatsFlyoutTokenRequest: Equatable, Sendable {
+    let account: UsageAccount
+    let resets: KnownResets
+
+    /// 解析鼠标停着的行要读取哪份 Token 用量；Kimi Code、Antigravity（ticket 01）与未登录档案返回 nil
+    static func resolve(row: StatsFlyoutRow?, claudeCode: [Profile], chatgpt: [ChatGPTProfile],
+                        board: UsageBoard) -> StatsFlyoutTokenRequest? {
+        guard let row else { return nil }
+        let target: StatsFlyoutTarget?
+        switch row.section {
+        case .kimi, .antigravity:
+            return nil
+        case .tool(.claudeCode):
+            target = claudeCode.first { $0.name == row.name }.flatMap(StatsFlyoutTarget.init(profile:))
+        case .tool(.chatgpt):
+            target = chatgpt.first { $0.name == row.name }.flatMap(StatsFlyoutTarget.init(chatgpt:))
+        }
+        guard let target else { return nil }
+        return StatsFlyoutTokenRequest(account: target.account, resets: KnownResets(usage: board.usage(for: target.account)))
+    }
+}
+
+/// 统计面板顶层容器驱动 Token 读取的生命周期状态机：
+/// 只观察唯一活跃请求的变化，不依赖子视图自己的 onAppear / onDisappear，避免跨段切换时旧视图滞后触发 hide。
+struct StatsFlyoutTokenLifecycle: Equatable, Sendable {
+    enum Effect: Equatable, Sendable {
+        case show(StatsFlyoutTokenRequest)
+        case hide
+    }
+
+    private(set) var active: StatsFlyoutTokenRequest?
+
+    mutating func update(to request: StatsFlyoutTokenRequest?) -> Effect? {
+        guard request != active else { return nil }
+        active = request
+        return request.map(Effect.show) ?? .hide
+    }
+
+    mutating func update(row: StatsFlyoutRow?, claudeCode: [Profile], chatgpt: [ChatGPTProfile],
+                         board: UsageBoard) -> Effect? {
+        update(to: StatsFlyoutTokenRequest.resolve(row: row, claudeCode: claudeCode,
+                                                   chatgpt: chatgpt, board: board))
+    }
+
+    mutating func disappear() -> Effect? {
+        guard active != nil else { return nil }
+        active = nil
+        return .hide
     }
 }
 

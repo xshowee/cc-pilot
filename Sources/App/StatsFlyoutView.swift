@@ -25,7 +25,6 @@ struct StatsFlyoutView: View {
 
     @State private var period: TokenUsagePeriod = .fiveHour
     @State private var range: HistoryRange = .hours
-    @State private var confirmingClear = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -42,10 +41,14 @@ struct StatsFlyoutView: View {
             TokenUsageCard(figure: figure, period: $period, now: now)
             ModelsCard(figure: figure)
             TokenHistoryCard(bars: tokens.map { HistoryBar.bars($0, range: range) } ?? [], range: $range)
-            clearRow
+            FlyoutClearCumulativeRow(title: title,
+                                     origin: tokens?.cumulative.origin,
+                                     canClear: tokens != nil,
+                                     now: now,
+                                     resetKey: account.id,
+                                     onClear: onClear)
         }
         .padding(Self.inset)
-        .onChange(of: account) { _ in confirmingClear = false }
     }
 
     private var figure: TokenFigure? { tokens.map { TokenFigure($0, period: period) } }
@@ -66,38 +69,6 @@ struct StatsFlyoutView: View {
         }
         .padding(.horizontal, 6)
         .padding(.top, 4)
-    }
-
-    @ViewBuilder private var clearRow: some View {
-        HStack(spacing: 6) {
-            if confirmingClear {
-                Text("Clear cumulative usage for \(title)?")
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 4)
-                Button("Cancel") { confirmingClear = false }
-                    .controlSize(.small)
-                Button("Clear") {
-                    confirmingClear = false
-                    onClear()
-                }
-                .controlSize(.small)
-                .foregroundColor(StatusColor.red)
-            } else {
-                if let origin = tokens?.cumulative.origin {
-                    Text("Cumulative since \(TokenUsageDisplay.origin(origin, now: now))")
-                        .lineLimit(1)
-                }
-                Spacer(minLength: 4)
-                Button("Clear Cumulative") { confirmingClear = true }
-                    .controlSize(.small)
-                    .disabled(tokens == nil)
-            }
-        }
-        .font(.caption)
-        .foregroundColor(.secondary)
-        .padding(.horizontal, 6)
-        .padding(.bottom, 2)
     }
 }
 

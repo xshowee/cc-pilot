@@ -22,6 +22,8 @@ final class StatsFlyoutChecks: CheckSuite {
             Check("停着的行被删除或登出（收不到离开）：立即收起；别的行变化不影响", hoveredRowDisappears),
             Check("位置：贴着主面板左侧，内容与停着的卡片顶边对齐；主面板往下掉或靠近屏幕边缘时不出界", placement),
             Check("历史悬停：按横向位置吸附到最近的一格，图外夹到两端；提示框放竖线右边，放不下换左边，不出卡片", historyHover),
+            Check("顶层 tokenRequest 解析与生命周期：跨工具/Kimi/Antigravity/nil 连续切换不误关", tokenRequestLifecycle),
+            Check("三类 Token 视图：排除缓存写入后主数字、占比、模型列表与历史柱高保持自洽", threeKindViews),
         ]
     }
 
@@ -262,5 +264,154 @@ final class StatsFlyoutChecks: CheckSuite {
         try expectEqual(HistoryHover.tooltipX(lineX: 15, tooltipWidth: 100, width: 240, gap: 6), 21, "右边放得下")
         try expectEqual(HistoryHover.tooltipX(lineX: 200, tooltipWidth: 100, width: 240, gap: 6), 94, "换到左边")
         try expectEqual(HistoryHover.tooltipX(lineX: 120, tooltipWidth: 300, width: 240, gap: 6), 0, "比卡片还宽：贴左")
+    }
+
+    static func tokenRequestLifecycle() throws {
+        let claudeWork = LiveQuotaMergeChecks.profile("work", uuid: "u-1")
+        let claudeWork2 = LiveQuotaMergeChecks.profile("work2", uuid: "u-1")
+        let claudeOut = Profile(name: "empty", configDir: "/nonexistent/empty",
+                                claudeJSON: URL(fileURLWithPath: "/nonexistent/empty.json"), account: .loggedOut)
+        let chatgptWork = ChatGPTProfile(
+            name: "work", codexHome: nil, directory: "/tmp/codex-work",
+            account: ChatGPTAccount(email: "cg@example.com", planType: "plus", userID: "user-1", workspaceID: "ws-1"),
+            status: .canRequestUsage)
+        let chatgptOut = ChatGPTProfile(name: "empty", codexHome: nil, directory: "/tmp/codex-empty",
+                                        account: nil, status: .notLoggedIn)
+
+        let claudeAccount = UsageAccount(id: "account:u-1")
+        let chatgptAccount = UsageAccount(id: "chatgpt:user-1:ws-1")
+        var board = UsageBoard()
+        let claudeResets = at(minutes: 90)
+        let chatgptResets = at(minutes: 180)
+        board.recordLive([LiveQuota(profile: "work", receivedAt: now,
+                                    fiveHour: UsageWindow(utilization: 20, resetsAt: claudeResets),
+                                    sevenDay: nil)],
+                         profiles: [claudeWork])
+        board.recordLive(LiveQuota(profile: "work", receivedAt: now,
+                                   fiveHour: UsageWindow(utilization: 10, resetsAt: chatgptResets),
+                                   sevenDay: nil),
+                         for: chatgptAccount)
+
+        let claudeReq = StatsFlyoutTokenRequest(account: claudeAccount,
+                                                resets: KnownResets(fiveHour: claudeResets, sevenDay: nil))
+        let chatgptReq = StatsFlyoutTokenRequest(account: chatgptAccount,
+                                                 resets: KnownResets(fiveHour: chatgptResets, sevenDay: nil))
+
+        let claudeProfiles = [claudeWork, claudeWork2, claudeOut]
+        let chatgptProfiles = [chatgptWork, chatgptOut]
+
+        try expectEqual(StatsFlyoutTokenRequest.resolve(row: claude("work"), claudeCode: claudeProfiles,
+                                                        chatgpt: chatgptProfiles, board: board),
+                        claudeReq)
+        try expectEqual(StatsFlyoutTokenRequest.resolve(row: claude("empty"), claudeCode: claudeProfiles,
+                                                        chatgpt: chatgptProfiles, board: board),
+                        nil, "未登录 Claude 档案没有请求")
+        try expectEqual(StatsFlyoutTokenRequest.resolve(row: StatsFlyoutRow(tool: .chatgpt, name: "work"),
+                                                        claudeCode: claudeProfiles, chatgpt: chatgptProfiles, board: board),
+                        chatgptReq)
+        try expectEqual(StatsFlyoutTokenRequest.resolve(row: StatsFlyoutRow(tool: .chatgpt, name: "empty"),
+                                                        claudeCode: claudeProfiles, chatgpt: chatgptProfiles, board: board),
+                        nil, "未登录 ChatGPT 档案没有请求")
+        try expectEqual(StatsFlyoutTokenRequest.resolve(row: .kimi("main"), claudeCode: claudeProfiles,
+                                                        chatgpt: chatgptProfiles, board: board),
+                        nil, "Kimi 没有 Token 请求")
+        try expectEqual(StatsFlyoutTokenRequest.resolve(row: .antigravity("a@example.com"), claudeCode: claudeProfiles,
+                                                        chatgpt: chatgptProfiles, board: board),
+                        nil, "Ticket 01 中 Antigravity 暂不发起 Token 请求")
+        try expectEqual(StatsFlyoutTokenRequest.resolve(row: nil, claudeCode: claudeProfiles,
+                                                        chatgpt: chatgptProfiles, board: board),
+                        nil)
+
+        // 连续切换：claude -> chatgpt -> kimi -> claude -> antigravity -> claude -> nil
+        var lifecycle = StatsFlyoutTokenLifecycle()
+        try expectEqual(lifecycle.update(row: nil, claudeCode: claudeProfiles, chatgpt: chatgptProfiles, board: board),
+                        nil, "初始为空时不重复 hide")
+        try expectEqual(lifecycle.update(row: claude("work"), claudeCode: claudeProfiles, chatgpt: chatgptProfiles, board: board),
+                        .show(claudeReq))
+        // 同账号的另一个档案：请求不变，不触发新操作
+        try expectEqual(lifecycle.update(row: claude("work2"), claudeCode: claudeProfiles, chatgpt: chatgptProfiles, board: board),
+                        nil)
+        // 快速切到 ChatGPT（同名 "work"）
+        try expectEqual(lifecycle.update(row: StatsFlyoutRow(tool: .chatgpt, name: "work"),
+                                         claudeCode: claudeProfiles, chatgpt: chatgptProfiles, board: board),
+                        .show(chatgptReq))
+        // 切到 Kimi：收到 hide
+        try expectEqual(lifecycle.update(row: .kimi("main"), claudeCode: claudeProfiles, chatgpt: chatgptProfiles, board: board),
+                        .hide)
+        // 切到 Antigravity：仍是 nil，不重复 hide
+        try expectEqual(lifecycle.update(row: .antigravity("a@example.com"),
+                                         claudeCode: claudeProfiles, chatgpt: chatgptProfiles, board: board),
+                        nil)
+        // 立刻切回 Claude
+        try expectEqual(lifecycle.update(row: claude("work"), claudeCode: claudeProfiles, chatgpt: chatgptProfiles, board: board),
+                        .show(claudeReq))
+        // Antigravity -> nil，或 Claude -> nil
+        try expectEqual(lifecycle.update(row: nil, claudeCode: claudeProfiles, chatgpt: chatgptProfiles, board: board),
+                        .hide)
+        // 容器整体消失：只在有活跃请求时 hide
+        try expectEqual(lifecycle.disappear(), nil)
+        _ = lifecycle.update(row: claude("work"), claudeCode: claudeProfiles, chatgpt: chatgptProfiles, board: board)
+        try expectEqual(lifecycle.disappear(), .hide)
+        try expectEqual(lifecycle.active, nil)
+    }
+
+    static func threeKindViews() throws {
+        try expectEqual(TokenKind.withoutCacheWrite, [.input, .output, .cacheRead])
+
+        let sample = counts(6_000, 11_000, 500_000, 937_000)
+        try expectEqual(sample.total(for: TokenKind.allCases), 1_454_000)
+        try expectEqual(sample.total(for: TokenKind.withoutCacheWrite), 954_000)
+
+        // 即使原始明细带有 cacheWrite，3 类视图也严格以 [.input, .output, .cacheRead] 计算合计与分母
+        let five = breakdown([
+            ("Gemini 3.1 Pro", counts(6_000, 11_000, 500_000, 937_000)), // 3类=954_000
+            ("Cache Only", counts(0, 0, 200_000, 0)),                      // 3类=0（应隐藏）
+            ("Gemini 3 Flash", counts(0, 46_000, 0, 0)),                   // 3类=46_000
+        ])
+        let onlyCacheWrite = breakdown([("Cache Only", counts(0, 0, 50_000, 0))])
+        let origin = at(minutes: -120)
+        let hourly = [
+            TokenUsageBucket(start: at(minutes: -120), tokens: counts(0, 0, 1_000, 0)), // 3类=0
+            TokenUsageBucket(start: at(minutes: -60), tokens: counts(10, 20, 500, 20)), // 3类=50
+            TokenUsageBucket(start: at(minutes: 0), tokens: counts(0, 0, 100, 200)),   // 3类=200
+        ]
+        let usage = tokenUsage(fiveHour: five, sevenDay: onlyCacheWrite, cumulative: five,
+                               origin: origin, hourly: hourly)
+
+        // 默认仍是 4 类
+        let defaultFigure = TokenFigure(usage, period: .fiveHour)
+        try expectEqual(defaultFigure.kinds, TokenKind.allCases)
+        try expectEqual(defaultFigure.parts.map(\.kind), [.input, .output, .cacheWrite, .cacheRead])
+
+        // 3 类模式：总计 1,000,000 -> "1.0M"
+        let figure = TokenFigure(usage, period: .fiveHour, kinds: TokenKind.withoutCacheWrite)
+        try expectEqual(figure.kinds, TokenKind.withoutCacheWrite)
+        try expectEqual(figure.total, "1.0M")
+        try expectEqual(figure.since, nil)
+        try expectEqual(figure.parts.map(\.kind), [.input, .output, .cacheRead])
+        try expectEqual(figure.parts.map(\.value), ["6.0K", "57.0K", "937.0K"])
+        try expectEqual(figure.parts.map(\.share), ["<1%", "6%", "94%"])
+        try expect(abs(figure.parts[1].fraction - 57.0 / 1000.0) < 1e-9, "3类输出占比 \(figure.parts[1].fraction)")
+        try expectEqual(figure.models, [
+            TokenFigure.ModelRow(name: "Gemini 3.1 Pro", value: "954.0K", share: "95%"),
+            TokenFigure.ModelRow(name: "Gemini 3 Flash", value: "46.0K", share: "5%"),
+        ])
+
+        // 累计保留起算点
+        let cumulative = TokenFigure(usage, period: .cumulative, kinds: TokenKind.withoutCacheWrite)
+        try expectEqual(cumulative.since, origin)
+        try expectEqual(cumulative.total, "1.0M")
+
+        // 仅有 cacheWrite 时，3 类总计为 0 且不显示该模型
+        let emptyThreeKind = TokenFigure(usage, period: .sevenDay, kinds: TokenKind.withoutCacheWrite)
+        try expectEqual(emptyThreeKind.total, "0")
+        try expectEqual(emptyThreeKind.parts.map(\.value), ["0", "0", "0"])
+        try expectEqual(emptyThreeKind.parts.map(\.share), ["0%", "0%", "0%"])
+        try expectEqual(emptyThreeKind.parts.map(\.fraction), [0, 0, 0])
+        try expectEqual(emptyThreeKind.models, [])
+
+        // 历史柱高按 3 类最大格子归一化（第 1 格 cacheWrite=1000 不影响，3类最大为 200）
+        let bars = HistoryBar.bars(usage, range: .hours, kinds: TokenKind.withoutCacheWrite)
+        try expectEqual(bars.map(\.height), [0, 0.25, 1])
     }
 }

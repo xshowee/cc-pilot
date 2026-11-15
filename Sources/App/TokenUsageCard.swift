@@ -12,6 +12,7 @@ struct TokenUsageCard: View {
     let figure: TokenFigure?
     @Binding var period: TokenUsagePeriod
     let now: Date
+    var kinds: [TokenKind] = TokenKind.allCases
 
     var body: some View {
         FlyoutCard {
@@ -57,7 +58,7 @@ struct TokenUsageCard: View {
 
     private var legend: some View {
         Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 3) {
-            ForEach(TokenKind.allCases, id: \.self) { kind in
+            ForEach(figure?.kinds ?? kinds, id: \.self) { kind in
                 let part = figure?.parts.first { $0.kind == kind }
                 GridRow {
                     HStack(spacing: 6) {
