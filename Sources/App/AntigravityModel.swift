@@ -3,13 +3,14 @@
 // 账号由用户手动添加（ticket 08）：面板底栏的"添加账号…"里选 Antigravity、输入邮箱（AddProfileForm），
 // 添加只写看板和本机存储，不读 Antigravity；读到没添加过的邮箱不建卡片。
 //
-// 启动时从本机存储（AntigravityBoardStore）读一次看板；之后只在用户点某张卡片的刷新或"刷新全部"时读 Antigravity
-// （AntigravityRefresher：找进程、调本地接口），不轮询，打开面板也不读。读取在 UsageModel 的刷新队列上，
+// 启动时从本机存储（AntigravityBoardStore）读一次看板；之后在用户点某张卡片的刷新或"刷新全部"时主动读 Antigravity
+// （AntigravityRefresher：找进程、调本地接口），并在对话监听触发时通过 antigravityPassiveQuotaDidUpdate 被动并入
+// 额度快照（board.recordPassive）；不轮询，打开面板也不读。读取在 UsageModel 的刷新队列上，
 // 与 Claude Code、ChatGPT、Kimi Code 的刷新逐个进行（UsageModel.runOnRefreshQueue）。
 // 一次只读一次（AntigravityRefreshing）：每张卡片读到的都是 App 里当前登录的同一个账号。读取进行中再点
 // 别的卡片的刷新不发起新的读取，但那张卡片也转圈，读取结束后同样按被点的卡片得到提示。
 // 没有添加任何账号时，"刷新全部"不读 Antigravity；找不到进程时什么都不显示。
-// 结果交给 board.record(_:clicked:)（被点的卡片，按点的顺序），要写回时存回本机。
+// 手动结果交给 board.record(_:clicked:)（被点的卡片，按点的顺序），被动结果交给 board.recordPassive(_:)，要写回时存回本机。
 // 短暂提示（"打开 Antigravity 后可刷新""Antigravity 里登录的是 <邮箱>"）显示 noticeDuration 秒，同 KimiModel.copyNotice。
 // 删除先在面板里确认（AntigravityRemovalBanner），确认后从看板和本机存储删掉这个邮箱。
 // 统计面板（ticket 05）按 board 取同一个邮箱的数据。
@@ -18,10 +19,14 @@ import Foundation
 
 extension Notification.Name {
     static let antigravityWatchingDidChange = Notification.Name("CCPilotAntigravityWatchingDidChange")
+    /// Antigravity 被动额度更新（在主线程上发出）；userInfo[antigravityPassiveQuotaKey] 是 AntigravityAccountQuota
+    static let antigravityPassiveQuotaDidUpdate = Notification.Name("CCPilotAntigravityPassiveQuotaDidUpdate")
 }
 
 /// antigravityWatchingDidChange 的 userInfo 键
 let antigravityWatchingEnabledKey = "enabled"
+/// antigravityPassiveQuotaDidUpdate 的 userInfo 键
+let antigravityPassiveQuotaKey = "quota"
 
 @MainActor
 final class AntigravityModel: ObservableObject {
@@ -39,12 +44,19 @@ final class AntigravityModel: ObservableObject {
     private let usage: UsageModel
     /// 每次给出提示加一：过期的隐藏不生效
     private var noticeGeneration = 0
+    private var passiveQuotaObserver: NSObjectProtocol?
 
     init(environment: CoreEnvironment = .live, usage: UsageModel) {
         refresher = AntigravityRefresher(environment: environment)
         store = AntigravityBoardStore(environment: environment)
         self.usage = usage
         board = store.load()
+        passiveQuotaObserver = NotificationCenter.default.addObserver(
+            forName: .antigravityPassiveQuotaDidUpdate, object: nil, queue: .main
+        ) { [weak self] note in
+            guard let quota = note.userInfo?[antigravityPassiveQuotaKey] as? AntigravityAccountQuota else { return }
+            Task { @MainActor in self?.applyPassiveQuota(quota) }
+        }
     }
 
     /// 添加过账号时面板才显示 Antigravity 一段；"刷新全部"也只在这时读 Antigravity
@@ -112,6 +124,10 @@ final class AntigravityModel: ObservableObject {
         save()
         notices[email] = nil
         notifyWatching()
+    }
+
+    private func applyPassiveQuota(_ quota: AntigravityAccountQuota) {
+        if board.recordPassive(quota) { save() }
     }
 
     private func notifyWatching() {

@@ -237,22 +237,38 @@ struct AntigravityBoard: Equatable, Sendable {
             }
             land(.unrecognizedFormat, email: email, clicked: clicked)
         case .success(let quota):
-            for index in entries.indices where entries[index].problemIsAccountless {
-                entries[index].problem = nil
-                entries[index].problemIsAccountless = false
-            }
-            if let index = index(of: quota.email) {
-                // 卡片保持添加时的写法：快照里的邮箱也用它（存下、读回不变）
-                let email = entries[index].email
-                entries[index] = Entry(email: email, snapshot: .quota(quota.withEmail(email)), problem: nil)
-                lastReadEmail = email
-            } else {
-                // 没添加过的邮箱：不建卡片、不存它的数据，只记为"最后读到"（已添加的卡片都变成旧快照）
-                lastReadEmail = quota.email
-            }
+            _ = recordPassive(quota)
             effect.needsSave = true
         }
         return effect
+    }
+
+    /// 并入一次被动收到的额度结果（仅消费成功快照；不产生短暂提示、不写 problem、不丢弃快照）
+    @discardableResult
+    mutating func recordPassive(_ quota: AntigravityAccountQuota) -> Bool {
+        let clearedProblem = clearAccountlessProblems()
+        if let index = index(of: quota.email) {
+            // 卡片保持添加时的写法：快照里的邮箱也用它（存下、读回不变）
+            let email = entries[index].email
+            entries[index] = Entry(email: email, snapshot: .quota(quota.withEmail(email)), problem: nil)
+            lastReadEmail = email
+            return true
+        }
+        // 没添加过的邮箱：不建卡片、不存它的数据，只记为"最后读到"（已添加的卡片都变成旧快照）
+        let lastReadChanged = lastReadEmail != quota.email
+        lastReadEmail = quota.email
+        return lastReadChanged || clearedProblem
+    }
+
+    @discardableResult
+    private mutating func clearAccountlessProblems() -> Bool {
+        var cleared = false
+        for index in entries.indices where entries[index].problemIsAccountless {
+            entries[index].problem = nil
+            entries[index].problemIsAccountless = false
+            cleared = true
+        }
+        return cleared
     }
 
     /// 把原因记到读到的邮箱的卡片；没有邮箱、或这个邮箱没添加过时，记到被点的卡片（"刷新全部"时最后读到的）。

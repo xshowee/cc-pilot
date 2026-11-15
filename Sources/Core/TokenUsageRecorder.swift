@@ -77,6 +77,7 @@ final class TokenUsageRecorder: @unchecked Sendable {
     /// - createStream: 建立 projects/ 的 FSEvents 流，参数是真正建立它的函数（检查用它模拟建立失败）
     /// - followsChatGPT: 是否也跟着 ChatGPT 会话记录（App 里是；Claude 一侧的检查不需要）
     /// - onChatGPTLiveQuota: ChatGPT 实时额度（各账号这批事件里最新的一份），在 queue 上调用
+    /// - onAntigravityPassiveQuota: Antigravity 被动接收到的账号额度，在 queue 上调用
     init(environment: CoreEnvironment, ledgerURL: URL? = nil, latency: TimeInterval = 2,
          antigravityDebounce: TimeInterval = 0.5,
          queue: DispatchQueue = DispatchQueue(label: "com.ccpilot.token-usage", qos: .utility),
@@ -85,6 +86,7 @@ final class TokenUsageRecorder: @unchecked Sendable {
          createStream: @escaping (() -> FSEventStreamRef?) -> FSEventStreamRef? = { $0() },
          followsChatGPT: Bool = false,
          onChatGPTLiveQuota: @escaping ([UsageAccount: LiveQuota]) -> Void = { _ in },
+         onAntigravityPassiveQuota: @escaping (AntigravityAccountQuota) -> Void = { _ in },
          onUpdate: @escaping () -> Void = {}) {
         self.environment = environment
         self.ledgerURL = ledgerURL ?? TokenLedger.defaultURL(environment: environment)
@@ -133,7 +135,8 @@ final class TokenUsageRecorder: @unchecked Sendable {
                 guard let self else { return }
                 self.rollUpIfNewDay(ledger)
                 if ledger.revision != revBefore { self.onUpdate() }
-            })
+            },
+            onPassiveQuota: onAntigravityPassiveQuota)
     }
 
     deinit { stop() }

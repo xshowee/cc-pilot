@@ -5,6 +5,8 @@
 // - 缓存活动进程/端口/CSRF token 句柄，稳态不重扫进程；仅传输错误或非 200 时清缓存重探
 // - 用 GetUserStatus 获取在线邮箱与动态模型表，用 GetAllCascadeTrajectories + 水位线过滤未变轨迹，
 //   对有变化的轨迹及关联子代理调用 GetCascadeTrajectory，跳过截断响应且不推进其水位线
+// - 每次同步按 180 秒冷却检查被动额度：已登录且满冷却时发起前即推进时间戳，发送空体 {} 的
+//   RetrieveUserQuotaSummary（无 forceRefresh），仅在成功解析后经 onPassiveQuota 回调；异常一律静默忽略
 
 import CoreServices
 import Foundation
@@ -35,8 +37,7 @@ final class AntigravityTrajectoryCollector {
         let rootConversationID: String?
     }
 
-    private static let servicePath = AntigravityRefresher.servicePath
-    private static let host = AntigravityRefresher.host
+    private static let passiveQuotaCooldown: TimeInterval = 180
 
     private let environment: CoreEnvironment
     private let conversationsRoot: URL
@@ -45,11 +46,13 @@ final class AntigravityTrajectoryCollector {
     private let now: () -> Date
     private let openLedger: () throws -> TokenLedger
     private let afterIngest: (TokenLedger, Int) -> Void
+    private let onPassiveQuota: (AntigravityAccountQuota) -> Void
 
     private(set) var isWatching = false
     private var stream: FSEventStreamRef?
     private var pendingSync: DispatchWorkItem?
     private var listenerStartedAt: Date?
+    private var lastPassiveQuotaAttemptAt: Date?
     private var handle: CachedHandle?
     private var watermarks: [String: Watermark] = [:]
     private var knownRootBySession: [String: String] = [:]
@@ -59,7 +62,8 @@ final class AntigravityTrajectoryCollector {
          debounce: TimeInterval = 0.5,
          now: @escaping () -> Date = Date.init,
          openLedger: @escaping () throws -> TokenLedger,
-         afterIngest: @escaping (TokenLedger, Int) -> Void) {
+         afterIngest: @escaping (TokenLedger, Int) -> Void,
+         onPassiveQuota: @escaping (AntigravityAccountQuota) -> Void = { _ in }) {
         self.environment = environment
         let realHome = FSEventsSupport.realPath(environment.home)
         self.conversationsRoot = realHome.appendingPathComponent(".gemini/antigravity/conversations", isDirectory: true)
@@ -68,6 +72,7 @@ final class AntigravityTrajectoryCollector {
         self.now = now
         self.openLedger = openLedger
         self.afterIngest = afterIngest
+        self.onPassiveQuota = onPassiveQuota
     }
 
     deinit {
@@ -97,6 +102,7 @@ final class AntigravityTrajectoryCollector {
         if let s = stream { FSEventsSupport.destroy(s) }
         stream = nil
         listenerStartedAt = nil
+        lastPassiveQuotaAttemptAt = nil
         handle = nil
         watermarks = [:]
         knownRootBySession = [:]
@@ -155,6 +161,9 @@ final class AntigravityTrajectoryCollector {
             handle = nil
             return
         }
+
+        // 即使本次 WAL 刷盘没有轨迹增量，只要本地服务在线且已登录也按 180 秒冷却检查被动额度
+        maybeFetchPassiveQuota(with: session)
 
         let userStatus = AntigravityModelResolver.parseUserStatus(session.userStatusData)
         let summaries = parseSummaries(summariesData)
@@ -258,18 +267,44 @@ final class AntigravityTrajectoryCollector {
         return nil
     }
 
-    private func callRPC(_ method: String, handle: CachedHandle, body: [String: Any]) -> Data? {
-        guard let url = URL(string: "http://\(Self.host):\(handle.port)" + Self.servicePath + method) else {
+    private func maybeFetchPassiveQuota(with session: (handle: CachedHandle, userStatusData: Data)) {
+        guard case .signedIn(let status) = AntigravityQuotaResponse.userStatus(json: session.userStatusData) else {
+            return
+        }
+        let syncNow = now()
+        if let last = lastPassiveQuotaAttemptAt,
+           syncNow.timeIntervalSince(last) < Self.passiveQuotaCooldown {
+            return
+        }
+        // 发起前推进冷却时间戳：网络异常、非 200 或格式不可识别均进入 180s 冷却，绝不重试风暴
+        lastPassiveQuotaAttemptAt = syncNow
+        guard let data = callRPC("RetrieveUserQuotaSummary",
+                                 handle: session.handle,
+                                 bodyData: Data("{}".utf8),
+                                 timeout: AntigravityRefresher.quotaTimeout),
+              let groups = AntigravityQuotaResponse.groups(json: data, now: syncNow) else {
+            return
+        }
+        onPassiveQuota(AntigravityAccountQuota(
+            email: status.email,
+            tierName: status.tierName,
+            tierId: status.tierId,
+            groups: groups,
+            fetchedAt: syncNow))
+    }
+
+    private func callRPC(_ method: String, handle: CachedHandle, body: [String: Any],
+                         timeout: TimeInterval = AntigravityRefresher.probeTimeout) -> Data? {
+        callRPC(method, handle: handle, bodyData: try? JSONSerialization.data(withJSONObject: body), timeout: timeout)
+    }
+
+    private func callRPC(_ method: String, handle: CachedHandle, bodyData: Data?,
+                         timeout: TimeInterval) -> Data? {
+        guard let request = AntigravityRefresher.makeRequest(
+            method, port: handle.port, token: handle.csrfToken, bodyData: bodyData, timeout: timeout
+        ) else {
             return nil
         }
-        var request = URLRequest(
-            url: url,
-            cachePolicy: .reloadIgnoringLocalAndRemoteCacheData,
-            timeoutInterval: AntigravityRefresher.probeTimeout)
-        request.httpMethod = "POST"
-        request.setValue(handle.csrfToken, forHTTPHeaderField: "X-Codeium-Csrf-Token")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
         guard let response = try? environment.transport.send(request), response.status == 200 else {
             return nil
         }

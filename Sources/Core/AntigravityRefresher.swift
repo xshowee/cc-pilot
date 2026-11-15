@@ -79,12 +79,19 @@ struct AntigravityRefresher: Sendable {
 
     private func request(_ method: String, port: Int, token: String, body: [String: Any],
                          timeout: TimeInterval) -> URLRequest {
-        let url = URL(string: "http://\(Self.host):\(port)" + Self.servicePath + method)!
+        Self.makeRequest(method, port: port, token: token,
+                         bodyData: try? JSONSerialization.data(withJSONObject: body),
+                         timeout: timeout)!
+    }
+
+    static func makeRequest(_ method: String, port: Int, token: String, bodyData: Data?,
+                            timeout: TimeInterval) -> URLRequest? {
+        guard let url = URL(string: "http://\(host):\(port)" + servicePath + method) else { return nil }
         var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: timeout)
         request.httpMethod = "POST"
         request.setValue(token, forHTTPHeaderField: "X-Codeium-Csrf-Token")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        request.httpBody = bodyData
         return request
     }
 }

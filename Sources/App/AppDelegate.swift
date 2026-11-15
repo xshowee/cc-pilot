@@ -22,6 +22,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                                 userInfo: [chatgptLiveQuotaKey: quotas])
             }
         },
+        onAntigravityPassiveQuota: { quota in
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: .antigravityPassiveQuotaDidUpdate, object: nil,
+                                                userInfo: [antigravityPassiveQuotaKey: quota])
+            }
+        },
         onUpdate: {
             // 在账本队列上触发：只能异步回主线程（统计面板会在后台同步等账本队列，主线程不能反过来同步等它）
             DispatchQueue.main.async { NotificationCenter.default.post(name: .tokenUsageDidUpdate, object: nil) }
