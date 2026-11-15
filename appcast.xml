@@ -6,6 +6,26 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>CC Pilot</title>
         <item>
+            <title>0.7.1</title>
+            <pubDate>Sun, 15 Nov 2026 23:59:04 +0800</pubDate>
+            <link>https://github.com/xshowee/cc-pilot</link>
+            <sparkle:fullReleaseNotesLink>https://github.com/xshowee/cc-pilot/releases</sparkle:fullReleaseNotesLink>
+            <sparkle:version>10</sparkle:version>
+            <sparkle:shortVersionString>0.7.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <description sparkle:format="markdown"><![CDATA[CC Pilot 0.7.1
+
+- Hide the scrollbar in the side panel, matching the main panel: scrolling is disabled when the content fits on screen, and remains scrollable without showing a scrollbar when it overflows.
+
+---
+
+CC Pilot 0.7.1
+
+- 隐藏侧边面板的滚动条，与主面板一致：内容放得下时禁止滚动，超出屏幕可用高度时仍可滚动且不显示滚动条。
+]]></description>
+            <enclosure url="https://github.com/xshowee/cc-pilot/releases/download/v0.7.1/CCPilot-0.7.1.dmg" length="4695869" type="application/octet-stream" sparkle:edSignature="kasOqi8jMwSlu227jn1h55pSA7Zj+13GKsQZWnXZlQVHj5RuwuU3BGdFFYfO0evh/41nGFrbVWkCjnkpqASFDg=="/>
+        </item>
+        <item>
             <title>0.7.0</title>
             <pubDate>Sun, 15 Nov 2026 17:33:14 +0800</pubDate>
             <link>https://github.com/xshowee/cc-pilot</link>
@@ -55,33 +75,9 @@ CC Pilot 0.6.0：Kimi Code 显示 Base URL、可用模型和套餐有效期。
 ]]></description>
             <enclosure url="https://github.com/xshowee/cc-pilot/releases/download/v0.6.0/CCPilot-0.6.0.dmg" length="4054743" type="application/octet-stream" sparkle:edSignature="akZBV+uU9wbtZMz1WU9nV7IrZBQHKdhRYgL3shHtw/cHCdOjyiofx1naBmPff3ozxcWbXClF4thG54YxWTU6AA=="/>
         </item>
-        <item>
-            <title>0.5.0</title>
-            <pubDate>Tue, 10 Nov 2026 21:14:07 +0800</pubDate>
-            <link>https://github.com/xshowee/cc-pilot</link>
-            <sparkle:fullReleaseNotesLink>https://github.com/xshowee/cc-pilot/releases</sparkle:fullReleaseNotesLink>
-            <sparkle:version>7</sparkle:version>
-            <sparkle:shortVersionString>0.5.0</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
-            <description sparkle:format="markdown"><![CDATA[CC Pilot 0.5.0: Kimi Code usage.
-
-- **Kimi Code usage**: choose Kimi Code under "Add Profile…" and enter a name and an API key created in the Kimi Code console. The panel shows its 5-hour and weekly usage when you refresh. You can add several keys. Kimi Code is usage-only: there is no switching, and it isn't shown in the menu bar.
-- The API key is stored in your login keychain and sent only to Kimi when you refresh. You can copy it from the account's card: the copy stays on this Mac, is marked so that clipboard managers following the standard convention skip it, and is cleared after 1 minute.
-- Kimi's usage API is experimental and undocumented. If it changes, the app will tell you to update.
-
----
-
-CC Pilot 0.5.0：显示 Kimi Code 额度。
-
-- **Kimi Code 额度**：在"添加账号…"里选 Kimi Code，填一个名称和在 Kimi Code 控制台创建的 API key。点刷新后，面板会显示它的 5 小时和周额度。可以添加多个 key。Kimi Code 只显示额度，不能切换，也不显示在菜单栏里。
-- API key 保存在你的登录钥匙串里，只在刷新时发给 Kimi。可以在账号卡片上复制它：复制的内容只留在本机、遵守约定的剪贴板管理工具不会记录，1 分钟后自动清空。
-- Kimi 的额度接口是实验性的，没有官方文档。接口变了，App 会提示你更新。
-]]></description>
-            <enclosure url="https://github.com/xshowee/cc-pilot/releases/download/v0.5.0/CCPilot-0.5.0.dmg" length="3844622" type="application/octet-stream" sparkle:edSignature="HbMBhDRX3B58JgEdou1x06y4ycbnf3ZYG/aSPiiXI8smEjmlaE9FX9veJr9q4J696yoBU6n6vBaXEMWBEmIWAQ=="/>
-        </item>
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: 2oK5VAC3sor0/Eb1VFtru3NRLIv1ObsRECExzsDtsybKRecBcoASfb2jow+5IVWpvU4+ktuzLV+7K9jQSSWzCg==
-length: 8971
+edSignature: r9Dt+oPEs33sKTWX0Jtv1ZcTRDdUum5q/NMRjVgE0MIVaTERggSXpwMY5Uc6/h1U57OgvQwv9y/G2PMu1DosAA==
+length: 7991
 -->
