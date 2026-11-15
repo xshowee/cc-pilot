@@ -50,11 +50,12 @@ cc-pilot 让每个账号各自独立：
   - 短期凭据过期的账号显示**待续期**：打开一次该账号的 `claude`（ChatGPT 是在该账号里打开一次 `codex` 或 ChatGPT）即可恢复。App 不发请求，也不替你续期。凭据已无法续期的 Claude Code 账号显示**需重新登录**。
 - Token 用量：鼠标停在面板里的某个账号上，左侧弹出这台 Mac 在这个账号上用了多少 token（输入、输出、缓存写入、缓存读取，按模型细分）：当前 5 小时窗口、当前周窗口和从起算点到现在的累计，以及最近 24 小时和 30 天的历史。Claude Code 的数字来自它的本地会话记录；ChatGPT 的来自 codex 在 `~/.codex/sessions` 和 `~/.codex/archived_sessions` 里的会话记录，包括桌面 App 里的会话。清空累计就是把起算点移到现在，可以清空一个账号，也可以在设置菜单里清空全部账号（包括 ChatGPT 账号）；不碰 Claude Code 和 codex 的任何文件。Token 用量和额度是两回事，不能互相换算。
   - ChatGPT 的会话历史由所有账号共用，所以每次用量只算一次，会话被 resume 或 fork 也不会重复。会话算在正在写它的 codex 进程的 `CODEX_HOME` 所对应的账号上；找不到这样的进程时，算在输入历史（`history.jsonl`）里有这个会话的账号上。一小时内两者都找不到时，算在创建这个会话的那个账号上（会话记录里记着创建者的用户 ID），但只在这位用户在你的账号里恰好对应一个（同一用户、同一工作区算一个）时才这样算；对应不到或对应不止一个时不计入，宁可不算，也不算到错误的账号上。以前没有计入的会话也按这条重新计入。代价是：共享会话在登录了另一个用户的账号里续用、而当时 CC Pilot 没有运行时，续用部分会算到创建者名下。
+- Antigravity：在面板的"添加账号…"里选 Antigravity，填上 Google 账号的邮箱即可添加（添加时不读取 Antigravity），可以添加多个。面板会在 Kimi Code 上方显示 Antigravity 一段，每个添加的账号一张卡片；在 Antigravity 桌面 App 运行时点"刷新全部"或卡片上的刷新按钮，卡片上显示邮箱、套餐（如 Google AI Ultra），以及每组模型各个窗口的剩余百分比和重置时间。与 Kimi Code 一样，Antigravity 只显示额度：没有账号切换，也不显示在菜单栏里。App 同一时刻只登录一个账号，刷新读到的是 App 里登录着的那个，所以 cc-pilot 为添加的每个邮箱保留最后一次的结果：最后读到的账号正常显示，其他账号整体变灰，并标明是什么时候读的。读到的邮箱没有添加过时，不显示、也不保存它的额度。鼠标停在卡片上，左侧弹出每组窗口的圆环和这组包含的模型。删除卡片会删掉保存的结果；之后再读到这个账号也不会重新出现，要用的话重新添加。刷新时读取什么，见"联网与隐私"。
 - 界面根据系统语言显示中文或英文。只出现在菜单栏，没有 Dock 图标。"登录时启动"可选，默认关闭。
 
 ## 联网与隐私
 
-CC Pilot 只访问下面六个地址：
+CC Pilot 只访问下面六个地址（刷新 Antigravity 时还会调用本机上 Antigravity 桌面 App 自己的接口，见下文）：
 
 | 地址 | 什么时候访问 |
 | --- | --- |
@@ -70,10 +71,11 @@ CC Pilot 只访问下面六个地址：
 - **不收集任何使用数据**，不上报崩溃信息，没有任何统计或分析代码。
 - **App 只读取 Claude Code 和 ChatGPT 的凭据**。Claude Code 的凭据在钥匙串里，App 通过系统自带的 `/usr/bin/security` 读取；ChatGPT 的凭据在每个 ChatGPT 账号的 `auth.json` 里，App 从中读取邮箱、套餐、用户 ID 和工作区 ID，以及 access token 的过期时间。无论哪一边，token 都只在单次请求期间保存在内存里，从不写进日志、缓存文件或错误信息。
 - **Kimi Code 的 API key 是 cc-pilot 唯一自己保存的凭据**。Kimi Code 只显示额度，没有账号切换。在面板的"添加账号…"里选 Kimi Code，填一个名称和在 Kimi Code 控制台创建的 API key 即可，可以添加多个。key 保存在登录钥匙串里（每个账号一项，名为 `cc-pilot Kimi Code API key`），只在刷新这个账号的额度、或你在卡片上点"复制 API key"时读取，同样不写进日志、缓存文件或错误信息。复制的 key 只留在本机剪贴板（不经通用剪贴板同步到其他设备），并标记为机密，遵守 nspasteboard.org 约定的剪贴板管理工具不会记进历史；1 分钟后或 App 退出时，剪贴板如果还是这个 key 就自动清空。在面板里删除这个账号即从钥匙串删除。鼠标停在 Kimi Code 卡片上，左侧弹出 Base URL（Anthropic 兼容、OpenAI 兼容两种，可复制）和这个 key 能用的模型（名称、模型 id、上下文长度、推理强度）；模型列表在你刷新这个账号时一起获取，只保存在内存里。刷新后，卡片上还会显示套餐名（如 Moderato）；两个 key 属于同一个 Kimi 账户时，会标注"与某某是同一账号"，额度仍然各显示各的。套餐有效期无法用 API key 获取，可以照着 kimi.com 订阅页自己填（卡片上的日历按钮或右键菜单），保存在 App 的偏好设置里；卡片上显示有效期，还剩 7 天以内变成琥珀色，过期后变成红色。不会发系统通知。
+- **不读取、不保存你的 Google 凭据，cc-pilot 自己也不联系 Google**。只在你添加了 Antigravity 账号、并且点击"刷新全部"或某张 Antigravity 卡片的刷新按钮时，App 找到 Antigravity 桌面 App 正在运行的 language server（`Antigravity.app` 包内名为 `language_server` 的进程），读取它的启动参数、只保留 `--csrf_token` 的值，列出它监听的端口，再用明文 HTTP 调用它在 `127.0.0.1` 上的本地接口（先 `GetUserStatus`，再 `RetrieveUserQuotaSummary`），这个值放在 `X-Codeium-Csrf-Token` 请求头里。不走 HTTPS 端口，也不接受自签名证书。这个 token 只在本次刷新期间保存在内存里，从不写进磁盘、日志或错误信息。这些请求不离开这台 Mac，但每刷新一次，Antigravity App 都会以它自己的身份向 Google 查询一次，所以得到的是最新的数字。cc-pilot 只从响应里读取登录的邮箱、套餐和每组模型的额度，姓名、头像不读取，也不保存。Antigravity 没有运行时不发任何请求。你添加的每个邮箱和它最后一次读到的结果（额度、套餐和读取时间，不含凭据）作为快照存在 `~/Library/Application Support/cc-pilot/antigravity-snapshots.json` 里，所以在 App 里退出了的账号仍然显示最后的数字；删除卡片时一起删掉它的快照。读到没有添加过的邮箱时，不保存它的额度，只记下最后一次读到的是这个邮箱。
 - **cc-pilot 从不写入、也从不续期 Claude Code 和 ChatGPT 的凭据**。续期始终由 Claude Code 或 codex 自己完成。凭据只会在登出时由工具自己删除：Claude Code 由你执行 `/logout`（`ccp rm` 会为此打开 Claude Code）；`ccp chatgpt rm` 在你确认后，在该账号里执行 `codex logout`。凭据还在时，这两个命令都不会删除账号。
 - `ccp` 不读取凭据，只检查它们是否存在：`ccp rm` 检查该账号的钥匙串项是否还在（不读取内容），`ccp chatgpt add` 和 `ccp chatgpt rm` 检查该账号的 `auth.json` 是否还在。
 - 读取 Claude Code 的凭据不应该弹出钥匙串授权窗口。如果哪天出现了针对 `Claude Code-credentials` 的弹窗，请不要点"允许"：这说明 cc-pilot 与当前的 Claude Code 版本不兼容，App 也会这样提示你。（自己从源码构建的 App 每次重新构建后签名不同，读取 `cc-pilot Kimi Code API key` 时可能要你重新授权，这是正常的。）
-- **进程**。为了判断正在进行的会话属于哪个 ChatGPT 账号，App 会查看你自己的、名字以 `codex` 开头的进程：每个进程读一次环境变量、只保留 `CODEX_HOME`，并列出它们打开的文件。用的是 `lsof` 所用的同一套系统接口（libproc、sysctl），不为此启动任何程序。`ccp chatgpt rm` 为了确认账号是否仍在使用，执行一次 `ps -A -E`，只找 `CODEX_HOME` 是这个账号的 `codex` 进程和 ChatGPT 桌面 App。进程环境里的其他内容一概不保留。
+- **进程**。为了判断正在进行的会话属于哪个 ChatGPT 账号，App 会查看你自己的、名字以 `codex` 开头的进程：每个进程读一次环境变量、只保留 `CODEX_HOME`，并列出它们打开的文件。用的是 `lsof` 所用的同一套系统接口（libproc、sysctl），不为此启动任何程序。`ccp chatgpt rm` 为了确认账号是否仍在使用，执行一次 `ps -A -E`，只找 `CODEX_HOME` 是这个账号的 `codex` 进程和 ChatGPT 桌面 App。进程环境里的其他内容一概不保留。刷新 Antigravity 时，App 用同样的方式查找 `Antigravity.app` 包内名为 `language_server` 的进程，读取它们的启动参数、列出它们监听的端口；只保留 `--csrf_token` 的值，而且只在内存里（见上一条）。
 
 ## 它会碰哪些东西
 
@@ -88,7 +90,8 @@ CC Pilot 只访问下面六个地址：
 | `~/.codex/`（ChatGPT 默认账号） | cc-pilot 不修改默认账号的登录、设置和其中的文件。`ccp chatgpt add` 在 `~/.codex/` 或其中的共享目录（`sessions`、`archived_sessions`、`thread-writer-locks`、`.tmp`、`skills`、`plugins`、`rules`）不存在时创建它们，并把其中的 `config.toml` 复制到新账号。之后，在其他账号里运行的 codex 也会写入这里：会话数据库经账号 `config.toml` 里的 `sqlite_home`，会话文件经软链接。App 读取 `sessions`、`archived_sessions` 里的会话记录，以及每个 ChatGPT 账号的 `auth.json` 和 `history.jsonl`。 |
 | launchd 环境变量 `CODEX_HOME` | `ccp chatgpt use` 用 `launchctl setenv` 把它设为 ChatGPT 当前账号的目录，之后打开的 App 都使用这个账号；切回 `default` 时用 `launchctl unsetenv` 删除它。它在注销或重启前一直有效；App 每次启动时按 ChatGPT 当前账号重新设置一次（只在 `~/.codex-profiles/` 存在时）。不安装 LaunchAgent。 |
 | ChatGPT 后台服务 | `ccp chatgpt rm` 在你确认后，用普通的终止信号停止桌面 App 为该账号运行的后台服务（桌面 App 装在账号目录 `packages/app-server-daemon/` 下的 `codex app-server`，App 退出后它仍在运行）。不会停止其他任何进程：其他 `app-server`（例如 IDE 的 Codex 扩展运行的）算作账号仍在使用。 |
-| `~/Library/Application Support/cc-pilot/` | App 的 Token 用量账本（`token-usage.sqlite`）：按账号和模型的 token 数、每份会话记录读到了哪里、每个会话属于哪个账号。不含对话内容。 |
+| `~/Library/Application Support/cc-pilot/` | App 的 Token 用量账本（`token-usage.sqlite`）：按账号和模型的 token 数、每份会话记录读到了哪里、每个会话属于哪个账号。不含对话内容。另有 Antigravity 的快照（`antigravity-snapshots.json`）：添加的每个邮箱最后一次读到的额度、套餐和读取时间，以及最后一次读到的邮箱，不含凭据。 |
+| Antigravity 桌面 App | 从不修改、启动或退出它。刷新 Antigravity 时读取它的 language server 的启动参数，并调用它在 `127.0.0.1` 上的本地接口。见上面"联网与隐私"。 |
 | "终端" | 在 App 里添加或删除账号时，App 打开一个新的终端窗口执行 `ccp add` / `ccp rm`（或 `ccp chatgpt add` / `ccp chatgpt rm`）。第一次会由 macOS 询问是否允许 CC Pilot 控制"终端"；不允许也没关系，App 会给出命令让你自己复制执行。 |
 
 cc-pilot **不会**：
@@ -196,6 +199,7 @@ ccp chatgpt use default      # 切回 ~/.codex
 - **账号不能改名**。钥匙串里存凭据的那一项，名字是由账号目录的路径算出来的，改名就会丢失登录状态。想换名字，正确的做法是：用新名字 `ccp add` 新建一个账号并登录，再用 `ccp rm` 删除旧账号（删除时会引导你先登出）。
 - **依赖 Claude Code 的内部实现**。钥匙串项的命名方式、`.claude.json` 里账号资料的结构、额度接口的地址和字段都没有官方文档，是按 Claude Code 2.1.309 的实际行为实现的。Claude Code 更新后如果不再兼容，App 会提示"与当前 Claude Code 版本不兼容"或"接口可能已变化，请更新 cc-pilot"，而不是显示猜出来的数字。
 - **Kimi Code 的额度接口和模型列表接口是实验性的**。它们没有官方文档，按 2026-11-10、2026-11-11 的实际响应实现；额度的格式变了，App 会提示"接口可能已变化，请更新 cc-pilot"；模型列表获取失败时，面板显示上一次获取的列表。Kimi Code 没有实时额度，也不显示在菜单栏里。两个 key 属于同一个 Kimi 账户时，要刷新过才能认出来。
+- **Antigravity 依赖桌面 App 没有文档的内部实现**。进程名、参数名、本地接口和响应格式，都是按 2026-11-14 Antigravity 2.32.1、Google AI Ultra 账号的实际行为实现的；其他套餐（如 Google AI Pro）的分组可能不同，组和窗口按 App 返回的原样显示。Antigravity 更新后这些都可能改变，那时 App 会提示额度接口可能已变化，而不是显示猜出来的数字。只能刷新 App 里登录着的账号，而且要 App 在运行；其他账号保持最后一次的快照。
 - **也依赖 Codex 的内部实现**。`auth.json` 的结构、ChatGPT 额度接口和会话记录的格式都没有官方文档，是按 ChatGPT 桌面 App 26.1027 和 Codex CLI 0.153.4 的实际行为实现的。更新后如果不再兼容，App 会提示"与当前 ChatGPT 版本不兼容"或额度接口可能已变化。
 - ChatGPT 桌面 App 和 Zed（codex-acp）不写 `history.jsonl`。它们在 CC Pilot 没有运行时进行的会话，既没有写入进程、也没有 `history.jsonl` 记录，按创建会话的那个账号计；只有创建者在你的账号里对应不到、或对应不止一个时，它的 Token 用量才不计入。
 - 使用 API key（Claude Code 或 ChatGPT）或 `setup-token` 生成的长期 token 登录时，不支持额度显示。
@@ -215,7 +219,7 @@ ccp chatgpt use default      # 切回 ~/.codex
 - `~/.claude-profiles/`：其余账号和当前账号记录。没有先 `ccp rm` 就直接删除时，这些账号的凭据还留在钥匙串里（名为 `Claude Code-credentials-` 加 8 位十六进制的项），可以用"钥匙串访问"删除；
 - 钥匙串里名为 `cc-pilot Kimi Code API key` 的项：添加过 Kimi Code 账号才有。卸载前在面板里删除这些账号，或者用"钥匙串访问"删除；
 - `~/.codex-profiles/`：其余 ChatGPT 账号和 ChatGPT 当前账号记录。没有先 `ccp chatgpt rm` 就直接删除时，这些账号的 `auth.json` 会被删掉，但没有经 codex 登出。它们开始的会话留在共用的 `~/.codex` 里；
-- `~/Library/Application Support/cc-pilot/`：Token 用量账本；
+- `~/Library/Application Support/cc-pilot/`：Token 用量账本和 Antigravity 的快照；
 - App 的偏好设置：`defaults delete com.ccpilot.app`。
 
 ## 从源码构建

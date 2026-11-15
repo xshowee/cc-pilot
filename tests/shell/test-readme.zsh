@@ -7,6 +7,11 @@
 #   - 接入行：README 里写的 ~/.zshrc 接入行与 ccp init 实际写入的逐字节相同。
 #   - 联网承诺：README 写出的六个地址就是代码里的三个额度接口（Claude Code、ChatGPT、Kimi Code）、Kimi Code 的模型列表接口、
 #     账户信息接口和 Info.plist 的 SUFeedURL。
+#   - Antigravity 隐私说明（ADR 0008）：两份 README 都写明读的是哪个 App 里的哪个进程（`Antigravity.app`、
+#     `language_server`）、从启动参数里取哪个值（`--csrf_token`）、本地接口只在本机（`127.0.0.1`），
+#     以及快照文件的完整路径（`~/Library/Application Support/cc-pilot/antigravity-snapshots.json`）。
+#     这些字面量都从代码里的常量取（AntigravityProcessArguments、AntigravityRefresher、AntigravityBoardStore）；
+#     快照目录与 Token 用量账本同处，目录部分照 README 的写法。
 source "${0:A:h}/lib.zsh"
 
 READMES=($ROOT/README.md $ROOT/README.zh-CN.md)
@@ -19,6 +24,11 @@ readme_commands() {
     [[ $line == (#b)'| `ccp '([a-z]##)* ]] && cmds+=($match[1])
   done < $1
   print -rl -- ${(ou)cmds}
+}
+
+# 输出 Sources/Core/<文件> 里 static let <名字> = "<值>" 的值
+swift_constant() {
+  sed -n "s/.*static let $2 = \"\\([^\"]*\\)\".*/\\1/p" $ROOT/Sources/Core/$1
 }
 
 test_both_readmes_exist_and_link_to_each_other() {
@@ -82,6 +92,27 @@ test_readmes_name_the_only_six_network_addresses() {
     assert_contains "$(< $readme)" "$kimi_models" "${readme:t} 写明 Kimi Code 模型列表接口"
     assert_contains "$(< $readme)" "$kimi_me" "${readme:t} 写明 Kimi Code 账户信息接口"
     assert_contains "$(< $readme)" "$feed" "${readme:t} 写明更新检查地址"
+  done
+}
+
+test_readmes_explain_what_antigravity_refresh_reads() {
+  local readme text literal executable bundle csrf host snapshots
+  executable=$(swift_constant AntigravityProcessQuery.swift executableName)
+  bundle=$(swift_constant AntigravityProcessQuery.swift appBundleName)
+  csrf=$(swift_constant AntigravityProcessQuery.swift csrfTokenArgument)
+  host=$(swift_constant AntigravityRefresher.swift host)
+  snapshots=$(swift_constant AntigravityBoardStore.swift fileName)
+  [[ -n $executable ]] || fail "取不到 language server 的进程名：[$executable]"
+  [[ $bundle == *.app ]] || fail "取不到 Antigravity 的 App 包名：[$bundle]"
+  [[ -n $csrf ]] || fail "取不到 csrf token 的参数名"
+  [[ $host == 127.0.0.1 ]] || fail "取不到本地接口的地址：[$host]"
+  [[ $snapshots == *.json ]] || fail "取不到快照文件名：[$snapshots]"
+  for readme in $READMES; do
+    text=$(< $readme)
+    for literal in "\`$bundle\`" "\`$executable\`" "\`--$csrf\`" "\`$host\`" \
+        "\`~/Library/Application Support/cc-pilot/$snapshots\`"; do
+      assert_contains "$text" "$literal" "${readme:t} 的 Antigravity 隐私说明写明 $literal"
+    done
   done
 }
 
