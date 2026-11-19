@@ -83,14 +83,34 @@ final class ModelDisplayNameChecks: CheckSuite {
             ("orchestrator-carbon", "Orchestrator (Carbon)"),
             ("gemini-pro-orchestrator-argon", "Orchestrator (Argon)"),
             ("orchestrator-argon", "Orchestrator (Argon)"),
+            ("gemini-pro-orchestrator-neon", "Orchestrator (Neon)"),
+            ("orchestrator-neon", "Orchestrator (Neon)"),
             ("gemini-flash-worker-agy", "Orchestrator Worker (Hydrogen)"),
+            // Internal routing aliases
+            ("gemini-4-argon-b", "Gemini 4 Argon"),
+            ("gemini-4-argon-f", "Gemini 4 Argon"),
+            ("gemini-4-argon-trial", "Gemini 4 Argon"),
+            ("gemini-4-argon-disabled", "Gemini 4 Argon"),
+            ("gemini-3.8-flash-n", "Gemini 3.8 Flash"),
+            ("gemini-3.7-flash-safety-le", "Gemini 3.7 Flash"),
+            ("gemini-3-flash-a", "Gemini 3.5 Flash"),
+            ("gemini-3-flash-b", "Gemini 3.5 Flash"),
+            ("gemini-3-flash-d", "Gemini 3.5 Flash"),
+            ("gemini-3-flash-agent", "Gemini 3.5 Flash"),
+            ("gemini-3-flash-c", "Gemini 3 Flash"),
+            ("gemini-pro-default", "Gemini 3.1 Pro"),
+            ("gemini-pro-agent", "Gemini 3.1 Pro"),
+            ("gemini-pro-b", "Gemini 3.1 Pro"),
             // gemini-for-google-<ver>-<tier>
             ("gemini-for-google-3.1-flash", "Gemini for Google 3.1 Flash"),
             ("gemini-for-google-3.1-flash-lite", "Gemini for Google 3.1 Flash Lite"),
             ("gemini-for-google-3.1-pro-high", "Gemini for Google 3.1 Pro"),
-            // gemini-<ver>-(pro|flash|argon|carbon|hydrogen|helix)[-lite|-image]
+            // gemini-<ver>-(pro|flash|argon|carbon|neon|hydrogen|helix)[-lite|-image]
             ("gemini-4-carbon-high", "Gemini 4 Carbon"),
             ("gemini-4-argon-medium", "Gemini 4 Argon"),
+            ("gemini-4-neon-xhigh", "Gemini 4 Neon"),
+            ("gemini-4-neon-tiered", "Gemini 4 Neon"),
+            ("gemini-4-neon", "Gemini 4 Neon"),
             ("gemini-4-hydrogen-xhigh", "Gemini 4 Hydrogen"),
             ("gemini-4-hydrogen-tiered", "Gemini 4 Hydrogen"),
             ("gemini-4-helix-low", "Gemini 4 Helix"),
@@ -108,13 +128,15 @@ final class ModelDisplayNameChecks: CheckSuite {
             ("gemini-2.5-pro-20250506", "Gemini 2.5 Pro"),
             ("gemini-2.5-flash-latest", "Gemini 2.5 Flash"),
             ("gemini-2.5-flash-lite", "Gemini 2.5 Flash Lite"),
-            // gemini-(hydrogen|helix|argon|carbon)
+            // gemini-(hydrogen|helix|argon|carbon|neon)
             ("gemini-hydrogen-xhigh", "Gemini Hydrogen"),
             ("gemini-hydrogen-tiered", "Gemini Hydrogen"),
             ("gemini-hydrogen", "Gemini Hydrogen"),
             ("gemini-helix-low", "Gemini Helix"),
             ("gemini-argon-medium", "Gemini Argon"),
             ("gemini-carbon-high", "Gemini Carbon"),
+            ("gemini-neon-high", "Gemini Neon"),
+            ("gemini-neon", "Gemini Neon"),
         ]
         for (id, name) in cases {
             try expectEqual(ModelDisplayName.name(for: id), name, id)

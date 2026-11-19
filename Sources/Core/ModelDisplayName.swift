@@ -26,10 +26,28 @@ enum ModelDisplayName {
         "orchestrator-carbon": "Orchestrator (Carbon)",
         "gemini-pro-orchestrator-argon": "Orchestrator (Argon)",
         "orchestrator-argon": "Orchestrator (Argon)",
+        "gemini-pro-orchestrator-neon": "Orchestrator (Neon)",
+        "orchestrator-neon": "Orchestrator (Neon)",
         "gemini-flash-worker-agy": "Orchestrator Worker (Hydrogen)",
     ]
-    private static let geminiCodenames: Set<String> = ["hydrogen", "helix", "argon", "carbon"]
-    private static let geminiTiers: Set<String> = ["pro", "flash", "argon", "carbon", "hydrogen", "helix"]
+    private static let geminiRoutingAliases: [String: String] = [
+        "gemini-4-argon-b": "Gemini 4 Argon",
+        "gemini-4-argon-f": "Gemini 4 Argon",
+        "gemini-4-argon-trial": "Gemini 4 Argon",
+        "gemini-4-argon-disabled": "Gemini 4 Argon",
+        "gemini-3.8-flash-n": "Gemini 3.8 Flash",
+        "gemini-3.7-flash-safety-le": "Gemini 3.7 Flash",
+        "gemini-3-flash-a": "Gemini 3.5 Flash",
+        "gemini-3-flash-b": "Gemini 3.5 Flash",
+        "gemini-3-flash-d": "Gemini 3.5 Flash",
+        "gemini-3-flash-agent": "Gemini 3.5 Flash",
+        "gemini-3-flash-c": "Gemini 3 Flash",
+        "gemini-pro-default": "Gemini 3.1 Pro",
+        "gemini-pro-agent": "Gemini 3.1 Pro",
+        "gemini-pro-b": "Gemini 3.1 Pro",
+    ]
+    private static let geminiCodenames: Set<String> = ["hydrogen", "helix", "argon", "carbon", "neon"]
+    private static let geminiTiers: Set<String> = ["pro", "flash", "argon", "carbon", "neon", "hydrogen", "helix"]
     private static let geminiVariants: Set<String> = ["lite", "image"]
 
     static func name(for modelID: String) -> String {
@@ -92,6 +110,7 @@ enum ModelDisplayName {
     private static func geminiOrOrchestratorName(_ id: String) -> String? {
         let stripped = stripKnownSuffixes(from: id, suffixes: geminiSuffixes, stripDates: true)
         if let mapped = orchestratorNames[stripped] { return mapped }
+        if let mapped = geminiRoutingAliases[stripped] { return mapped }
         guard stripped.hasPrefix("gemini-") else { return nil }
         let parts = stripped.dropFirst("gemini-".count)
             .split(separator: "-", omittingEmptySubsequences: false)

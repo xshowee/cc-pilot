@@ -28,8 +28,9 @@ final class AntigravityPricingChecks: CheckSuite {
     }
 
     static func catalogResolution() throws {
-        // 1. 静态定价目录完整收录 126 个条目，且 58 个静态占位符均可解析到单价
-        try expectEqual(AntigravityPricing.catalogCount, 126, "应完整嵌入 pricing-catalog.json 的 126 条定价")
+        // 1. 静态定价目录完整收录 154 个条目，且 66 个静态占位符均可解析到单价
+        try expectEqual(AntigravityPricing.catalogCount, 154, "应完整嵌入 pricing-catalog.json 的 154 条定价")
+        try expectEqual(AntigravityModelResolver.staticPlaceholders.count, 66, "应同步 66 个静态占位符映射")
         for (placeholder, modelID) in AntigravityModelResolver.staticPlaceholders {
             try expect(AntigravityPricing.price(for: placeholder) != nil,
                        "占位符 \(placeholder) -> \(modelID) 应可解析定价")
@@ -45,7 +46,7 @@ final class AntigravityPricingChecks: CheckSuite {
         try expectEqual(AntigravityPricing.price(for: "MODEL_PLACEHOLDER_M318"),
                         AntigravityModelPrice(input: 0.75, cache: 0.075, output: 3.75))
 
-        // 3. Claude / GPT / Orchestrator 精确匹配与大小写无关
+        // 3. Claude / GPT / Orchestrator / Neon / Hydrogen / Helix / 内部路由别名精确匹配与大小写无关
         try expectEqual(AntigravityPricing.price(for: "Claude-Opus-5-5-High"),
                         AntigravityModelPrice(input: 4.00, cache: 0.20, output: 20.0))
         try expectEqual(AntigravityPricing.price(for: "claude-opus-4-6-thinking"),
@@ -58,8 +59,29 @@ final class AntigravityPricingChecks: CheckSuite {
                         AntigravityModelPrice(input: 2.00, cache: 0.10, output: 10.0))
         try expectEqual(AntigravityPricing.price(for: "orchestrator-argon"),
                         AntigravityModelPrice(input: 2.00, cache: 0.10, output: 10.0))
+        let neonPrice = AntigravityModelPrice(input: 3.00, cache: 0.15, output: 15.0)
+        for neon in ["gemini-pro-orchestrator-neon", "orchestrator-neon", "Orchestrator (Neon)",
+                     "gemini-4-neon-xhigh", "Gemini 4 Neon (High)", "gemini-neon"] {
+            try expectEqual(AntigravityPricing.price(for: neon), neonPrice, neon)
+        }
         try expectEqual(AntigravityPricing.price(for: "gemini-flash-worker-agy"),
-                        AntigravityModelPrice(input: 1.50, cache: 0.15, output: 7.50))
+                        AntigravityModelPrice(input: 1.50, cache: 0.075, output: 7.50))
+        try expectEqual(AntigravityPricing.price(for: "gemini-4-hydrogen-high"),
+                        AntigravityModelPrice(input: 1.50, cache: 0.075, output: 7.50))
+        try expectEqual(AntigravityPricing.price(for: "gemini-4-helix"),
+                        AntigravityModelPrice(input: 0.30, cache: 0.015, output: 2.50))
+        try expectEqual(AntigravityPricing.price(for: "gemini-4-argon-b"),
+                        AntigravityModelPrice(input: 2.00, cache: 0.10, output: 10.0))
+        try expectEqual(AntigravityPricing.price(for: "gemini-3.8-flash-n"),
+                        AntigravityModelPrice(input: 0.75, cache: 0.075, output: 3.75))
+        try expectEqual(AntigravityPricing.price(for: "gemini-3.7-flash-safety-le"),
+                        AntigravityModelPrice(input: 0.75, cache: 0.075, output: 3.75))
+        try expectEqual(AntigravityPricing.price(for: "gemini-3-flash-a"),
+                        AntigravityModelPrice(input: 1.50, cache: 0.15, output: 9.00))
+        try expectEqual(AntigravityPricing.price(for: "gemini-3-flash-c"),
+                        AntigravityModelPrice(input: 0.50, cache: 0.05, output: 3.00))
+        try expectEqual(AntigravityPricing.price(for: "gemini-pro-default"),
+                        AntigravityModelPrice(input: 2.00, cache: 0.20, output: 12.0))
 
         // 4. 安全后缀剥离：先剥日期/修饰后缀再匹配，保留更具体的低档位单价
         try expectEqual(AntigravityPricing.price(for: "gemini-3.8-flash-low-20260501"),
@@ -77,7 +99,7 @@ final class AntigravityPricingChecks: CheckSuite {
         try expectEqual(AntigravityPricing.price(for: "Gemini 3.8 Flash (Low)"),
                         AntigravityModelPrice(input: 0.30, cache: 0.03, output: 2.50))
         try expectEqual(AntigravityPricing.price(for: "Orchestrator Worker (Hydrogen)"),
-                        AntigravityModelPrice(input: 1.50, cache: 0.15, output: 7.50))
+                        AntigravityModelPrice(input: 1.50, cache: 0.075, output: 7.50))
 
         // 5. 未知模型与未知版本严禁兜底，必须返回 nil
         for unknown in ["", "   ", "unknown", "MODEL_UNKNOWN", "MODEL_PLACEHOLDER_M999",
@@ -142,6 +164,20 @@ final class AntigravityPricingChecks: CheckSuite {
         try expectClose(opusCost.costUSD, 6.20)
         try expectEqual(opusCost.costText, "$6.20")
         try expectEqual(opusCost.isUnpriced, false)
+
+        // 3) Orchestrator (Neon)：1M input ($3.00) + 2M cacheRead ($0.15*2=$0.30) + 200K output ($15.0*0.2=$3.00) = $6.30
+        //    cacheSavings = 2M * (3.00 - 0.15) = $5.70
+        let neonBreakdown = TokenUsageBreakdown([
+            (model: "gemini-pro-orchestrator-neon", tokens: counts(1_000_000, 200_000, 0, 2_000_000)),
+        ])
+        let neonSummary = AntigravityPricing.summarize(neonBreakdown, kinds: TokenKind.withoutCacheWrite)
+        try expectClose(neonSummary.totalCostUSD, 6.30, "Neon 总费用")
+        try expectClose(neonSummary.cacheSavingsUSD, 5.70, "Neon 缓存节省")
+        try expectEqual(neonSummary.unpricedModels, [])
+        let neonCost = try unwrap(neonSummary.byModelName["Orchestrator (Neon)"])
+        try expectClose(neonCost.costUSD, 6.30)
+        try expectEqual(neonCost.costText, "$6.30")
+        try expectEqual(neonCost.isUnpriced, false)
     }
 
     static func unpricedAndPartialHandling() throws {
