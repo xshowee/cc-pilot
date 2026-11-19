@@ -6,6 +6,28 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>CC Pilot</title>
         <item>
+            <title>0.7.2</title>
+            <pubDate>Fri, 20 Nov 2026 00:29:25 +0800</pubDate>
+            <link>https://github.com/xshowee/cc-pilot</link>
+            <sparkle:fullReleaseNotesLink>https://github.com/xshowee/cc-pilot/releases</sparkle:fullReleaseNotesLink>
+            <sparkle:version>11</sparkle:version>
+            <sparkle:shortVersionString>0.7.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <description sparkle:format="markdown"><![CDATA[CC Pilot 0.7.2
+
+- Update Antigravity's built-in pricing catalog to `2026.11.19.2`: add pricing (`$3.00` input / `$0.15` cache read / `$15.00` output per 1M tokens) and display names for `Orchestrator (Neon)` (`gemini-pro-orchestrator-neon`) and `Gemini 4 Neon`.
+- Align `Gemini 4 Hydrogen` and `Gemini 4 Helix` cache-read rates to 95% off (`$0.075` and `$0.015` per 1M tokens), and sync additional Gemini routing aliases and static placeholder mappings.
+
+---
+
+CC Pilot 0.7.2
+
+- 将 Antigravity 内置静态定价目录同步至 `2026.11.19.2`：新增 `Orchestrator (Neon)`（`gemini-pro-orchestrator-neon`）与 `Gemini 4 Neon` 系列定价（每百万 Token 输入 `$3.00` / 缓存读取 `$0.15` / 输出 `$15.00`）与展示名映射。
+- 将 `Gemini 4 Hydrogen` 与 `Gemini 4 Helix` 缓存读取费率对齐至 95% 折扣（每百万 Token `$0.075` / `$0.015`），并同步 14 条 Gemini 内部路由别名与 8 个静态占位符映射。
+]]></description>
+            <enclosure url="https://github.com/xshowee/cc-pilot/releases/download/v0.7.2/CCPilot-0.7.2.dmg" length="4697461" type="application/octet-stream" sparkle:edSignature="ua0hdQo7JJN21+CsR6Uf1sQS5QhRaUhP4+yaez7ky2kpkNmfVaOfb5U61zgQvtzR5eE1gfFEqHUHuv4vHUuJCw=="/>
+        </item>
+        <item>
             <title>0.7.1</title>
             <pubDate>Sun, 15 Nov 2026 23:59:04 +0800</pubDate>
             <link>https://github.com/xshowee/cc-pilot</link>
@@ -49,35 +71,9 @@ CC Pilot 0.7.0：支持 Antigravity 额度与 Token 用量统计。
 ]]></description>
             <enclosure url="https://github.com/xshowee/cc-pilot/releases/download/v0.7.0/CCPilot-0.7.0.dmg" length="5784856" type="application/octet-stream" sparkle:edSignature="17fEoRzAaKtXoDwQMgjqY9K/ZVRdBuQmfaUTlXYuabcF6jTCcPRri1s8ELZA+LF+FwoHsPm7UlgLRkvozSCPDQ=="/>
         </item>
-        <item>
-            <title>0.6.0</title>
-            <pubDate>Wed, 11 Nov 2026 20:19:38 +0800</pubDate>
-            <link>https://github.com/xshowee/cc-pilot</link>
-            <sparkle:fullReleaseNotesLink>https://github.com/xshowee/cc-pilot/releases</sparkle:fullReleaseNotesLink>
-            <sparkle:version>8</sparkle:version>
-            <sparkle:shortVersionString>0.6.0</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
-            <description sparkle:format="markdown"><![CDATA[CC Pilot 0.6.0: Kimi Code base URLs, models and plan expiry.
-
-- **Base URLs and models**: hover over a Kimi Code card to show a side panel with the Anthropic-compatible and OpenAI-compatible base URLs, plus the models available to the key with their context length and reasoning efforts. Everything can be copied with one click.
-- **Plan name**: the card shows your Kimi plan, and keys that belong to the same Kimi account are marked as such.
-- **Plan expiry**: Kimi's API doesn't provide the expiry date, so you can enter it yourself from the subscription page on kimi.com (calendar button or right-click menu on the card). The card shows how many days are left, in amber during the last 7 days and in red once expired.
-- Refreshing a Kimi account now also asks Kimi for the model list and your plan, using the same API key. Only the plan name and account ID are read; nickname and phone number are ignored, and nothing is written to disk.
-
----
-
-CC Pilot 0.6.0：Kimi Code 显示 Base URL、可用模型和套餐有效期。
-
-- **Base URL 和模型列表**：鼠标停在 Kimi Code 卡片上，侧边会弹出面板，显示 Anthropic 兼容和 OpenAI 兼容的 Base URL，以及这个 key 可用的模型、上下文长度和推理强度，都可以一键复制。
-- **套餐名**：卡片上显示 Kimi 套餐名；属于同一个 Kimi 账户的多个 key 会标出来。
-- **套餐有效期**：Kimi 的接口不提供到期时间，可以照着 kimi.com 订阅页自己填（卡片上的日历按钮或右键菜单）。卡片显示还剩几天，最后 7 天变成琥珀色，过期后变成红色。
-- 刷新 Kimi 账号时，会用同一个 API key 顺带向 Kimi 请求模型列表和套餐信息。只读套餐名和账户 ID，昵称、手机号不读，也不写进磁盘。
-]]></description>
-            <enclosure url="https://github.com/xshowee/cc-pilot/releases/download/v0.6.0/CCPilot-0.6.0.dmg" length="4054743" type="application/octet-stream" sparkle:edSignature="akZBV+uU9wbtZMz1WU9nV7IrZBQHKdhRYgL3shHtw/cHCdOjyiofx1naBmPff3ozxcWbXClF4thG54YxWTU6AA=="/>
-        </item>
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: r9Dt+oPEs33sKTWX0Jtv1ZcTRDdUum5q/NMRjVgE0MIVaTERggSXpwMY5Uc6/h1U57OgvQwv9y/G2PMu1DosAA==
-length: 7991
+edSignature: p9XLdlUq3hb1T3ANE8tf0r0jzcY62ErimaTOb0lGmH43ff6Nl2HKFXiGsyQaYXQqDeMfm7FO+8qDzS1SB4+PDQ==
+length: 7150
 -->
