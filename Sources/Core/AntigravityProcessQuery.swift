@@ -5,10 +5,12 @@
 //   列进程        proc_listallpids + proc_pidpath；只认可执行文件名为 language_server、
 //                 且位于 Antigravity.app 包内的进程（实测 /Applications/Antigravity.app/Contents/Resources/bin/language_server，
 //                 不写死 /Applications）。多个窗口时可能有多个。
-//   csrf token    sysctl KERN_PROCARGS2 里 --csrf_token 的值（"--csrf_token <值>" 与 "--csrf_token=<值>" 两种写法都认）。
-//                 只读这一项，--host_bridge_token 等别的参数不读。token 只在内存里，不落盘、不写日志。
-//   监听端口      PROC_PIDLISTFDS + PROC_PIDFDSOCKETINFO：TCP、状态为 LISTEN 的套接字的本地端口，按文件描述符顺序。
-// 待真机验证（ticket 07）：端口的字节序（insi_lport 是网络字节序）、LISTEN 状态的判断、能否读到 App 进程的参数。
+//   csrf token    Antigravity 2.34.0+ 优先按 pid 读取 ~/.gemini/antigravity/daemon/hub_*.json 里的 csrfToken；
+//                 找不到时回退到 sysctl KERN_PROCARGS2 里 --csrf_token 的值（"--csrf_token <值>" 与
+//                 "--csrf_token=<值>" 两种写法都认）。只读这一项，--host_bridge_token 等别的参数不读。
+//                 token 只在内存里，不落盘、不写日志。
+//   监听端口      优先放同一守护文件里的明文 httpPort（不读 httpsPort），其后附带 PROC_PIDLISTFDS +
+//                 PROC_PIDFDSOCKETINFO 查到的 TCP LISTEN 本地端口并去重（按文件描述符顺序），兼作兜底。
 
 import Darwin
 import Foundation
@@ -23,9 +25,9 @@ struct AntigravityLanguageServer: Hashable, Sendable {
 protocol AntigravityProcessQuery: Sendable {
     /// 运行中的 Antigravity language server（可能有多个）
     func languageServers() -> [AntigravityLanguageServer]
-    /// 启动参数里的 csrf token；进程已退出、读不出参数或没有这个参数时为 nil
+    /// 对应 language server 的 csrf token；进程已退出、守护文件与启动参数均读不出时为 nil
     func csrfToken(of server: AntigravityLanguageServer) -> String?
-    /// 进程监听的 TCP 端口，按文件描述符顺序
+    /// 进程监听的 TCP 端口（守护文件的明文 httpPort 优先，其后按文件描述符顺序附带套接字端口）
     func listeningPorts(of server: AntigravityLanguageServer) -> [Int]
 }
 
@@ -64,6 +66,21 @@ enum AntigravityProcessArguments {
         value(of: csrfTokenArgument, in: arguments)
     }
 
+    /// 先从守护文件（~/.gemini/antigravity/daemon/hub_*.json）按 pid 取 csrf token，
+    /// 取不到时再调用 procArgs 回调回退到旧版 KERN_PROCARGS2 命令行参数。
+    static func resolveCsrfToken(
+        pid: Int32,
+        daemonDirectory: URL,
+        procArgs: () -> [UInt8]?
+    ) -> String? {
+        if let token = AntigravityHubDaemon.csrfToken(forPID: pid, in: daemonDirectory) {
+            return token
+        }
+        guard let bytes = procArgs(),
+              let arguments = arguments(fromProcArgs: bytes) else { return nil }
+        return csrfToken(in: arguments)
+    }
+
     /// KERN_PROCARGS2 的内容：argc（int32，本机字节序）、可执行文件路径、补齐的 NUL、argc 个参数（含 argv[0]）、
     /// 之后是环境变量，各以 NUL 结尾。返回 argv（含 argv[0]）；格式不对时为 nil
     static func arguments(fromProcArgs bytes: [UInt8]) -> [String]? {
@@ -86,8 +103,120 @@ enum AntigravityProcessArguments {
     }
 }
 
+/// 读取 Antigravity 2.34.0+ 写入的 ~/.gemini/antigravity/daemon/hub_*.json 守护描述文件
+enum AntigravityHubDaemon {
+    static let daemonRelativePath = ".gemini/antigravity/daemon"
+    static let filePrefix = "hub_"
+    static let fileSuffix = ".json"
+
+    struct Record: Equatable, Sendable {
+        let pid: Int32
+        let csrfToken: String?
+        let httpPort: Int?
+    }
+
+    static func daemonDirectory(in home: URL) -> URL {
+        home.appendingPathComponent(daemonRelativePath, isDirectory: true)
+    }
+
+    static func isHubFileName(_ name: String) -> Bool {
+        let lower = name.lowercased()
+        return lower.hasPrefix(filePrefix)
+            && lower.hasSuffix(fileSuffix)
+            && lower.count >= filePrefix.count + fileSuffix.count
+    }
+
+    /// 解析单个 hub_*.json 文件；仅读取 pid、csrfToken（或 csrf_token）与明文 httpPort（或 port），不读取 httpsPort
+    static func parse(data: Data) -> Record? {
+        guard let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let rawPID = exactInt(object["pid"]),
+              rawPID > 0,
+              let pid = Int32(exactly: rawPID) else {
+            return nil
+        }
+        let csrfToken = nonEmptyString(object["csrfToken"]) ?? nonEmptyString(object["csrf_token"])
+        let httpPort = validPort(object["httpPort"]) ?? validPort(object["port"])
+        return Record(pid: pid, csrfToken: csrfToken, httpPort: httpPort)
+    }
+
+    /// 列出目录中属于指定 pid 的 hub_*.json 记录，按文件修改时间降序排列（时间相同时按文件名降序）
+    static func records(forPID pid: Int32, in directory: URL) -> [Record] {
+        guard pid > 0,
+              let urls = try? FileManager.default.contentsOfDirectory(
+                  at: directory,
+                  includingPropertiesForKeys: [.contentModificationDateKey, .isDirectoryKey],
+                  options: [.skipsSubdirectoryDescendants]
+              ) else {
+            return []
+        }
+        var matched: [(date: Date, name: String, record: Record)] = []
+        for url in urls {
+            let name = url.lastPathComponent
+            guard isHubFileName(name) else { continue }
+            let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .isDirectoryKey])
+            if values?.isDirectory == true { continue }
+            guard let data = try? Data(contentsOf: url),
+                  let record = parse(data: data),
+                  record.pid == pid else {
+                continue
+            }
+            matched.append((values?.contentModificationDate ?? .distantPast, name, record))
+        }
+        matched.sort { lhs, rhs in
+            if lhs.date != rhs.date { return lhs.date > rhs.date }
+            return lhs.name > rhs.name
+        }
+        return matched.map(\.record)
+    }
+
+    static func csrfToken(forPID pid: Int32, in directory: URL) -> String? {
+        records(forPID: pid, in: directory).compactMap(\.csrfToken).first
+    }
+
+    /// 守护文件里的明文 httpPort 排在前面，套接字端口附在后面作为兜底；过滤越界端口并保留首次出现顺序去重
+    static func mergedPorts(forPID pid: Int32, in directory: URL, socketPorts: [Int]) -> [Int] {
+        let daemonPorts = records(forPID: pid, in: directory).compactMap(\.httpPort)
+        var merged: [Int] = []
+        for port in daemonPorts + socketPorts where (1...65535).contains(port) && !merged.contains(port) {
+            merged.append(port)
+        }
+        return merged
+    }
+
+    private static func validPort(_ value: Any?) -> Int? {
+        guard let port = exactInt(value), (1...65535).contains(port) else { return nil }
+        return port
+    }
+
+    private static func exactInt(_ value: Any?) -> Int? {
+        guard let number = value as? NSNumber,
+              CFGetTypeID(number) != CFBooleanGetTypeID() else { return nil }
+        let double = number.doubleValue
+        guard double.isFinite, abs(double) <= Double(1 << 52) else { return nil }
+        let int64 = number.int64Value
+        guard Double(int64) == double else { return nil }
+        return Int(exactly: int64)
+    }
+
+    private static func nonEmptyString(_ value: Any?) -> String? {
+        guard let text = value as? String else { return nil }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
 /// 真实实现（见文件头）
 struct LiveAntigravityProcessQuery: AntigravityProcessQuery {
+    let daemonDirectory: URL
+
+    init(daemonDirectory: URL) {
+        self.daemonDirectory = daemonDirectory
+    }
+
+    init(home: URL = CoreEnvironment.userHome()) {
+        self.daemonDirectory = AntigravityHubDaemon.daemonDirectory(in: home)
+    }
+
     func languageServers() -> [AntigravityLanguageServer] {
         let estimate = proc_listallpids(nil, 0)
         guard estimate > 0 else { return [] }
@@ -105,14 +234,24 @@ struct LiveAntigravityProcessQuery: AntigravityProcessQuery {
     }
 
     func csrfToken(of server: AntigravityLanguageServer) -> String? {
-        guard isSameProcess(server), let bytes = Self.procArgs(server.pid),
-              let arguments = AntigravityProcessArguments.arguments(fromProcArgs: bytes) else { return nil }
-        return AntigravityProcessArguments.csrfToken(in: arguments)
+        guard isSameProcess(server) else { return nil }
+        return AntigravityProcessArguments.resolveCsrfToken(
+            pid: server.pid,
+            daemonDirectory: daemonDirectory,
+            procArgs: { Self.procArgs(server.pid) }
+        )
     }
 
     func listeningPorts(of server: AntigravityLanguageServer) -> [Int] {
         guard isSameProcess(server) else { return [] }
-        let pid = server.pid
+        return AntigravityHubDaemon.mergedPorts(
+            forPID: server.pid,
+            in: daemonDirectory,
+            socketPorts: Self.socketListeningPorts(of: server.pid)
+        )
+    }
+
+    private static func socketListeningPorts(of pid: pid_t) -> [Int] {
         let size = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, nil, 0)
         guard size > 0 else { return [] }
         let stride = MemoryLayout<proc_fdinfo>.stride

@@ -6,7 +6,9 @@
 // 一次刷新 = 找进程 → 找端口 → GetUserStatus → RetrieveUserQuotaSummary：
 //   1. environment.antigravityProcesses 列出 Antigravity.app 里的 language server。一个都没有 → appNotRunning，
 //      不读参数、不发请求。
-//   2. 逐个进程（多窗口时可能有多个）读 csrf token、列监听端口，对 http://127.0.0.1:<端口> 逐个发 GetUserStatus，
+//   2. 逐个进程（多窗口时可能有多个）读 csrf token、列监听端口（优先读取 ~/.gemini/antigravity/daemon/hub_*.json
+//      里的 csrfToken 与明文 httpPort，未命中时回退到旧版启动参数 --csrf_token 与监听套接字扫描），
+//      对 http://127.0.0.1:<端口> 逐个发 GetUserStatus，
 //      取第一个返回 200 的进程和端口；本次刷新后续请求用同一个端口。探测用短超时（实测 HTTPS 端口收到明文 HTTP
 //      立即返回 400，但别的端口不能拖住刷新）。只走明文 HTTP：不走 HTTPS 端口，也就不涉及自签名证书。
 //      一个都不行 → failed(nil, noReachablePort)；所有进程都读不出 token → failed(nil, processUnreadable)。

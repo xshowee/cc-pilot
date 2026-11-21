@@ -51,7 +51,7 @@ struct CoreEnvironment: Sendable {
          launchctl: URL = URL(fileURLWithPath: "/bin/launchctl"),
          codexProcesses: CodexProcessQuery = LiveCodexProcessQuery(),
          kimiKeys: KimiKeyStore = KeychainKimiKeyStore(),
-         antigravityProcesses: AntigravityProcessQuery = LiveAntigravityProcessQuery()) {
+         antigravityProcesses: AntigravityProcessQuery? = nil) {
         self.home = home
         self.security = security
         self.userName = userName
@@ -63,7 +63,7 @@ struct CoreEnvironment: Sendable {
         self.launchctl = launchctl
         self.codexProcesses = codexProcesses
         self.kimiKeys = kimiKeys
-        self.antigravityProcesses = antigravityProcesses
+        self.antigravityProcesses = antigravityProcesses ?? LiveAntigravityProcessQuery(home: home)
     }
 
     /// 真实环境

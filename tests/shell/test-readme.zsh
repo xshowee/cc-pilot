@@ -96,20 +96,22 @@ test_readmes_name_the_only_six_network_addresses() {
 }
 
 test_readmes_explain_what_antigravity_refresh_reads() {
-  local readme text literal executable bundle csrf host snapshots
+  local readme text literal executable bundle csrf daemon host snapshots
   executable=$(swift_constant AntigravityProcessQuery.swift executableName)
   bundle=$(swift_constant AntigravityProcessQuery.swift appBundleName)
   csrf=$(swift_constant AntigravityProcessQuery.swift csrfTokenArgument)
+  daemon=$(swift_constant AntigravityProcessQuery.swift daemonRelativePath)
   host=$(swift_constant AntigravityRefresher.swift host)
   snapshots=$(swift_constant AntigravityBoardStore.swift fileName)
   [[ -n $executable ]] || fail "取不到 language server 的进程名：[$executable]"
   [[ $bundle == *.app ]] || fail "取不到 Antigravity 的 App 包名：[$bundle]"
   [[ -n $csrf ]] || fail "取不到 csrf token 的参数名"
+  [[ -n $daemon ]] || fail "取不到 Antigravity 守护文件目录：[$daemon]"
   [[ $host == 127.0.0.1 ]] || fail "取不到本地接口的地址：[$host]"
   [[ $snapshots == *.json ]] || fail "取不到快照文件名：[$snapshots]"
   for readme in $READMES; do
     text=$(< $readme)
-    for literal in "\`$bundle\`" "\`$executable\`" "\`--$csrf\`" "\`$host\`" \
+    for literal in "\`$bundle\`" "\`$executable\`" "\`--$csrf\`" "\`~/$daemon/hub_*.json\`" "\`$host\`" \
         "\`~/Library/Application Support/cc-pilot/$snapshots\`"; do
       assert_contains "$text" "$literal" "${readme:t} 的 Antigravity 隐私说明写明 $literal"
     done
